@@ -141,3 +141,25 @@ open ios/Runner.xcworkspace
 ## What To Use Right Now
 
 Use Cloudflare Pages plus Add to Home Screen first. It gives you a real website and a phone-home-screen app while you keep building. Move to App Store and Google Play once the core app, logbook, admin tools, and public submissions feel ready.
+
+## Cloudflare Git Build Settings
+
+If Cloudflare is connected to GitHub instead of direct upload, use these settings:
+
+```text
+Build command:
+./scripts/cloudflare_build.sh
+
+Build output directory:
+build/web
+```
+
+Leave the deploy command blank.
+
+Cloudflare environment variables:
+
+```text
+SUPABASE_URL
+SUPABASE_PUBLISHABLE_KEY
+SUPABASE_AUTH_REDIRECT_URL
+```

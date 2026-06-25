@@ -47,6 +47,14 @@ Host the `build/web` folder on any HTTPS host, such as Cloudflare Pages, Firebas
 
 Then upload `climb_on_web_upload.zip`.
 
+For Cloudflare Pages connected directly to GitHub, use:
+
+```sh
+./scripts/cloudflare_build.sh
+```
+
+as the build command, with `build/web` as the build output directory.
+
 For Google sign-in on web, build with your hosted URL as the redirect:
 
 ```sh
