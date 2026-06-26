@@ -101,23 +101,15 @@ class _RouteCardState extends ConsumerState<RouteCard> {
                     spacing: 8,
                     runSpacing: 8,
                     children: [
-                      Chip(label: Text(widget.route.typeLabel)),
-                      Chip(label: Text(widget.route.pitchLabel)),
-                      Chip(label: Text(widget.route.angle)),
-                      if (widget.route.bolts > 0)
-                        Chip(label: Text('${widget.route.bolts} bolts')),
-                      if (widget.route.routeLength > 0)
-                        Chip(label: Text('${widget.route.routeLength}m')),
-                      if (widget.route.heightMeters > 0)
-                        Chip(label: Text('${widget.route.heightMeters}m tall')),
-                      Chip(label: Text('${widget.route.ropeLength}m rope')),
-                      Chip(
-                        label: Text(
-                          widget.route.topRope
-                              ? 'Top rope access'
-                              : 'Lead only',
+                      for (final tag in _routeTags())
+                        Chip(
+                          avatar: Icon(tag.icon, size: 16),
+                          label: Text(tag.label),
+                          backgroundColor: tag.color,
+                          side: BorderSide(
+                            color: tag.color.withValues(alpha: 0.9),
+                          ),
                         ),
-                      ),
                     ],
                   ),
                   const SizedBox(height: 8),
@@ -352,6 +344,65 @@ class _RouteCardState extends ConsumerState<RouteCard> {
     );
   }
 
+  List<_RouteTag> _routeTags() {
+    final route = widget.route;
+    final tags = <_RouteTag>[
+      _RouteTag(
+        label: route.typeLabel,
+        icon: Icons.terrain_outlined,
+        color: const Color(0xFFD5E9D8),
+      ),
+      _RouteTag(
+        label: route.pitchLabel,
+        icon: Icons.layers_outlined,
+        color: const Color(0xFFD8E8F4),
+      ),
+      _RouteTag(
+        label: route.angle,
+        icon: Icons.architecture_outlined,
+        color: const Color(0xFFF3D8CB),
+      ),
+      if (route.bolts > 0)
+        _RouteTag(
+          label: '${route.bolts} bolts',
+          icon: Icons.hardware,
+          color: const Color(0xFFFFE3A6),
+        ),
+      if (route.routeLength > 0)
+        _RouteTag(
+          label: '${route.routeLength}m route',
+          icon: Icons.straighten,
+          color: const Color(0xFFDDEBCF),
+        ),
+      if (route.heightMeters > 0)
+        _RouteTag(
+          label: '${route.heightMeters}m tall',
+          icon: Icons.height,
+          color: const Color(0xFFD6E5EF),
+        ),
+      if (route.ropeLength > 0)
+        _RouteTag(
+          label: '${route.ropeLength}m rope',
+          icon: Icons.cable,
+          color: const Color(0xFFE6DCEF),
+        ),
+      if (route.type != ClimbRouteType.boulder)
+        _RouteTag(
+          label: route.topRope ? 'Top rope access' : 'Lead only',
+          icon: route.topRope ? Icons.vertical_align_top : Icons.trending_up,
+          color: const Color(0xFFF1DCC7),
+        ),
+    ];
+
+    final seen = <String>{};
+    return tags
+        .where((tag) {
+          final label = tag.label.trim().toLowerCase();
+          return label.isNotEmpty && seen.add(label);
+        })
+        .toList(growable: false);
+  }
+
   Future<void> _showGradeDialog(ClimbLogState climbLog) async {
     gradeController.text = widget.route.grade;
     await showDialog<void>(
@@ -505,21 +556,25 @@ class _RouteActions extends StatelessWidget {
         ActionChip(
           avatar: Icon(completed ? Icons.check_circle : Icons.done, size: 18),
           label: Text(completed ? 'Sent' : 'Mark sent'),
+          backgroundColor: const Color(0xFFCDE8D2),
           onPressed: onCompleted,
         ),
         ActionChip(
           avatar: const Icon(Icons.grade, size: 18),
           label: const Text('Grade'),
+          backgroundColor: const Color(0xFFD3E7F5),
           onPressed: onGradeOpinion,
         ),
         ActionChip(
           avatar: const Icon(Icons.comment, size: 18),
           label: Text('Comment $commentsCount'),
+          backgroundColor: const Color(0xFFF3D7CA),
           onPressed: onComment,
         ),
         ActionChip(
           avatar: const Icon(Icons.photo_camera, size: 18),
           label: Text('Photo $photosCount'),
+          backgroundColor: const Color(0xFFE5DCF0),
           onPressed: onPhoto,
         ),
         ActionChip(
@@ -528,16 +583,30 @@ class _RouteActions extends StatelessWidget {
             size: 18,
           ),
           label: Text(savedProject ? 'Project' : 'Save'),
+          backgroundColor: const Color(0xFFFFE2A3),
           onPressed: onProject,
         ),
         ActionChip(
           avatar: const Icon(Icons.ios_share, size: 18),
           label: const Text('Share'),
+          backgroundColor: const Color(0xFFD1E9E7),
           onPressed: onShare,
         ),
       ],
     );
   }
+}
+
+class _RouteTag {
+  const _RouteTag({
+    required this.label,
+    required this.icon,
+    required this.color,
+  });
+
+  final String label;
+  final IconData icon;
+  final Color color;
 }
 
 class _AlertText extends StatelessWidget {
