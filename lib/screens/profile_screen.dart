@@ -8,6 +8,7 @@ import '../data/sample_ski_routes.dart';
 import '../models/climb_route.dart';
 import '../models/crag.dart';
 import '../models/ski_route.dart';
+import '../models/user_profile.dart';
 import '../services/auth_service.dart';
 import '../state/activity_mode_state.dart';
 import '../state/catalog_state.dart';
@@ -57,147 +58,143 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                 builder: (context, _) {
                   final completedRoutes = _completedRoutes(climbLog, allRoutes);
                   final projectRoutes = _projectRoutes(climbLog, allRoutes);
-                  final hardest = _hardestSend(completedRoutes);
+                  final hardestBoulder = _hardestBoulderSend(completedRoutes);
+                  final hardestSport = _hardestSportSend(completedRoutes);
                   final pyramid = _gradePyramid(completedRoutes);
-                  final styles = _styleCounts(completedRoutes);
                   final climbedAreas = _climbedAreas(
                     completedRoutes,
                     catalogCrags,
                   );
+                  final profile = ref.watch(currentProfileProvider).valueOrNull;
+                  final user = authService.currentUser;
 
-                  return ListView(
-                    padding: const EdgeInsets.all(16),
-                    children: [
-                      _AccountCard(
-                        authService: authService,
-                        publicProfile: publicProfile,
-                        onPrivacyChanged: (value) {
-                          setState(() => publicProfile = value);
-                        },
-                      ),
-                      const SizedBox(height: 16),
-                      if (catalog.isLoading)
-                        const LinearProgressIndicator(minHeight: 3),
-                      if (catalog.hasError)
-                        const Padding(
-                          padding: EdgeInsets.only(bottom: 12),
-                          child: Text(
-                            'Using saved route data while the cloud reconnects.',
+                  return _ProfileDataScope(
+                    profile: profile,
+                    user: user,
+                    child: ListView(
+                      padding: const EdgeInsets.all(16),
+                      children: [
+                        _AccountCard(
+                          authService: authService,
+                          publicProfile: publicProfile,
+                          onPrivacyChanged: (value) {
+                            setState(() => publicProfile = value);
+                          },
+                        ),
+                        const SizedBox(height: 16),
+                        if (catalog.isLoading)
+                          const LinearProgressIndicator(minHeight: 3),
+                        if (catalog.hasError)
+                          const Padding(
+                            padding: EdgeInsets.only(bottom: 12),
+                            child: Text(
+                              'Using saved route data while the cloud reconnects.',
+                            ),
+                          ),
+                        _ProfileHeader(
+                          sendCount: completedRoutes.length,
+                          projectCount: projectRoutes.length,
+                          hardestBoulder: hardestBoulder?.grade ?? '-',
+                          hardestSport: hardestSport?.grade ?? '-',
+                        ),
+                        const SizedBox(height: 16),
+                        _SectionCard(
+                          title: 'Progress',
+                          child: Wrap(
+                            spacing: 10,
+                            runSpacing: 10,
+                            children: [
+                              _StatTile(
+                                label: 'Completed',
+                                value: '${completedRoutes.length}',
+                              ),
+                              _StatTile(
+                                label: 'Projects',
+                                value: '${projectRoutes.length}',
+                              ),
+                              _StatTile(
+                                label: 'Attempts',
+                                value: '${climbLog.attempts.length}',
+                              ),
+                              _StatTile(
+                                label: 'Boulder',
+                                value: hardestBoulder?.grade ?? '-',
+                              ),
+                              _StatTile(
+                                label: 'Sport',
+                                value: hardestSport?.grade ?? '-',
+                              ),
+                            ],
                           ),
                         ),
-                      _ProfileHeader(
-                        sendCount: completedRoutes.length,
-                        projectCount: projectRoutes.length,
-                        hardest: hardest?.grade ?? '-',
-                      ),
-                      const SizedBox(height: 16),
-                      _SectionCard(
-                        title: 'Progress',
-                        child: Wrap(
-                          spacing: 10,
-                          runSpacing: 10,
-                          children: [
-                            _StatTile(
-                              label: 'Completed',
-                              value: '${completedRoutes.length}',
-                            ),
-                            _StatTile(
-                              label: 'Projects',
-                              value: '${projectRoutes.length}',
-                            ),
-                            _StatTile(
-                              label: 'Attempts',
-                              value: '${climbLog.attempts.length}',
-                            ),
-                            _StatTile(
-                              label: 'Hardest',
-                              value: hardest?.grade ?? '-',
-                            ),
-                          ],
+                        _SectionCard(
+                          title: 'Grade pyramid',
+                          child: pyramid.isEmpty
+                              ? const _EmptyProfileState(
+                                  text: 'Send routes to build your pyramid.',
+                                )
+                              : Column(
+                                  children: [
+                                    for (final entry in pyramid.entries)
+                                      _PyramidRow(
+                                        grade: entry.key,
+                                        count: entry.value,
+                                        maxCount: pyramid.values.reduce(
+                                          (a, b) => a > b ? a : b,
+                                        ),
+                                      ),
+                                  ],
+                                ),
                         ),
-                      ),
-                      _SectionCard(
-                        title: 'Grade pyramid',
-                        child: pyramid.isEmpty
-                            ? const _EmptyProfileState(
-                                text: 'Send routes to build your pyramid.',
-                              )
-                            : Column(
-                                children: [
-                                  for (final entry in pyramid.entries)
-                                    _PyramidRow(
-                                      grade: entry.key,
-                                      count: entry.value,
-                                      maxCount: pyramid.values.reduce(
-                                        (a, b) => a > b ? a : b,
+                        _SectionCard(
+                          title: 'Map of areas climbed',
+                          child: climbedAreas.isEmpty
+                              ? const _EmptyProfileState(
+                                  text: 'Areas appear after your first send.',
+                                )
+                              : Wrap(
+                                  spacing: 8,
+                                  runSpacing: 8,
+                                  children: [
+                                    for (final area in climbedAreas)
+                                      Chip(
+                                        avatar: const Icon(
+                                          Icons.place,
+                                          size: 16,
+                                        ),
+                                        label: Text(
+                                          '${area.name}, ${area.region}',
+                                        ),
                                       ),
-                                    ),
-                                ],
-                              ),
-                      ),
-                      _SectionCard(
-                        title: 'Climbing styles',
-                        child: styles.isEmpty
-                            ? const _EmptyProfileState(
-                                text: 'Styles appear from completed routes.',
-                              )
-                            : Wrap(
-                                spacing: 8,
-                                runSpacing: 8,
-                                children: [
-                                  for (final entry in styles.entries)
-                                    Chip(
-                                      label: Text(
-                                        '${entry.key}: ${entry.value}',
-                                      ),
-                                    ),
-                                ],
-                              ),
-                      ),
-                      _SectionCard(
-                        title: 'Map of areas climbed',
-                        child: climbedAreas.isEmpty
-                            ? const _EmptyProfileState(
-                                text: 'Areas appear after your first send.',
-                              )
-                            : Wrap(
-                                spacing: 8,
-                                runSpacing: 8,
-                                children: [
-                                  for (final area in climbedAreas)
-                                    Chip(
-                                      avatar: const Icon(Icons.place, size: 16),
-                                      label: Text(
-                                        '${area.name}, ${area.region}',
-                                      ),
-                                    ),
-                                ],
-                              ),
-                      ),
-                      _SectionCard(
-                        title: 'Recent activity',
-                        child: _RecentActivity(
-                          sends: climbLog.sends,
-                          attempts: climbLog.attempts,
+                                  ],
+                                ),
                         ),
-                      ),
-                      _SectionCard(
-                        title: 'Completed routes',
-                        child: completedRoutes.isEmpty
-                            ? const _EmptyProfileState(
-                                text: 'Mark routes as sent from the feed.',
-                              )
-                            : _RouteList(routes: completedRoutes),
-                      ),
-                      _SectionCard(
-                        title: 'Tick list',
-                        child: projectRoutes.isEmpty
-                            ? const _EmptyProfileState(
-                                text: 'Save routes to projects from the feed.',
-                              )
-                            : _RouteList(routes: projectRoutes),
-                      ),
-                    ],
+                        _SectionCard(
+                          title: 'Recent activity',
+                          child: _RecentActivity(
+                            sends: climbLog.sends,
+                            attempts: climbLog.attempts,
+                          ),
+                        ),
+                        _SectionCard(
+                          title: 'Completed routes',
+                          child: completedRoutes.isEmpty
+                              ? const _EmptyProfileState(
+                                  text: 'Mark routes as sent from the feed.',
+                                )
+                              : _RouteList(routes: completedRoutes),
+                        ),
+                        _SectionCard(
+                          title: 'Tick list',
+                          child: projectRoutes.isEmpty
+                              ? const _EmptyProfileState(
+                                  text:
+                                      'Save routes to projects from the feed.',
+                                )
+                              : _RouteList(routes: projectRoutes),
+                        ),
+                      ],
+                    ),
                   );
                 },
               ),
@@ -222,6 +219,29 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         .toList();
   }
 
+  ClimbRoute? _hardestBoulderSend(List<ClimbRoute> routes) {
+    final boulders = routes
+        .where(
+          (route) =>
+              route.type == ClimbRouteType.boulder ||
+              route.pitchType == PitchType.boulder ||
+              route.grade.toUpperCase().startsWith('V'),
+        )
+        .toList();
+    return _hardestSend(boulders);
+  }
+
+  ClimbRoute? _hardestSportSend(List<ClimbRoute> routes) {
+    final sportRoutes = routes
+        .where(
+          (route) =>
+              route.type == ClimbRouteType.sport ||
+              route.grade.startsWith('5.'),
+        )
+        .toList();
+    return _hardestSend(sportRoutes);
+  }
+
   ClimbRoute? _hardestSend(List<ClimbRoute> routes) {
     if (routes.isEmpty) return null;
     final sorted = [...routes]
@@ -240,14 +260,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     final entries = counts.entries.toList()
       ..sort((a, b) => _gradeScore(b.key).compareTo(_gradeScore(a.key)));
     return Map.fromEntries(entries);
-  }
-
-  Map<String, int> _styleCounts(List<ClimbRoute> routes) {
-    final counts = <String, int>{};
-    for (final route in routes) {
-      counts.update(route.typeLabel, (count) => count + 1, ifAbsent: () => 1);
-    }
-    return counts;
   }
 
   List<Crag> _climbedAreas(List<ClimbRoute> routes, List<Crag> catalogCrags) {
@@ -471,26 +483,71 @@ class _AccountCard extends ConsumerWidget {
             : 'Save your logbook with Google.';
 
         return _SectionCard(
-          title: 'Account',
+          title: signedIn ? 'Signed in' : 'Account',
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(accountLabel),
+              if (signedIn)
+                Row(
+                  children: [
+                    CircleAvatar(
+                      radius: 22,
+                      backgroundImage: _avatarFor(profile, user) == null
+                          ? null
+                          : NetworkImage(_avatarFor(profile, user)!),
+                      child: _avatarFor(profile, user) == null
+                          ? const Icon(Icons.person)
+                          : null,
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(child: Text(accountLabel)),
+                  ],
+                )
+              else
+                Text(accountLabel),
               const SizedBox(height: 12),
-              Row(
-                children: [
-                  Expanded(
-                    child: FilledButton.icon(
-                      onPressed: () async {
-                        try {
-                          if (signedIn) {
-                            await authService.signOut();
-                            ref.invalidate(currentProfileProvider);
-                          } else {
+              if (!signedIn)
+                Row(
+                  children: [
+                    Expanded(
+                      child: FilledButton.icon(
+                        onPressed: () async {
+                          try {
                             await authService.signInWithGoogle(
                               redirectPath: '/profile/setup',
                             );
+                          } on AuthException catch (error) {
+                            if (!context.mounted) return;
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text(error.message)),
+                            );
                           }
+                        },
+                        icon: const Icon(Icons.login),
+                        label: const Text('Continue with Google'),
+                      ),
+                    ),
+                  ],
+                ),
+              if (signedIn) ...[
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    OutlinedButton.icon(
+                      onPressed: () => context.go('/profile/setup'),
+                      icon: Icon(
+                        profileComplete ? Icons.edit : Icons.person_add,
+                      ),
+                      label: Text(
+                        profileComplete ? 'Edit profile' : 'Finish profile',
+                      ),
+                    ),
+                    TextButton.icon(
+                      onPressed: () async {
+                        try {
+                          await authService.signOut();
+                          ref.invalidate(currentProfileProvider);
                         } on AuthException catch (error) {
                           if (!context.mounted) return;
                           ScaffoldMessenger.of(context).showSnackBar(
@@ -498,22 +555,10 @@ class _AccountCard extends ConsumerWidget {
                           );
                         }
                       },
-                      icon: Icon(signedIn ? Icons.logout : Icons.login),
-                      label: Text(
-                        signedIn ? 'Sign out' : 'Continue with Google',
-                      ),
+                      icon: const Icon(Icons.logout),
+                      label: const Text('Sign out'),
                     ),
-                  ),
-                ],
-              ),
-              if (signedIn) ...[
-                const SizedBox(height: 8),
-                OutlinedButton.icon(
-                  onPressed: () => context.go('/profile/setup'),
-                  icon: Icon(profileComplete ? Icons.edit : Icons.person_add),
-                  label: Text(
-                    profileComplete ? 'Edit profile' : 'Finish profile',
-                  ),
+                  ],
                 ),
                 const SizedBox(height: 8),
                 SwitchListTile(
@@ -534,41 +579,75 @@ class _AccountCard extends ConsumerWidget {
       },
     );
   }
+
+  String? _avatarFor(UserProfile? profile, User user) {
+    final profileAvatar = profile?.avatarUrl;
+    if (profileAvatar != null && profileAvatar.isNotEmpty) {
+      return profileAvatar;
+    }
+    final googleAvatar = user.userMetadata?['avatar_url']?.toString();
+    return googleAvatar == null || googleAvatar.isEmpty ? null : googleAvatar;
+  }
 }
 
 class _ProfileHeader extends StatelessWidget {
   const _ProfileHeader({
     required this.sendCount,
     required this.projectCount,
-    required this.hardest,
+    required this.hardestBoulder,
+    required this.hardestSport,
   });
 
   final int sendCount;
   final int projectCount;
-  final String hardest;
+  final String hardestBoulder;
+  final String hardestSport;
 
   @override
   Widget build(BuildContext context) {
+    final profile = context
+        .dependOnInheritedWidgetOfExactType<_ProfileDataScope>()
+        ?.profile;
+    final user = context
+        .dependOnInheritedWidgetOfExactType<_ProfileDataScope>()
+        ?.user;
+    final avatarUrl =
+        profile?.avatarUrl ?? user?.userMetadata?['avatar_url']?.toString();
+    final displayName = profile?.displayName.isNotEmpty == true
+        ? profile!.displayName
+        : user?.userMetadata?['full_name']?.toString() ?? 'Climber';
+    final subtitle = [
+      if (profile?.username.isNotEmpty == true) '@${profile!.username}',
+      if (profile?.homeArea.isNotEmpty == true) profile!.homeArea,
+      if (profile?.bio.isNotEmpty == true) profile!.bio,
+    ].join(' - ');
+
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
           children: [
-            const CircleAvatar(
+            CircleAvatar(
               radius: 44,
-              backgroundImage: NetworkImage(
-                'https://images.unsplash.com/photo-1520975958225-3f61d5f3b0a2',
-              ),
+              backgroundImage: avatarUrl == null || avatarUrl.isEmpty
+                  ? null
+                  : NetworkImage(avatarUrl),
+              child: avatarUrl == null || avatarUrl.isEmpty
+                  ? const Icon(Icons.person, size: 42)
+                  : null,
             ),
             const SizedBox(height: 12),
             Text(
-              'Will Climber',
+              displayName,
               style: Theme.of(
                 context,
               ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w900),
             ),
             const SizedBox(height: 4),
-            const Text('Outdoor addict | Trad and sport climber'),
+            Text(
+              subtitle.isEmpty ? 'Your climbing logbook' : subtitle,
+              textAlign: TextAlign.center,
+            ),
             const SizedBox(height: 14),
             Wrap(
               spacing: 10,
@@ -577,13 +656,30 @@ class _ProfileHeader extends StatelessWidget {
               children: [
                 _StatTile(label: 'Sends', value: '$sendCount'),
                 _StatTile(label: 'Projects', value: '$projectCount'),
-                _StatTile(label: 'Hardest', value: hardest),
+                _StatTile(label: 'Boulder', value: hardestBoulder),
+                _StatTile(label: 'Sport', value: hardestSport),
               ],
             ),
           ],
         ),
       ),
     );
+  }
+}
+
+class _ProfileDataScope extends InheritedWidget {
+  const _ProfileDataScope({
+    required this.profile,
+    required this.user,
+    required super.child,
+  });
+
+  final UserProfile? profile;
+  final User? user;
+
+  @override
+  bool updateShouldNotify(_ProfileDataScope oldWidget) {
+    return profile != oldWidget.profile || user != oldWidget.user;
   }
 }
 

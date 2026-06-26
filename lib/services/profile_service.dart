@@ -30,8 +30,8 @@ class ProfileService {
   Future<void> saveProfile({
     required String displayName,
     required String username,
+    required String avatarUrl,
     required String homeArea,
-    required String climbingStyle,
     required String bio,
     required bool isPublic,
   }) async {
@@ -41,7 +41,10 @@ class ProfileService {
     }
 
     final metadataName = user.userMetadata?['full_name']?.toString() ?? '';
-    final avatarUrl = user.userMetadata?['avatar_url']?.toString();
+    final googleAvatarUrl = user.userMetadata?['avatar_url']?.toString();
+    final savedAvatarUrl = avatarUrl.trim().isEmpty
+        ? googleAvatarUrl
+        : avatarUrl.trim();
 
     await _client.from('profiles').upsert({
       'id': user.id,
@@ -49,9 +52,8 @@ class ProfileService {
           ? metadataName
           : displayName.trim(),
       'username': _cleanUsername(username),
-      'avatar_url': avatarUrl,
+      'avatar_url': savedAvatarUrl,
       'home_area': homeArea.trim(),
-      'climbing_style': climbingStyle.trim(),
       'bio': bio.trim(),
       'is_public': isPublic,
       'updated_at': DateTime.now().toIso8601String(),

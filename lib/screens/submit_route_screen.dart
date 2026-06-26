@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../services/database_service.dart';
 import '../state/activity_mode_state.dart';
+import '../widgets/side_banner_layout.dart';
 
 class SubmitRouteScreen extends ConsumerStatefulWidget {
   const SubmitRouteScreen({super.key});
@@ -90,80 +91,84 @@ class _SubmitRouteScreenState extends ConsumerState<SubmitRouteScreen> {
       appBar: showTitleBar
           ? AppBar(title: Text(isSki ? 'Add ski tour' : 'Add climb'))
           : null,
-      body: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 760),
-          child: Form(
-            key: formKey,
-            child: ListView(
-              padding: const EdgeInsets.all(16),
-              children: [
-                Text(
-                  isSki ? 'Add a ski tour' : 'Add a climb',
-                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                    fontWeight: FontWeight.w900,
+      body: SideBannerLayout(
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 760),
+            child: Form(
+              key: formKey,
+              child: ListView(
+                padding: const EdgeInsets.all(16),
+                children: [
+                  Text(
+                    isSki ? 'Add a ski tour' : 'Add a climb',
+                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                      fontWeight: FontWeight.w900,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 12),
-                _Field(controller: submitterName, label: 'Your name'),
-                if (isSki) ..._skiFields() else ..._climbFields(),
-                _Field(
-                  controller: latitude,
-                  label: isSki ? 'Tour high point latitude' : 'GPS latitude',
-                  decimal: true,
-                ),
-                _Field(
-                  controller: longitude,
-                  label: isSki ? 'Tour high point longitude' : 'GPS longitude',
-                  decimal: true,
-                ),
-                if (isSki) ...[
+                  const SizedBox(height: 12),
+                  _Field(controller: submitterName, label: 'Your name'),
+                  if (isSki) ..._skiFields() else ..._climbFields(),
                   _Field(
-                    controller: trailheadLatitude,
-                    label: 'Trailhead latitude',
+                    controller: latitude,
+                    label: isSki ? 'Tour high point latitude' : 'GPS latitude',
                     decimal: true,
                   ),
                   _Field(
-                    controller: trailheadLongitude,
-                    label: 'Trailhead longitude',
+                    controller: longitude,
+                    label: isSki
+                        ? 'Tour high point longitude'
+                        : 'GPS longitude',
                     decimal: true,
+                  ),
+                  if (isSki) ...[
+                    _Field(
+                      controller: trailheadLatitude,
+                      label: 'Trailhead latitude',
+                      decimal: true,
+                    ),
+                    _Field(
+                      controller: trailheadLongitude,
+                      label: 'Trailhead longitude',
+                      decimal: true,
+                    ),
+                  ],
+                  _Field(controller: photoUrl, label: 'Picture URL'),
+                  _Field(
+                    controller: description,
+                    label: isSki ? 'Tour description' : 'Route description',
+                    lines: 3,
+                  ),
+                  _Field(
+                    controller: approachNotes,
+                    label: 'Approach notes',
+                    lines: 3,
+                  ),
+                  _Field(
+                    controller: descentNotes,
+                    label: 'Descent notes',
+                    lines: 2,
+                  ),
+                  _Field(
+                    controller: dangerInfo,
+                    label: 'Danger/safety notes',
+                    lines: 2,
+                  ),
+                  _Field(controller: gearNotes, label: 'Gear notes', lines: 2),
+                  const SizedBox(height: 12),
+                  FilledButton.icon(
+                    onPressed: submitting ? null : submit,
+                    icon: submitting
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.cloud_upload),
+                    label: const Text('Submit for review'),
                   ),
                 ],
-                _Field(controller: photoUrl, label: 'Picture URL'),
-                _Field(
-                  controller: description,
-                  label: isSki ? 'Tour description' : 'Route description',
-                  lines: 3,
-                ),
-                _Field(
-                  controller: approachNotes,
-                  label: 'Approach notes',
-                  lines: 3,
-                ),
-                _Field(
-                  controller: descentNotes,
-                  label: 'Descent notes',
-                  lines: 2,
-                ),
-                _Field(
-                  controller: dangerInfo,
-                  label: 'Danger/safety notes',
-                  lines: 2,
-                ),
-                _Field(controller: gearNotes, label: 'Gear notes', lines: 2),
-                const SizedBox(height: 12),
-                FilledButton.icon(
-                  onPressed: submitting ? null : submit,
-                  icon: submitting
-                      ? const SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.cloud_upload),
-                  label: const Text('Submit for review'),
-                ),
-              ],
+              ),
             ),
           ),
         ),

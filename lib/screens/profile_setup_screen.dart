@@ -18,8 +18,8 @@ class _ProfileSetupScreenState extends ConsumerState<ProfileSetupScreen> {
   final authService = const AuthService();
   final displayName = TextEditingController();
   final username = TextEditingController();
+  final avatarUrl = TextEditingController();
   final homeArea = TextEditingController();
-  final climbingStyle = TextEditingController();
   final bio = TextEditingController();
   bool isPublic = false;
   bool saving = false;
@@ -29,8 +29,8 @@ class _ProfileSetupScreenState extends ConsumerState<ProfileSetupScreen> {
   void dispose() {
     displayName.dispose();
     username.dispose();
+    avatarUrl.dispose();
     homeArea.dispose();
-    climbingStyle.dispose();
     bio.dispose();
     super.dispose();
   }
@@ -41,12 +41,18 @@ class _ProfileSetupScreenState extends ConsumerState<ProfileSetupScreen> {
     final user = authService.currentUser;
 
     profile.whenData((value) {
-      if (initialized || value == null) return;
+      if (initialized) return;
       initialized = true;
+      if (value == null) {
+        displayName.text = user?.userMetadata?['full_name']?.toString() ?? '';
+        avatarUrl.text = user?.userMetadata?['avatar_url']?.toString() ?? '';
+        username.text = _usernameFromEmail(user?.email ?? '');
+        return;
+      }
       displayName.text = value.displayName;
       username.text = value.username;
+      avatarUrl.text = value.avatarUrl ?? '';
       homeArea.text = value.homeArea;
-      climbingStyle.text = value.climbingStyle;
       bio.text = value.bio;
       isPublic = value.isPublic;
     });
@@ -88,8 +94,8 @@ class _ProfileSetupScreenState extends ConsumerState<ProfileSetupScreen> {
               else ...[
                 _Field(controller: displayName, label: 'Display name'),
                 _Field(controller: username, label: 'Username'),
+                _Field(controller: avatarUrl, label: 'Profile picture URL'),
                 _Field(controller: homeArea, label: 'Home area'),
-                _Field(controller: climbingStyle, label: 'Climbing style'),
                 _Field(controller: bio, label: 'Bio', maxLines: 4),
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
@@ -131,8 +137,8 @@ class _ProfileSetupScreenState extends ConsumerState<ProfileSetupScreen> {
       await const ProfileService().saveProfile(
         displayName: displayName.text,
         username: username.text,
+        avatarUrl: avatarUrl.text,
         homeArea: homeArea.text,
-        climbingStyle: climbingStyle.text,
         bio: bio.text,
         isPublic: isPublic,
       );
@@ -147,6 +153,11 @@ class _ProfileSetupScreenState extends ConsumerState<ProfileSetupScreen> {
     } finally {
       if (mounted) setState(() => saving = false);
     }
+  }
+
+  String _usernameFromEmail(String email) {
+    final name = email.split('@').first;
+    return name.toLowerCase().replaceAll(RegExp(r'[^a-z0-9_]+'), '_');
   }
 }
 

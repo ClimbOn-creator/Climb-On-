@@ -32,6 +32,10 @@ class SupabaseConfig {
     }
 
     final base = Uri.parse(authRedirectUrl);
+    if (base.scheme == 'http' || base.scheme == 'https') {
+      return base.replace(fragment: path).toString();
+    }
+
     return base.replace(path: path).toString();
   }
 }
