@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../config/supabase_config.dart';
@@ -23,7 +24,9 @@ class AuthService {
 
     await Supabase.instance.client.auth.signInWithOAuth(
       OAuthProvider.google,
-      redirectTo: SupabaseConfig.redirectUrl(path: redirectPath),
+      redirectTo: kIsWeb
+          ? null
+          : SupabaseConfig.redirectUrl(path: redirectPath),
     );
   }
 

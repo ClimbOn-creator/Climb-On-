@@ -94,10 +94,27 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                         _ProfileHeader(
                           sendCount: completedRoutes.length,
                           projectCount: projectRoutes.length,
-                          hardestBoulder: hardestBoulder?.grade ?? '-',
-                          hardestSport: hardestSport?.grade ?? '-',
                         ),
                         const SizedBox(height: 16),
+                        _SectionCard(
+                          title: 'Best sends',
+                          child: Wrap(
+                            spacing: 12,
+                            runSpacing: 12,
+                            children: [
+                              _BestSendTile(
+                                icon: Icons.landscape_outlined,
+                                label: 'Best boulder',
+                                route: hardestBoulder,
+                              ),
+                              _BestSendTile(
+                                icon: Icons.bolt,
+                                label: 'Best sport climb',
+                                route: hardestSport,
+                              ),
+                            ],
+                          ),
+                        ),
                         _SectionCard(
                           title: 'Progress',
                           child: Wrap(
@@ -115,14 +132,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                               _StatTile(
                                 label: 'Attempts',
                                 value: '${climbLog.attempts.length}',
-                              ),
-                              _StatTile(
-                                label: 'Boulder',
-                                value: hardestBoulder?.grade ?? '-',
-                              ),
-                              _StatTile(
-                                label: 'Sport',
-                                value: hardestSport?.grade ?? '-',
                               ),
                             ],
                           ),
@@ -591,17 +600,10 @@ class _AccountCard extends ConsumerWidget {
 }
 
 class _ProfileHeader extends StatelessWidget {
-  const _ProfileHeader({
-    required this.sendCount,
-    required this.projectCount,
-    required this.hardestBoulder,
-    required this.hardestSport,
-  });
+  const _ProfileHeader({required this.sendCount, required this.projectCount});
 
   final int sendCount;
   final int projectCount;
-  final String hardestBoulder;
-  final String hardestSport;
 
   @override
   Widget build(BuildContext context) {
@@ -627,14 +629,29 @@ class _ProfileHeader extends StatelessWidget {
         padding: const EdgeInsets.all(16),
         child: Column(
           children: [
-            CircleAvatar(
-              radius: 44,
-              backgroundImage: avatarUrl == null || avatarUrl.isEmpty
-                  ? null
-                  : NetworkImage(avatarUrl),
-              child: avatarUrl == null || avatarUrl.isEmpty
-                  ? const Icon(Icons.person, size: 42)
-                  : null,
+            Stack(
+              clipBehavior: Clip.none,
+              children: [
+                CircleAvatar(
+                  radius: 44,
+                  backgroundImage: avatarUrl == null || avatarUrl.isEmpty
+                      ? null
+                      : NetworkImage(avatarUrl),
+                  child: avatarUrl == null || avatarUrl.isEmpty
+                      ? const Icon(Icons.person, size: 42)
+                      : null,
+                ),
+                if (user != null)
+                  Positioned(
+                    right: -6,
+                    bottom: -6,
+                    child: IconButton.filled(
+                      tooltip: 'Edit profile picture',
+                      onPressed: () => context.go('/profile/setup'),
+                      icon: const Icon(Icons.photo_camera_outlined),
+                    ),
+                  ),
+              ],
             ),
             const SizedBox(height: 12),
             Text(
@@ -648,6 +665,14 @@ class _ProfileHeader extends StatelessWidget {
               subtitle.isEmpty ? 'Your climbing logbook' : subtitle,
               textAlign: TextAlign.center,
             ),
+            if (user != null) ...[
+              const SizedBox(height: 6),
+              TextButton.icon(
+                onPressed: () => context.go('/profile/setup'),
+                icon: const Icon(Icons.edit_outlined),
+                label: const Text('Edit username and profile'),
+              ),
+            ],
             const SizedBox(height: 14),
             Wrap(
               spacing: 10,
@@ -656,12 +681,61 @@ class _ProfileHeader extends StatelessWidget {
               children: [
                 _StatTile(label: 'Sends', value: '$sendCount'),
                 _StatTile(label: 'Projects', value: '$projectCount'),
-                _StatTile(label: 'Boulder', value: hardestBoulder),
-                _StatTile(label: 'Sport', value: hardestSport),
               ],
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _BestSendTile extends StatelessWidget {
+  const _BestSendTile({
+    required this.icon,
+    required this.label,
+    required this.route,
+  });
+
+  final IconData icon;
+  final String label;
+  final ClimbRoute? route;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 170,
+      constraints: const BoxConstraints(minHeight: 126),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF0C2),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: const Color(0xFFE4C968)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: 26),
+          const SizedBox(height: 9),
+          Text(
+            label,
+            style: Theme.of(
+              context,
+            ).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w800),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            route?.grade ?? '-',
+            style: Theme.of(
+              context,
+            ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900),
+          ),
+          Text(
+            route?.name ?? 'No sends yet',
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ],
       ),
     );
   }

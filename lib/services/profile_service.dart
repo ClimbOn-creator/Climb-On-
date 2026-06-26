@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../config/supabase_config.dart';
@@ -58,6 +60,43 @@ class ProfileService {
       'is_public': isPublic,
       'updated_at': DateTime.now().toIso8601String(),
     }, onConflict: 'id');
+  }
+
+  Future<String> uploadAvatar({
+    required Uint8List bytes,
+    required String extension,
+    required String contentType,
+  }) async {
+    final user = currentUser;
+    if (user == null) {
+      throw const AuthException('Sign in before changing your photo.');
+    }
+
+    final cleanExtension = extension.toLowerCase().replaceAll(
+      RegExp(r'[^a-z0-9]'),
+      '',
+    );
+    final fileName =
+        'avatar.${cleanExtension.isEmpty ? 'jpg' : cleanExtension}';
+    final path = '${user.id}/$fileName';
+    await _client.storage
+        .from('profile-avatars')
+        .uploadBinary(
+          path,
+          bytes,
+          fileOptions: FileOptions(contentType: contentType, upsert: true),
+        );
+
+    final publicUrl = _client.storage
+        .from('profile-avatars')
+        .getPublicUrl(path);
+    return Uri.parse(publicUrl)
+        .replace(
+          queryParameters: {
+            'v': DateTime.now().millisecondsSinceEpoch.toString(),
+          },
+        )
+        .toString();
   }
 
   String _cleanUsername(String value) {

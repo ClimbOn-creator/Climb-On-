@@ -10,7 +10,9 @@ import '../screens/submit_route_screen.dart';
 
 final appRouter = GoRouter(
   initialLocation: '/map',
+  errorBuilder: (context, state) => const ProfileScreen(),
   routes: [
+    GoRoute(path: '/', redirect: (context, state) => '/profile'),
     ShellRoute(
       builder: (context, state, child) => MainShell(child: child),
       routes: [

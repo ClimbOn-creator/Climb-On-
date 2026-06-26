@@ -39,6 +39,8 @@
 	<true/>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Climb On uses your location to show nearby crags, parking, and approach context.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Climb On uses your selected photo as your profile picture.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

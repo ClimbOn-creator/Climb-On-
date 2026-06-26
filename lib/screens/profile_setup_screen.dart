@@ -1,6 +1,9 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../services/auth_service.dart';
@@ -23,7 +26,11 @@ class _ProfileSetupScreenState extends ConsumerState<ProfileSetupScreen> {
   final bio = TextEditingController();
   bool isPublic = false;
   bool saving = false;
+  bool choosingPhoto = false;
   bool initialized = false;
+  Uint8List? pickedAvatarBytes;
+  String pickedAvatarExtension = 'jpg';
+  String pickedAvatarContentType = 'image/jpeg';
 
   @override
   void dispose() {
@@ -92,9 +99,15 @@ class _ProfileSetupScreenState extends ConsumerState<ProfileSetupScreen> {
                   label: const Text('Continue with Google'),
                 )
               else ...[
+                _AvatarEditor(
+                  imageBytes: pickedAvatarBytes,
+                  imageUrl: avatarUrl.text,
+                  busy: choosingPhoto,
+                  onChoose: _choosePhoto,
+                ),
+                const SizedBox(height: 18),
                 _Field(controller: displayName, label: 'Display name'),
                 _Field(controller: username, label: 'Username'),
-                _Field(controller: avatarUrl, label: 'Profile picture URL'),
                 _Field(controller: homeArea, label: 'Home area'),
                 _Field(controller: bio, label: 'Bio', maxLines: 4),
                 SwitchListTile(
@@ -134,6 +147,13 @@ class _ProfileSetupScreenState extends ConsumerState<ProfileSetupScreen> {
 
     setState(() => saving = true);
     try {
+      if (pickedAvatarBytes != null) {
+        avatarUrl.text = await const ProfileService().uploadAvatar(
+          bytes: pickedAvatarBytes!,
+          extension: pickedAvatarExtension,
+          contentType: pickedAvatarContentType,
+        );
+      }
       await const ProfileService().saveProfile(
         displayName: displayName.text,
         username: username.text,
@@ -155,9 +175,112 @@ class _ProfileSetupScreenState extends ConsumerState<ProfileSetupScreen> {
     }
   }
 
+  Future<void> _choosePhoto() async {
+    setState(() => choosingPhoto = true);
+    try {
+      final photo = await ImagePicker().pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 1200,
+        imageQuality: 88,
+      );
+      if (photo == null) return;
+
+      final bytes = await photo.readAsBytes();
+      final extension = photo.name.contains('.')
+          ? photo.name.split('.').last.toLowerCase()
+          : 'jpg';
+      if (!mounted) return;
+      setState(() {
+        pickedAvatarBytes = bytes;
+        pickedAvatarExtension = extension;
+        pickedAvatarContentType = photo.mimeType ?? _contentType(extension);
+      });
+    } on Object catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Could not open photo: $error')));
+    } finally {
+      if (mounted) setState(() => choosingPhoto = false);
+    }
+  }
+
+  String _contentType(String extension) {
+    return switch (extension) {
+      'png' => 'image/png',
+      'webp' => 'image/webp',
+      'heic' => 'image/heic',
+      'heif' => 'image/heif',
+      _ => 'image/jpeg',
+    };
+  }
+
   String _usernameFromEmail(String email) {
     final name = email.split('@').first;
     return name.toLowerCase().replaceAll(RegExp(r'[^a-z0-9_]+'), '_');
+  }
+}
+
+class _AvatarEditor extends StatelessWidget {
+  const _AvatarEditor({
+    required this.imageBytes,
+    required this.imageUrl,
+    required this.busy,
+    required this.onChoose,
+  });
+
+  final Uint8List? imageBytes;
+  final String imageUrl;
+  final bool busy;
+  final VoidCallback onChoose;
+
+  @override
+  Widget build(BuildContext context) {
+    final ImageProvider<Object>? image = imageBytes != null
+        ? MemoryImage(imageBytes!)
+        : imageUrl.trim().isNotEmpty
+        ? NetworkImage(imageUrl.trim())
+        : null;
+
+    return Center(
+      child: Column(
+        children: [
+          Stack(
+            clipBehavior: Clip.none,
+            children: [
+              CircleAvatar(
+                radius: 54,
+                backgroundImage: image,
+                child: image == null
+                    ? const Icon(Icons.person, size: 50)
+                    : null,
+              ),
+              Positioned(
+                right: -4,
+                bottom: -4,
+                child: IconButton.filled(
+                  tooltip: 'Change profile picture',
+                  onPressed: busy ? null : onChoose,
+                  icon: busy
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.photo_camera_outlined),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          TextButton.icon(
+            onPressed: busy ? null : onChoose,
+            icon: const Icon(Icons.photo_library_outlined),
+            label: const Text('Choose profile picture'),
+          ),
+        ],
+      ),
+    );
   }
 }
 

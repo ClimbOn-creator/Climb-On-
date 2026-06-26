@@ -18,8 +18,12 @@ class SideBannerLayout extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final width = MediaQuery.sizeOf(context).width;
-    final showBanners = width >= 900;
-    final bannerWidth = width >= 1180 ? 150.0 : 96.0;
+    final showBanners = width >= 760;
+    final bannerWidth = width >= 1180
+        ? 150.0
+        : width >= 900
+        ? 96.0
+        : 76.0;
 
     if (!showBanners) {
       return Center(
