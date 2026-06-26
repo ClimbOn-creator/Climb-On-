@@ -66,7 +66,12 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   final projectRoutes = _projectRoutes(climbLog, allRoutes);
                   final hardestBoulder = _hardestBoulderSend(completedRoutes);
                   final hardestSport = _hardestSportSend(completedRoutes);
-                  final pyramid = _gradePyramid(completedRoutes);
+                  final boulderPyramid = _gradePyramid(
+                    completedRoutes.where(_isBoulder).toList(),
+                  );
+                  final sportPyramid = _gradePyramid(
+                    completedRoutes.where(_isSport).toList(),
+                  );
                   final climbedAreas = _climbedAreas(
                     completedRoutes,
                     catalogCrags,
@@ -143,23 +148,19 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                           ),
                         ),
                         _SectionCard(
-                          title: 'Grade pyramid',
-                          child: pyramid.isEmpty
-                              ? const _EmptyProfileState(
-                                  text: 'Send routes to build your pyramid.',
-                                )
-                              : Column(
-                                  children: [
-                                    for (final entry in pyramid.entries)
-                                      _PyramidRow(
-                                        grade: entry.key,
-                                        count: entry.value,
-                                        maxCount: pyramid.values.reduce(
-                                          (a, b) => a > b ? a : b,
-                                        ),
-                                      ),
-                                  ],
-                                ),
+                          title: 'Bouldering grade pyramid',
+                          child: _GradePyramid(
+                            grades: boulderPyramid,
+                            emptyText: 'Send boulders to build this pyramid.',
+                          ),
+                        ),
+                        _SectionCard(
+                          title: 'Sport climbing grade pyramid',
+                          child: _GradePyramid(
+                            grades: sportPyramid,
+                            emptyText:
+                                'Send sport climbs to build this pyramid.',
+                          ),
                         ),
                         _SectionCard(
                           title: 'Map of areas climbed',
@@ -244,26 +245,23 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   }
 
   ClimbRoute? _hardestBoulderSend(List<ClimbRoute> routes) {
-    final boulders = routes
-        .where(
-          (route) =>
-              route.type == ClimbRouteType.boulder ||
-              route.pitchType == PitchType.boulder ||
-              route.grade.toUpperCase().startsWith('V'),
-        )
-        .toList();
+    final boulders = routes.where(_isBoulder).toList();
     return _hardestSend(boulders);
   }
 
   ClimbRoute? _hardestSportSend(List<ClimbRoute> routes) {
-    final sportRoutes = routes
-        .where(
-          (route) =>
-              route.type == ClimbRouteType.sport ||
-              route.grade.startsWith('5.'),
-        )
-        .toList();
+    final sportRoutes = routes.where(_isSport).toList();
     return _hardestSend(sportRoutes);
+  }
+
+  bool _isBoulder(ClimbRoute route) {
+    return route.type == ClimbRouteType.boulder ||
+        route.pitchType == PitchType.boulder ||
+        route.grade.toUpperCase().startsWith('V');
+  }
+
+  bool _isSport(ClimbRoute route) {
+    return !_isBoulder(route) && route.type == ClimbRouteType.sport;
   }
 
   ClimbRoute? _hardestSend(List<ClimbRoute> routes) {
@@ -962,6 +960,28 @@ class _PyramidRow extends StatelessWidget {
           Text('$count'),
         ],
       ),
+    );
+  }
+}
+
+class _GradePyramid extends StatelessWidget {
+  const _GradePyramid({required this.grades, required this.emptyText});
+
+  final Map<String, int> grades;
+  final String emptyText;
+
+  @override
+  Widget build(BuildContext context) {
+    if (grades.isEmpty) {
+      return _EmptyProfileState(text: emptyText);
+    }
+
+    final maxCount = grades.values.reduce((a, b) => a > b ? a : b);
+    return Column(
+      children: [
+        for (final entry in grades.entries)
+          _PyramidRow(grade: entry.key, count: entry.value, maxCount: maxCount),
+      ],
     );
   }
 }
