@@ -23,7 +23,6 @@ class RouteCard extends ConsumerStatefulWidget {
 
 class _RouteCardState extends ConsumerState<RouteCard> {
   final commentController = TextEditingController();
-  final attemptController = TextEditingController();
   final gradeController = TextEditingController();
   final photoUrlController = TextEditingController();
   final photoCaptionController = TextEditingController();
@@ -31,7 +30,6 @@ class _RouteCardState extends ConsumerState<RouteCard> {
   @override
   void dispose() {
     commentController.dispose();
-    attemptController.dispose();
     gradeController.dispose();
     photoUrlController.dispose();
     photoCaptionController.dispose();
@@ -46,7 +44,6 @@ class _RouteCardState extends ConsumerState<RouteCard> {
       animation: climbLog,
       builder: (context, _) {
         final completed = climbLog.isCompleted(widget.route);
-        final attempts = climbLog.attemptsFor(widget.route);
         final gradeOpinions = climbLog.gradeOpinionsFor(widget.route);
         final comments = climbLog.commentsFor(widget.route);
         final photos = climbLog.photosFor(widget.route);
@@ -133,11 +130,9 @@ class _RouteCardState extends ConsumerState<RouteCard> {
                   _RouteActions(
                     completed: completed,
                     savedProject: savedProject,
-                    attemptsCount: attempts.length,
                     commentsCount: comments.length,
                     photosCount: photos.length,
                     onCompleted: () => climbLog.toggleRoute(widget.route),
-                    onAttempt: () => _showAttemptDialog(climbLog),
                     onGradeOpinion: () => _showGradeDialog(climbLog),
                     onComment: () => _showCommentDialog(climbLog),
                     onPhoto: () => _showPhotoDialog(climbLog),
@@ -207,10 +202,6 @@ class _RouteCardState extends ConsumerState<RouteCard> {
                       title: 'Your Activity',
                       child: Column(
                         children: [
-                          _AttributeRow(
-                            label: 'Attempts',
-                            value: '${attempts.length}',
-                          ),
                           _AttributeRow(
                             label: 'Project',
                             value: savedProject ? 'Saved' : 'Not saved',
@@ -361,44 +352,6 @@ class _RouteCardState extends ConsumerState<RouteCard> {
     );
   }
 
-  Future<void> _showAttemptDialog(ClimbLogState climbLog) async {
-    attemptController.text = '';
-    await showDialog<void>(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: const Text('Add attempt'),
-          content: TextField(
-            controller: attemptController,
-            autofocus: true,
-            decoration: const InputDecoration(
-              hintText: 'Session note',
-              prefixIcon: Icon(Icons.edit_note),
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: () {
-                climbLog.addAttempt(
-                  widget.route,
-                  note: attemptController.text.trim().isEmpty
-                      ? 'Worked the route'
-                      : attemptController.text,
-                );
-                Navigator.pop(context);
-              },
-              child: const Text('Save'),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
   Future<void> _showGradeDialog(ClimbLogState climbLog) async {
     gradeController.text = widget.route.grade;
     await showDialog<void>(
@@ -522,11 +475,9 @@ class _RouteActions extends StatelessWidget {
   const _RouteActions({
     required this.completed,
     required this.savedProject,
-    required this.attemptsCount,
     required this.commentsCount,
     required this.photosCount,
     required this.onCompleted,
-    required this.onAttempt,
     required this.onGradeOpinion,
     required this.onComment,
     required this.onPhoto,
@@ -536,11 +487,9 @@ class _RouteActions extends StatelessWidget {
 
   final bool completed;
   final bool savedProject;
-  final int attemptsCount;
   final int commentsCount;
   final int photosCount;
   final VoidCallback onCompleted;
-  final VoidCallback onAttempt;
   final VoidCallback onGradeOpinion;
   final VoidCallback onComment;
   final VoidCallback onPhoto;
@@ -557,11 +506,6 @@ class _RouteActions extends StatelessWidget {
           avatar: Icon(completed ? Icons.check_circle : Icons.done, size: 18),
           label: Text(completed ? 'Sent' : 'Mark sent'),
           onPressed: onCompleted,
-        ),
-        ActionChip(
-          avatar: const Icon(Icons.add_task, size: 18),
-          label: Text('Attempt $attemptsCount'),
-          onPressed: onAttempt,
         ),
         ActionChip(
           avatar: const Icon(Icons.grade, size: 18),

@@ -140,10 +140,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                                 label: 'Projects',
                                 value: '${projectRoutes.length}',
                               ),
-                              _StatTile(
-                                label: 'Attempts',
-                                value: '${climbLog.attempts.length}',
-                              ),
                             ],
                           ),
                         ),
@@ -186,28 +182,12 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                                 ),
                         ),
                         _SectionCard(
-                          title: 'Recent activity',
-                          child: _RecentActivity(
-                            sends: climbLog.sends,
-                            attempts: climbLog.attempts,
-                          ),
-                        ),
-                        _SectionCard(
                           title: 'Completed routes',
                           child: completedRoutes.isEmpty
                               ? const _EmptyProfileState(
                                   text: 'Mark routes as sent from the feed.',
                                 )
                               : _RouteList(routes: completedRoutes),
-                        ),
-                        _SectionCard(
-                          title: 'Tick list',
-                          child: projectRoutes.isEmpty
-                              ? const _EmptyProfileState(
-                                  text:
-                                      'Save routes to projects from the feed.',
-                                )
-                              : _RouteList(routes: projectRoutes),
                         ),
                         if (signedIn)
                           _AccountCard(
@@ -984,63 +964,6 @@ class _GradePyramid extends StatelessWidget {
       ],
     );
   }
-}
-
-class _RecentActivity extends StatelessWidget {
-  const _RecentActivity({required this.sends, required this.attempts});
-
-  final List<Send> sends;
-  final List<Attempt> attempts;
-
-  @override
-  Widget build(BuildContext context) {
-    final activity = <_ActivityItem>[
-      for (final send in sends)
-        _ActivityItem(
-          icon: Icons.check_circle_outline,
-          title: send.routeName,
-          subtitle: 'Sent ${send.grade} - ${send.style}',
-          date: send.sentAt,
-        ),
-      for (final attempt in attempts)
-        _ActivityItem(
-          icon: Icons.add_task,
-          title: attempt.routeName,
-          subtitle: attempt.note,
-          date: attempt.attemptedAt,
-        ),
-    ]..sort((a, b) => b.date.compareTo(a.date));
-
-    if (activity.isEmpty) {
-      return const _EmptyProfileState(text: 'Attempts and sends show up here.');
-    }
-
-    return Column(
-      children: [
-        for (final item in activity.take(6))
-          ListTile(
-            contentPadding: EdgeInsets.zero,
-            leading: Icon(item.icon),
-            title: Text(item.title),
-            subtitle: Text(item.subtitle),
-          ),
-      ],
-    );
-  }
-}
-
-class _ActivityItem {
-  const _ActivityItem({
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-    required this.date,
-  });
-
-  final IconData icon;
-  final String title;
-  final String subtitle;
-  final DateTime date;
 }
 
 class _RouteList extends StatelessWidget {
