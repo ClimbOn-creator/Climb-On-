@@ -92,6 +92,7 @@ class _SubmitRouteScreenState extends ConsumerState<SubmitRouteScreen> {
           ? AppBar(title: Text(isSki ? 'Add ski tour' : 'Add climb'))
           : null,
       body: SideBannerLayout(
+        showCompactBanners: true,
         child: Center(
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 760),

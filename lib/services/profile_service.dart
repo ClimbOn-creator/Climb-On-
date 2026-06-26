@@ -62,6 +62,16 @@ class ProfileService {
     }, onConflict: 'id');
   }
 
+  Future<bool> isUsernameAvailable(String username) async {
+    final user = currentUser;
+    if (user == null) return false;
+    final result = await _client.rpc(
+      'username_available',
+      params: {'candidate': _cleanUsername(username)},
+    );
+    return result == true;
+  }
+
   Future<String> uploadAvatar({
     required Uint8List bytes,
     required String extension,

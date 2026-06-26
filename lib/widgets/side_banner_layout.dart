@@ -5,10 +5,12 @@ class SideBannerLayout extends StatelessWidget {
     super.key,
     required this.child,
     this.maxContentWidth = 860,
+    this.showCompactBanners = false,
   });
 
   final Widget child;
   final double maxContentWidth;
+  final bool showCompactBanners;
 
   static const _leftImage =
       'https://images.unsplash.com/photo-1483728642387-6c3bdd6c93e5';
@@ -26,6 +28,22 @@ class SideBannerLayout extends StatelessWidget {
         : 76.0;
 
     if (!showBanners) {
+      if (showCompactBanners) {
+        return Column(
+          children: [
+            const _CompactMountainBanner(imageUrl: _leftImage),
+            Expanded(
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(maxWidth: maxContentWidth),
+                  child: child,
+                ),
+              ),
+            ),
+            const _CompactMountainBanner(imageUrl: _rightImage),
+          ],
+        );
+      }
       return Center(
         child: ConstrainedBox(
           constraints: BoxConstraints(maxWidth: maxContentWidth),
@@ -48,6 +66,43 @@ class SideBannerLayout extends StatelessWidget {
         ),
         _VerticalMountainBanner(imageUrl: _rightImage, width: bannerWidth),
       ],
+    );
+  }
+}
+
+class _CompactMountainBanner extends StatelessWidget {
+  const _CompactMountainBanner({required this.imageUrl});
+
+  final String imageUrl;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 64,
+      width: double.infinity,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          Image.network(imageUrl, fit: BoxFit.cover),
+          ColoredBox(color: Colors.black.withValues(alpha: 0.18)),
+          Align(
+            alignment: Alignment.topRight,
+            child: Padding(
+              padding: const EdgeInsets.all(6),
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.5),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                  child: Text('Ad', style: TextStyle(color: Colors.white)),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

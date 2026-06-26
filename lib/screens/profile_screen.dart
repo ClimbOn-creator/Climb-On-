@@ -39,6 +39,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     ];
     final climbLog = ref.watch(climbLogProvider);
     final skiLog = ref.watch(skiLogProvider);
+    final profile = ref.watch(currentProfileProvider).valueOrNull;
+    final user = authService.currentUser;
+    final signedIn = user != null;
     final showTitleBar = MediaQuery.sizeOf(context).width >= 1024;
 
     return Scaffold(
@@ -52,6 +55,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   setState(() => publicProfile = value);
                 },
                 skiLog: skiLog,
+                profile: profile,
+                user: user,
+                onAuthChanged: () => setState(() {}),
               )
             : AnimatedBuilder(
                 animation: climbLog,
@@ -65,23 +71,23 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                     completedRoutes,
                     catalogCrags,
                   );
-                  final profile = ref.watch(currentProfileProvider).valueOrNull;
-                  final user = authService.currentUser;
-
                   return _ProfileDataScope(
                     profile: profile,
                     user: user,
                     child: ListView(
                       padding: const EdgeInsets.all(16),
                       children: [
-                        _AccountCard(
-                          authService: authService,
-                          publicProfile: publicProfile,
-                          onPrivacyChanged: (value) {
-                            setState(() => publicProfile = value);
-                          },
-                        ),
-                        const SizedBox(height: 16),
+                        if (!signedIn) ...[
+                          _AccountCard(
+                            authService: authService,
+                            publicProfile: publicProfile,
+                            onPrivacyChanged: (value) {
+                              setState(() => publicProfile = value);
+                            },
+                            onAuthChanged: () => setState(() {}),
+                          ),
+                          const SizedBox(height: 16),
+                        ],
                         if (catalog.isLoading)
                           const LinearProgressIndicator(minHeight: 3),
                         if (catalog.hasError)
@@ -202,6 +208,15 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                                 )
                               : _RouteList(routes: projectRoutes),
                         ),
+                        if (signedIn)
+                          _AccountCard(
+                            authService: authService,
+                            publicProfile: publicProfile,
+                            onPrivacyChanged: (value) {
+                              setState(() => publicProfile = value);
+                            },
+                            onAuthChanged: () => setState(() {}),
+                          ),
                       ],
                     ),
                   );
@@ -309,12 +324,18 @@ class _SkiProfileBody extends StatelessWidget {
     required this.publicProfile,
     required this.onPrivacyChanged,
     required this.skiLog,
+    required this.profile,
+    required this.user,
+    required this.onAuthChanged,
   });
 
   final AuthService authService;
   final bool publicProfile;
   final ValueChanged<bool> onPrivacyChanged;
   final SkiLogState skiLog;
+  final UserProfile? profile;
+  final User? user;
+  final VoidCallback onAuthChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -336,20 +357,26 @@ class _SkiProfileBody extends StatelessWidget {
         .map((route) => route.aspect)
         .toSet()
         .toList(growable: false);
+    final signedIn = user != null;
 
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        _AccountCard(
-          authService: authService,
-          publicProfile: publicProfile,
-          onPrivacyChanged: onPrivacyChanged,
-        ),
-        const SizedBox(height: 16),
+        if (!signedIn) ...[
+          _AccountCard(
+            authService: authService,
+            publicProfile: publicProfile,
+            onPrivacyChanged: onPrivacyChanged,
+            onAuthChanged: onAuthChanged,
+          ),
+          const SizedBox(height: 16),
+        ],
         _SkiProfileHeader(
           skiDays: skiLog.sends.length,
           savedCount: savedTours.length,
           lastTour: skiLog.sends.isEmpty ? '-' : skiLog.sends.first.routeName,
+          profile: profile,
+          user: user,
         ),
         const SizedBox(height: 16),
         _SectionCard(
@@ -438,6 +465,13 @@ class _SkiProfileBody extends StatelessWidget {
                 )
               : _SkiRouteList(routes: savedTours),
         ),
+        if (signedIn)
+          _AccountCard(
+            authService: authService,
+            publicProfile: publicProfile,
+            onPrivacyChanged: onPrivacyChanged,
+            onAuthChanged: onAuthChanged,
+          ),
       ],
     );
   }
@@ -459,11 +493,13 @@ class _AccountCard extends ConsumerWidget {
     required this.authService,
     required this.publicProfile,
     required this.onPrivacyChanged,
+    required this.onAuthChanged,
   });
 
   final AuthService authService;
   final bool publicProfile;
   final ValueChanged<bool> onPrivacyChanged;
+  final VoidCallback onAuthChanged;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -484,8 +520,8 @@ class _AccountCard extends ConsumerWidget {
         final profile = ref.watch(currentProfileProvider).valueOrNull;
         final profileComplete = profile?.isComplete == true;
         final accountLabel = signedIn
-            ? (profile?.displayName.isNotEmpty == true
-                  ? profile!.displayName
+            ? (profile?.username.isNotEmpty == true
+                  ? '@${profile!.username}'
                   : user.email ??
                         user.userMetadata?['full_name']?.toString() ??
                         'Signed in')
@@ -557,6 +593,7 @@ class _AccountCard extends ConsumerWidget {
                         try {
                           await authService.signOut();
                           ref.invalidate(currentProfileProvider);
+                          onAuthChanged();
                         } on AuthException catch (error) {
                           if (!context.mounted) return;
                           ScaffoldMessenger.of(context).showSnackBar(
@@ -615,11 +652,13 @@ class _ProfileHeader extends StatelessWidget {
         ?.user;
     final avatarUrl =
         profile?.avatarUrl ?? user?.userMetadata?['avatar_url']?.toString();
-    final displayName = profile?.displayName.isNotEmpty == true
+    final displayName = profile?.username.isNotEmpty == true
+        ? '@${profile!.username}'
+        : profile?.displayName.isNotEmpty == true
         ? profile!.displayName
         : user?.userMetadata?['full_name']?.toString() ?? 'Climber';
     final subtitle = [
-      if (profile?.username.isNotEmpty == true) '@${profile!.username}',
+      if (profile?.displayName.isNotEmpty == true) profile!.displayName,
       if (profile?.homeArea.isNotEmpty == true) profile!.homeArea,
       if (profile?.bio.isNotEmpty == true) profile!.bio,
     ].join(' - ');
@@ -762,28 +801,42 @@ class _SkiProfileHeader extends StatelessWidget {
     required this.skiDays,
     required this.savedCount,
     required this.lastTour,
+    required this.profile,
+    required this.user,
   });
 
   final int skiDays;
   final int savedCount;
   final String lastTour;
+  final UserProfile? profile;
+  final User? user;
 
   @override
   Widget build(BuildContext context) {
+    final avatarUrl =
+        profile?.avatarUrl ?? user?.userMetadata?['avatar_url']?.toString();
+    final profileName = profile?.username.isNotEmpty == true
+        ? '@${profile!.username}'
+        : profile?.displayName.isNotEmpty == true
+        ? profile!.displayName
+        : user?.userMetadata?['full_name']?.toString() ?? 'Ski tourer';
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
           children: [
-            const CircleAvatar(
+            CircleAvatar(
               radius: 44,
-              backgroundImage: NetworkImage(
-                'https://images.unsplash.com/photo-1605540436563-5bca919ae766',
-              ),
+              backgroundImage: avatarUrl == null || avatarUrl.isEmpty
+                  ? null
+                  : NetworkImage(avatarUrl),
+              child: avatarUrl == null || avatarUrl.isEmpty
+                  ? const Icon(Icons.person, size: 42)
+                  : null,
             ),
             const SizedBox(height: 12),
             Text(
-              'Will Touring',
+              profileName,
               style: Theme.of(
                 context,
               ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w900),

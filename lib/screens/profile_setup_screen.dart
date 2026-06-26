@@ -99,6 +99,14 @@ class _ProfileSetupScreenState extends ConsumerState<ProfileSetupScreen> {
                   label: const Text('Continue with Google'),
                 )
               else ...[
+                Text(
+                  'Profile picture',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w900,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 12),
                 _AvatarEditor(
                   imageBytes: pickedAvatarBytes,
                   imageUrl: avatarUrl.text,
@@ -138,15 +146,35 @@ class _ProfileSetupScreenState extends ConsumerState<ProfileSetupScreen> {
   }
 
   Future<void> _save() async {
-    if (displayName.text.trim().isEmpty || username.text.trim().isEmpty) {
+    final cleanUsername = username.text.trim().toLowerCase().replaceAll(
+      RegExp(r'[^a-z0-9_]+'),
+      '_',
+    );
+    if (displayName.text.trim().isEmpty || cleanUsername.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Display name and username are required')),
+      );
+      return;
+    }
+    if (cleanUsername.length < 3 || cleanUsername.length > 24) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Username must be 3 to 24 characters')),
       );
       return;
     }
 
     setState(() => saving = true);
     try {
+      final available = await const ProfileService().isUsernameAvailable(
+        cleanUsername,
+      );
+      if (!available) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('That username is already reserved')),
+        );
+        return;
+      }
       if (pickedAvatarBytes != null) {
         avatarUrl.text = await const ProfileService().uploadAvatar(
           bytes: pickedAvatarBytes!,
@@ -156,7 +184,7 @@ class _ProfileSetupScreenState extends ConsumerState<ProfileSetupScreen> {
       }
       await const ProfileService().saveProfile(
         displayName: displayName.text,
-        username: username.text,
+        username: cleanUsername,
         avatarUrl: avatarUrl.text,
         homeArea: homeArea.text,
         bio: bio.text,
@@ -165,6 +193,14 @@ class _ProfileSetupScreenState extends ConsumerState<ProfileSetupScreen> {
       ref.invalidate(currentProfileProvider);
       if (!mounted) return;
       context.go('/profile');
+    } on PostgrestException catch (error) {
+      if (!mounted) return;
+      final message = error.code == '23505'
+          ? 'That username is already reserved'
+          : 'Could not save profile: ${error.message}';
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(message)));
     } on Object catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(
