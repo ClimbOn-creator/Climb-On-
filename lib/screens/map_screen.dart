@@ -1,5 +1,7 @@
 import 'dart:async';
+import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_map/flutter_map.dart';
@@ -7,6 +9,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:go_router/go_router.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:maplibre_gl/maplibre_gl.dart' as ml;
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -14,12 +17,15 @@ import '../crag_sidebar.dart';
 import '../data/sample_ski_routes.dart';
 import '../models/climb_route.dart';
 import '../models/crag.dart';
+import '../models/map_path_catalog.dart';
+import '../models/ski_route.dart';
 import '../models/wall.dart';
 import '../services/database_service.dart';
 import '../state/admin_state.dart';
 import '../state/activity_mode_state.dart';
 import '../state/catalog_state.dart';
 import '../state/climb_log_state.dart';
+import '../state/map_path_state.dart';
 import '../widgets/pulsing_user_marker.dart';
 
 class MapScreen extends ConsumerStatefulWidget {
@@ -36,8 +42,13 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   Crag? selectedCrag;
   Wall? selectedWall;
   Crag? selectedParkingCrag;
+  SkiRoute? selectedSkiRoute;
   _MapTileStyle tileStyle = _MapTileStyle.clean;
   bool editMode = false;
+  bool pathEditMode = false;
+  ActivityMode? pathDraftMode;
+  int? selectedPathPointIndex;
+  List<LatLng> pathDraft = [];
   LatLng? currentMapCenter;
   final Set<_MapRouteFilter> activeFilters = {};
   final MapController mapController = MapController();
@@ -132,6 +143,8 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     final showTitleBar = width >= 1024;
     final mode = ref.watch(activityModeProvider);
     final catalog = ref.watch(catalogProvider);
+    final mapPaths =
+        ref.watch(mapPathCatalogProvider).valueOrNull ?? const MapPathCatalog();
     final catalogCrags = catalog.valueOrNull ?? const <Crag>[];
     final mapCrags = visibleCrags(catalogCrags);
     final initialCenter =
@@ -149,95 +162,122 @@ class _MapScreenState extends ConsumerState<MapScreen> {
           Expanded(
             child: Stack(
               children: [
-                FlutterMap(
-                  mapController: mapController,
-                  options: MapOptions(
-                    initialCenter: initialCenter,
-                    initialZoom: currentZoom,
-                    onTap: (_, _) {
-                      setState(() {
-                        selectedCrag = null;
-                        selectedWall = null;
-                        selectedParkingCrag = null;
-                      });
-                    },
-                    onPositionChanged: (position, _) {
-                      if (position.zoom != null) {
-                        final nextZoom = position.zoom!;
-                        final clusterStateChanged =
-                            (nextZoom < 13) != showClusters;
-                        final meaningfulZoomChange =
-                            (nextZoom - currentZoom).abs() >= 0.5;
+                if (tileStyle == _MapTileStyle.terrain3d && kIsWeb)
+                  _Terrain3DMap(
+                    center: currentMapCenter ?? initialCenter,
+                    zoom: currentZoom,
+                    mode: mode,
+                    crags: mapCrags,
+                    skiRoutes: skiRoutes,
+                    paths: mapPaths,
+                    selectedCrag: selectedCrag,
+                    userLocation: userLocation,
+                  )
+                else
+                  FlutterMap(
+                    mapController: mapController,
+                    options: MapOptions(
+                      initialCenter: initialCenter,
+                      initialZoom: currentZoom,
+                      onTap: (_, point) => _handleMapTap(point),
+                      onPositionChanged: (position, _) {
+                        if (position.zoom != null) {
+                          final nextZoom = position.zoom!;
+                          final clusterStateChanged =
+                              (nextZoom < 13) != showClusters;
+                          final meaningfulZoomChange =
+                              (nextZoom - currentZoom).abs() >= 0.5;
 
-                        if (clusterStateChanged || meaningfulZoomChange) {
-                          setState(() => currentZoom = nextZoom);
+                          if (clusterStateChanged || meaningfulZoomChange) {
+                            setState(() => currentZoom = nextZoom);
+                          }
                         }
-                      }
-                      currentMapCenter = position.center;
-                    },
-                  ),
-                  children: [
-                    TileLayer(
-                      urlTemplate: tileStyle.urlTemplate,
-                      subdomains: tileStyle.subdomains,
-                      userAgentPackageName: 'com.climbon.app',
+                        currentMapCenter = position.center;
+                      },
                     ),
-                    PolylineLayer(
-                      polylines: mode == ActivityMode.ski
-                          ? _skiLines()
-                          : _approachLines(),
-                    ),
-                    if (userLocation != null &&
-                        userLocationAccuracyMeters != null)
-                      CircleLayer(
-                        circles: [
-                          CircleMarker(
-                            point: userLocation!,
-                            radius: userLocationAccuracyMeters!.clamp(1, 250),
-                            useRadiusInMeter: true,
-                            color: Theme.of(
-                              context,
-                            ).colorScheme.primary.withValues(alpha: 0.16),
-                            borderColor: Theme.of(
-                              context,
-                            ).colorScheme.primary.withValues(alpha: 0.46),
-                            borderStrokeWidth: 2,
-                          ),
+                    children: [
+                      TileLayer(
+                        urlTemplate: tileStyle.urlTemplate,
+                        subdomains: tileStyle.subdomains,
+                        userAgentPackageName: 'com.climbon.app',
+                      ),
+                      PolylineLayer(
+                        polylines: [
+                          ...(mode == ActivityMode.ski
+                              ? _skiLines(mapPaths)
+                              : _approachLines(mapPaths)),
+                          if (pathEditMode && pathDraft.length >= 2)
+                            Polyline(
+                              points: pathDraft,
+                              color: const Color(0xFFD33B2F),
+                              strokeWidth: 5,
+                            ),
                         ],
                       ),
-                    MarkerLayer(
-                      markers: mode == ActivityMode.ski
-                          ? _skiMarkers(context)
-                          : _markers(context, wide, mapCrags),
-                    ),
-                    SimpleAttributionWidget(
-                      source: Text(tileStyle.attribution),
-                      backgroundColor: Theme.of(
-                        context,
-                      ).colorScheme.surface.withValues(alpha: 0.82),
-                    ),
-                  ],
-                ),
+                      if (userLocation != null &&
+                          userLocationAccuracyMeters != null)
+                        CircleLayer(
+                          circles: [
+                            CircleMarker(
+                              point: userLocation!,
+                              radius: userLocationAccuracyMeters!.clamp(1, 250),
+                              useRadiusInMeter: true,
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.primary.withValues(alpha: 0.16),
+                              borderColor: Theme.of(
+                                context,
+                              ).colorScheme.primary.withValues(alpha: 0.46),
+                              borderStrokeWidth: 2,
+                            ),
+                          ],
+                        ),
+                      MarkerLayer(
+                        markers: [
+                          ...(mode == ActivityMode.ski
+                              ? _skiMarkers(context)
+                              : _markers(context, wide, mapCrags)),
+                          ..._pathEditorMarkers(),
+                        ],
+                      ),
+                      SimpleAttributionWidget(
+                        source: Text(tileStyle.attribution),
+                        backgroundColor: Theme.of(
+                          context,
+                        ).colorScheme.surface.withValues(alpha: 0.82),
+                      ),
+                    ],
+                  ),
                 _MapLayerSwitcher(
                   selected: tileStyle,
-                  onChanged: (style) => setState(() => tileStyle = style),
+                  onChanged: (style) {
+                    if (style == _MapTileStyle.terrain3d && pathEditMode) {
+                      _cancelPathEditor();
+                    }
+                    setState(() => tileStyle = style);
+                  },
                 ),
                 if (userLocationAccuracyMeters != null)
                   _GpsAccuracyBadge(
                     accuracyMeters: userLocationAccuracyMeters!,
                   ),
                 _AdminMapTools(
-                  isAdmin: ref.watch(isMapAdminProvider).valueOrNull == true,
+                  isAdmin:
+                      ref.watch(isMapAdminProvider).valueOrNull == true &&
+                      tileStyle != _MapTileStyle.terrain3d,
                   editMode: editMode,
                   selectedCrag: selectedCrag,
                   selectedWall: selectedWall,
+                  selectedSkiRoute: selectedSkiRoute,
+                  mode: mode,
                   mapCenter: currentMapCenter ?? initialCenter,
                   onToggleEditMode: () {
                     setState(() => editMode = !editMode);
                   },
                   onEdit: _openCoordinateEditor,
+                  onTracePath: () => _startPathEditor(mode, mapPaths),
                 ),
-                if (editMode)
+                if (editMode && !pathEditMode)
                   const IgnorePointer(
                     child: Center(
                       child: Icon(
@@ -246,6 +286,19 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                         color: Colors.red,
                       ),
                     ),
+                  ),
+                if (pathEditMode)
+                  _PathEditorTools(
+                    pointCount: pathDraft.length,
+                    lengthMeters: _pathLength(pathDraft),
+                    hasSelectedPoint: selectedPathPointIndex != null,
+                    onUndo: pathDraft.isEmpty ? null : _undoPathPoint,
+                    onDeleteSelected: selectedPathPointIndex == null
+                        ? null
+                        : _deleteSelectedPathPoint,
+                    onClear: pathDraft.isEmpty ? null : _clearPath,
+                    onCancel: _cancelPathEditor,
+                    onSave: pathDraft.length < 2 ? null : _savePath,
                   ),
                 if (mode == ActivityMode.climb)
                   _MapFilters(
@@ -454,15 +507,21 @@ class _MapScreenState extends ConsumerState<MapScreen> {
           height: 38,
           child: Tooltip(
             message: route.name,
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.primary,
-                shape: BoxShape.circle,
-                boxShadow: const [
-                  BoxShadow(blurRadius: 4, color: Color(0x55000000)),
-                ],
+            child: GestureDetector(
+              onTap: () => setState(() => selectedSkiRoute = route),
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: selectedSkiRoute == route
+                      ? Theme.of(context).colorScheme.secondary
+                      : Theme.of(context).colorScheme.primary,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: Colors.white, width: 2),
+                  boxShadow: const [
+                    BoxShadow(blurRadius: 4, color: Color(0x55000000)),
+                  ],
+                ),
+                child: const Icon(Icons.downhill_skiing, color: Colors.white),
               ),
-              child: const Icon(Icons.downhill_skiing, color: Colors.white),
             ),
           ),
         ),
@@ -470,29 +529,218 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     ];
   }
 
-  List<Polyline> _skiLines() {
+  List<Polyline> _skiLines(MapPathCatalog mapPaths) {
     return skiRoutes.map((route) {
+      final savedPath = mapPaths.skiPath(route.name);
       return Polyline(
-        points: [route.trailhead, route.location],
+        points: savedPath.length >= 2
+            ? savedPath
+            : [route.trailhead, route.location],
         color: const Color(0xFF0F5D7E),
         strokeWidth: 4,
       );
     }).toList();
   }
 
-  List<Polyline> _approachLines() {
+  List<Polyline> _approachLines(MapPathCatalog mapPaths) {
     final crag = selectedCrag;
     if (crag == null) return [];
 
     final destination = selectedWall?.location ?? crag.location;
+    final savedPath = mapPaths.cragPath(crag.id);
 
     return [
       Polyline(
-        points: [crag.parking, destination],
+        points: savedPath.length >= 2 ? savedPath : [crag.parking, destination],
         color: Colors.orange,
         strokeWidth: 5,
       ),
     ];
+  }
+
+  void _handleMapTap(LatLng point) {
+    if (pathEditMode) {
+      setState(() {
+        final selectedIndex = selectedPathPointIndex;
+        if (selectedIndex != null && selectedIndex < pathDraft.length) {
+          pathDraft[selectedIndex] = point;
+          selectedPathPointIndex = null;
+        } else {
+          pathDraft.add(point);
+        }
+      });
+      return;
+    }
+
+    setState(() {
+      selectedCrag = null;
+      selectedWall = null;
+      selectedParkingCrag = null;
+      selectedSkiRoute = null;
+    });
+  }
+
+  void _startPathEditor(ActivityMode mode, MapPathCatalog mapPaths) {
+    if (mode == ActivityMode.climb) {
+      final crag = selectedCrag;
+      if (crag == null) {
+        _showMapMessage('Select a crag before tracing its approach');
+        return;
+      }
+      final saved = mapPaths.cragPath(crag.id);
+      final destination = selectedWall?.location ?? crag.location;
+      setState(() {
+        pathDraftMode = mode;
+        pathDraft = saved.length >= 2
+            ? [...saved]
+            : [crag.parking, destination];
+        pathEditMode = true;
+        selectedPathPointIndex = null;
+      });
+      return;
+    }
+
+    final route = selectedSkiRoute;
+    if (route == null) {
+      _showMapMessage('Select a ski route before tracing its line');
+      return;
+    }
+    final saved = mapPaths.skiPath(route.name);
+    setState(() {
+      pathDraftMode = mode;
+      pathDraft = saved.length >= 2
+          ? [...saved]
+          : [route.trailhead, route.location];
+      pathEditMode = true;
+      selectedPathPointIndex = null;
+    });
+  }
+
+  List<Marker> _pathEditorMarkers() {
+    if (!pathEditMode) return const [];
+
+    return [
+      for (var index = 0; index < pathDraft.length; index++)
+        Marker(
+          point: pathDraft[index],
+          width: 34,
+          height: 34,
+          child: Tooltip(
+            message: 'Point ${index + 1}',
+            child: GestureDetector(
+              onTap: () => setState(() {
+                selectedPathPointIndex = selectedPathPointIndex == index
+                    ? null
+                    : index;
+              }),
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: selectedPathPointIndex == index
+                      ? const Color(0xFFD33B2F)
+                      : const Color(0xFFFFFFFF),
+                  shape: BoxShape.circle,
+                  border: Border.all(color: const Color(0xFFD33B2F), width: 3),
+                  boxShadow: const [
+                    BoxShadow(blurRadius: 4, color: Color(0x55000000)),
+                  ],
+                ),
+                child: Center(
+                  child: Text(
+                    '${index + 1}',
+                    style: TextStyle(
+                      color: selectedPathPointIndex == index
+                          ? Colors.white
+                          : const Color(0xFF1E2823),
+                      fontSize: 10,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+    ];
+  }
+
+  void _undoPathPoint() {
+    if (pathDraft.isEmpty) return;
+    setState(() {
+      pathDraft.removeLast();
+      selectedPathPointIndex = null;
+    });
+  }
+
+  void _deleteSelectedPathPoint() {
+    final index = selectedPathPointIndex;
+    if (index == null || index >= pathDraft.length) return;
+    setState(() {
+      pathDraft.removeAt(index);
+      selectedPathPointIndex = null;
+    });
+  }
+
+  void _clearPath() {
+    setState(() {
+      pathDraft.clear();
+      selectedPathPointIndex = null;
+    });
+  }
+
+  void _cancelPathEditor() {
+    setState(() {
+      pathEditMode = false;
+      pathDraftMode = null;
+      pathDraft = [];
+      selectedPathPointIndex = null;
+    });
+  }
+
+  Future<void> _savePath() async {
+    if (pathDraft.length < 2) return;
+    final mode = pathDraftMode;
+    final points = [...pathDraft];
+
+    try {
+      if (mode == ActivityMode.climb) {
+        final crag = selectedCrag;
+        if (crag == null) return;
+        await const DatabaseService().updateCragApproachPath(
+          cragId: crag.id,
+          points: points,
+        );
+      } else {
+        final route = selectedSkiRoute;
+        if (route == null) return;
+        await const DatabaseService().updateSkiRoutePath(
+          routeName: route.name,
+          points: points,
+        );
+      }
+
+      ref.invalidate(mapPathCatalogProvider);
+      _cancelPathEditor();
+      _showMapMessage('Trail saved with points spaced every 10 feet');
+    } on Object catch (error) {
+      _showMapMessage('Could not save trail: $error');
+    }
+  }
+
+  double _pathLength(List<LatLng> points) {
+    if (points.length < 2) return 0;
+    const distance = Distance();
+    var total = 0.0;
+    for (var index = 1; index < points.length; index++) {
+      total += distance.as(LengthUnit.Meter, points[index - 1], points[index]);
+    }
+    return total;
+  }
+
+  void _showMapMessage(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   bool _shouldShowParking(Crag crag) {
@@ -650,6 +898,200 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   }
 }
 
+class _Terrain3DMap extends StatefulWidget {
+  const _Terrain3DMap({
+    required this.center,
+    required this.zoom,
+    required this.mode,
+    required this.crags,
+    required this.skiRoutes,
+    required this.paths,
+    required this.selectedCrag,
+    required this.userLocation,
+  });
+
+  final LatLng center;
+  final double zoom;
+  final ActivityMode mode;
+  final List<Crag> crags;
+  final List<SkiRoute> skiRoutes;
+  final MapPathCatalog paths;
+  final Crag? selectedCrag;
+  final LatLng? userLocation;
+
+  @override
+  State<_Terrain3DMap> createState() => _Terrain3DMapState();
+}
+
+class _Terrain3DMapState extends State<_Terrain3DMap> {
+  ml.MapLibreMapController? controller;
+  bool styleLoaded = false;
+
+  static final style = jsonEncode({
+    'version': 8,
+    'name': 'Climb On Satellite Terrain',
+    'sources': {
+      'satellite': {
+        'type': 'raster',
+        'tiles': [
+          'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+        ],
+        'tileSize': 256,
+        'maxzoom': 19,
+        'attribution': 'Imagery © Esri and data providers',
+      },
+      'terrain': {
+        'type': 'raster-dem',
+        'url': 'https://tiles.mapterhorn.com/tilejson.json',
+        'tileSize': 512,
+        'encoding': 'terrarium',
+        'attribution': 'Terrain © Mapterhorn contributors',
+      },
+    },
+    'terrain': {'source': 'terrain', 'exaggeration': 1.15},
+    'layers': [
+      {
+        'id': 'satellite',
+        'type': 'raster',
+        'source': 'satellite',
+        'paint': {'raster-saturation': -0.05, 'raster-contrast': 0.08},
+      },
+      {
+        'id': 'terrain-shade',
+        'type': 'hillshade',
+        'source': 'terrain',
+        'paint': {
+          'hillshade-exaggeration': 0.35,
+          'hillshade-shadow-color': '#25332d',
+          'hillshade-highlight-color': '#ffffff',
+        },
+      },
+    ],
+  });
+
+  @override
+  void didUpdateWidget(covariant _Terrain3DMap oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (styleLoaded &&
+        (oldWidget.mode != widget.mode ||
+            oldWidget.paths != widget.paths ||
+            oldWidget.selectedCrag != widget.selectedCrag)) {
+      unawaited(_drawAnnotations());
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ml.MapLibreMap(
+      styleString: style,
+      initialCameraPosition: ml.CameraPosition(
+        target: ml.LatLng(widget.center.latitude, widget.center.longitude),
+        zoom: widget.zoom.clamp(8, 17),
+        tilt: 62,
+        bearing: 18,
+      ),
+      minMaxZoomPreference: const ml.MinMaxZoomPreference(3, 19),
+      rotateGesturesEnabled: true,
+      tiltGesturesEnabled: true,
+      compassEnabled: true,
+      scaleControlEnabled: true,
+      onMapCreated: (value) => controller = value,
+      onStyleLoadedCallback: () {
+        styleLoaded = true;
+        unawaited(_drawAnnotations());
+      },
+    );
+  }
+
+  Future<void> _drawAnnotations() async {
+    final map = controller;
+    if (map == null || !styleLoaded) return;
+
+    try {
+      await map.clearLines();
+      await map.clearCircles();
+
+      final lines = <ml.LineOptions>[];
+      final circles = <ml.CircleOptions>[];
+      if (widget.mode == ActivityMode.ski) {
+        for (final route in widget.skiRoutes) {
+          final saved = widget.paths.skiPath(route.name);
+          final points = saved.length >= 2
+              ? saved
+              : [route.trailhead, route.location];
+          lines.add(
+            ml.LineOptions(
+              geometry: points.map(_point).toList(growable: false),
+              lineColor: '#34D1BF',
+              lineWidth: 5,
+              lineOpacity: 0.92,
+            ),
+          );
+          circles.add(
+            ml.CircleOptions(
+              geometry: _point(route.location),
+              circleRadius: 6,
+              circleColor: '#D7F36A',
+              circleStrokeColor: '#17352E',
+              circleStrokeWidth: 2,
+            ),
+          );
+        }
+      } else {
+        for (final crag in widget.crags) {
+          circles.add(
+            ml.CircleOptions(
+              geometry: _point(crag.location),
+              circleRadius: crag == widget.selectedCrag ? 8 : 5,
+              circleColor: crag == widget.selectedCrag ? '#FFD166' : '#63D49A',
+              circleStrokeColor: '#17352E',
+              circleStrokeWidth: 2,
+            ),
+          );
+        }
+
+        final selected = widget.selectedCrag;
+        if (selected != null) {
+          final saved = widget.paths.cragPath(selected.id);
+          final points = saved.length >= 2
+              ? saved
+              : [selected.parking, selected.location];
+          lines.add(
+            ml.LineOptions(
+              geometry: points.map(_point).toList(growable: false),
+              lineColor: '#FFD166',
+              lineWidth: 5,
+              lineOpacity: 0.95,
+            ),
+          );
+        }
+      }
+
+      final location = widget.userLocation;
+      if (location != null) {
+        circles.add(
+          ml.CircleOptions(
+            geometry: _point(location),
+            circleRadius: 7,
+            circleColor: '#42A5F5',
+            circleStrokeColor: '#FFFFFF',
+            circleStrokeWidth: 3,
+          ),
+        );
+      }
+
+      if (lines.isNotEmpty) await map.addLines(lines);
+      if (circles.isNotEmpty) await map.addCircles(circles);
+    } on Object {
+      // Keep terrain navigation available if an annotation cannot be rendered.
+    }
+  }
+
+  ml.LatLng _point(LatLng point) {
+    return ml.LatLng(point.latitude, point.longitude);
+  }
+}
+
 enum _MapRouteFilter { boulder, multiPitch, trad, sport, singlePitch }
 
 class _CragCluster {
@@ -683,6 +1125,13 @@ enum _MapTileStyle {
     subdomains: [],
     attribution: 'Tiles © Esri and data providers',
   ),
+  terrain3d(
+    label: '3D',
+    icon: Icons.view_in_ar,
+    urlTemplate: '',
+    subdomains: [],
+    attribution: 'Imagery © Esri; terrain © Mapterhorn contributors',
+  ),
   topo(
     label: 'Topo',
     icon: Icons.landscape,
@@ -714,9 +1163,10 @@ class _MapFilters extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final compact = MediaQuery.sizeOf(context).width < 600;
     return Positioned(
       right: 12,
-      top: 12,
+      top: compact ? 68 : 12,
       child: Material(
         color: Theme.of(context).colorScheme.surface,
         elevation: 3,
@@ -794,6 +1244,7 @@ class _MapLayerSwitcher extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final compact = MediaQuery.sizeOf(context).width < 600;
     return Positioned(
       left: 12,
       top: 12,
@@ -804,20 +1255,59 @@ class _MapLayerSwitcher extends StatelessWidget {
           borderRadius: BorderRadius.circular(8),
           child: Padding(
             padding: const EdgeInsets.all(6),
-            child: SegmentedButton<_MapTileStyle>(
-              showSelectedIcon: false,
-              style: const ButtonStyle(visualDensity: VisualDensity.compact),
-              segments: [
-                for (final style in _MapTileStyle.values)
-                  ButtonSegment(
-                    value: style,
-                    icon: Icon(style.icon, size: 18),
-                    label: Text(style.label),
+            child: compact
+                ? PopupMenuButton<_MapTileStyle>(
+                    tooltip: 'Map layer',
+                    initialValue: selected,
+                    onSelected: onChanged,
+                    itemBuilder: (context) => [
+                      for (final style in _MapTileStyle.values)
+                        if (kIsWeb || style != _MapTileStyle.terrain3d)
+                          PopupMenuItem(
+                            value: style,
+                            child: ListTile(
+                              dense: true,
+                              contentPadding: EdgeInsets.zero,
+                              leading: Icon(style.icon),
+                              title: Text(style.label),
+                            ),
+                          ),
+                    ],
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 6,
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(selected.icon, size: 18),
+                          const SizedBox(width: 8),
+                          Text(selected.label),
+                          const SizedBox(width: 4),
+                          const Icon(Icons.arrow_drop_down),
+                        ],
+                      ),
+                    ),
+                  )
+                : SegmentedButton<_MapTileStyle>(
+                    showSelectedIcon: false,
+                    style: const ButtonStyle(
+                      visualDensity: VisualDensity.compact,
+                    ),
+                    segments: [
+                      for (final style in _MapTileStyle.values)
+                        if (kIsWeb || style != _MapTileStyle.terrain3d)
+                          ButtonSegment(
+                            value: style,
+                            icon: Icon(style.icon, size: 18),
+                            label: Text(style.label),
+                          ),
+                    ],
+                    selected: {selected},
+                    onSelectionChanged: (selection) =>
+                        onChanged(selection.first),
                   ),
-              ],
-              selected: {selected},
-              onSelectionChanged: (selection) => onChanged(selection.first),
-            ),
           ),
         ),
       ),
@@ -831,18 +1321,24 @@ class _AdminMapTools extends StatelessWidget {
     required this.editMode,
     required this.selectedCrag,
     required this.selectedWall,
+    required this.selectedSkiRoute,
+    required this.mode,
     required this.mapCenter,
     required this.onToggleEditMode,
     required this.onEdit,
+    required this.onTracePath,
   });
 
   final bool isAdmin;
   final bool editMode;
   final Crag? selectedCrag;
   final Wall? selectedWall;
+  final SkiRoute? selectedSkiRoute;
+  final ActivityMode mode;
   final LatLng mapCenter;
   final VoidCallback onToggleEditMode;
   final VoidCallback onEdit;
+  final VoidCallback onTracePath;
 
   @override
   Widget build(BuildContext context) {
@@ -858,8 +1354,10 @@ class _AdminMapTools extends StatelessWidget {
           borderRadius: BorderRadius.circular(8),
           child: Padding(
             padding: const EdgeInsets.all(8),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              crossAxisAlignment: WrapCrossAlignment.center,
               children: [
                 FilterChip(
                   avatar: const Icon(Icons.admin_panel_settings, size: 18),
@@ -869,17 +1367,26 @@ class _AdminMapTools extends StatelessWidget {
                   showCheckmark: false,
                 ),
                 if (editMode) ...[
-                  const SizedBox(width: 8),
-                  FilledButton.icon(
-                    onPressed: selectedCrag == null ? null : onEdit,
-                    icon: const Icon(Icons.my_location, size: 18),
-                    label: Text(
-                      selectedWall == null
-                          ? 'Save selected'
-                          : 'Save ${selectedWall!.name}',
+                  if (mode == ActivityMode.climb)
+                    FilledButton.icon(
+                      onPressed: selectedCrag == null ? null : onEdit,
+                      icon: const Icon(Icons.my_location, size: 18),
+                      label: Text(
+                        selectedWall == null
+                            ? 'Move selected'
+                            : 'Move ${selectedWall!.name}',
+                      ),
                     ),
+                  OutlinedButton.icon(
+                    onPressed:
+                        (mode == ActivityMode.climb && selectedCrag != null) ||
+                            (mode == ActivityMode.ski &&
+                                selectedSkiRoute != null)
+                        ? onTracePath
+                        : null,
+                    icon: const Icon(Icons.timeline, size: 18),
+                    label: const Text('Trace trail'),
                   ),
-                  const SizedBox(width: 8),
                   Text(
                     '${mapCenter.latitude.toStringAsFixed(6)}, '
                     '${mapCenter.longitude.toStringAsFixed(6)}',
@@ -928,6 +1435,107 @@ class _GpsAccuracyBadge extends StatelessWidget {
                   ),
                 ),
               ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _PathEditorTools extends StatelessWidget {
+  const _PathEditorTools({
+    required this.pointCount,
+    required this.lengthMeters,
+    required this.hasSelectedPoint,
+    required this.onUndo,
+    required this.onDeleteSelected,
+    required this.onClear,
+    required this.onCancel,
+    required this.onSave,
+  });
+
+  final int pointCount;
+  final double lengthMeters;
+  final bool hasSelectedPoint;
+  final VoidCallback? onUndo;
+  final VoidCallback? onDeleteSelected;
+  final VoidCallback? onClear;
+  final VoidCallback onCancel;
+  final VoidCallback? onSave;
+
+  @override
+  Widget build(BuildContext context) {
+    final length = lengthMeters >= 1000
+        ? '${(lengthMeters / 1000).toStringAsFixed(2)} km'
+        : '${lengthMeters.round()} m';
+
+    return Positioned(
+      right: 12,
+      bottom: 82,
+      child: SafeArea(
+        child: Material(
+          color: Theme.of(context).colorScheme.surface,
+          elevation: 6,
+          borderRadius: BorderRadius.circular(8),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 330),
+            child: Padding(
+              padding: const EdgeInsets.all(10),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(Icons.timeline, size: 20),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          '$pointCount control points - $length',
+                          style: Theme.of(context).textTheme.labelLarge,
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (hasSelectedPoint)
+                    const Padding(
+                      padding: EdgeInsets.only(top: 6),
+                      child: Text('Tap the map to move the selected point.'),
+                    ),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: [
+                      IconButton.outlined(
+                        tooltip: 'Undo last point',
+                        onPressed: onUndo,
+                        icon: const Icon(Icons.undo),
+                      ),
+                      IconButton.outlined(
+                        tooltip: 'Delete selected point',
+                        onPressed: onDeleteSelected,
+                        icon: const Icon(Icons.delete_outline),
+                      ),
+                      IconButton.outlined(
+                        tooltip: 'Clear path',
+                        onPressed: onClear,
+                        icon: const Icon(Icons.clear_all),
+                      ),
+                      TextButton(
+                        onPressed: onCancel,
+                        child: const Text('Cancel'),
+                      ),
+                      FilledButton.icon(
+                        onPressed: onSave,
+                        icon: const Icon(Icons.cloud_upload_outlined),
+                        label: const Text('Save trail'),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -1032,9 +1640,10 @@ class _SkiMapLegend extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final compact = MediaQuery.sizeOf(context).width < 600;
     return Positioned(
       right: 12,
-      top: 12,
+      top: compact ? 68 : 12,
       child: Material(
         color: Theme.of(context).colorScheme.surface,
         elevation: 3,

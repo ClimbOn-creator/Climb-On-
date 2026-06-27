@@ -9,6 +9,7 @@ import '../data/sample_crags.dart' as sample_data;
 import '../models/climb_route.dart';
 import '../models/crag.dart';
 import '../models/geo_bounds.dart';
+import '../models/map_path_catalog.dart';
 import '../models/wall.dart';
 import '../state/climb_log_state.dart';
 
@@ -259,6 +260,44 @@ class DatabaseService {
     });
   }
 
+  Future<MapPathCatalog> loadMapPaths() async {
+    if (!SupabaseConfig.isConfigured) return const MapPathCatalog();
+
+    try {
+      final result = await Supabase.instance.client.rpc('map_paths');
+      final value = result is String ? jsonDecode(result) : result;
+      if (value is! Map) return const MapPathCatalog();
+      final json = Map<String, Object?>.from(value);
+
+      return MapPathCatalog(
+        cragApproaches: _pathMap(json['crags'], keyName: 'id'),
+        skiRoutes: _pathMap(json['skiRoutes'], keyName: 'name'),
+      );
+    } catch (_) {
+      return const MapPathCatalog();
+    }
+  }
+
+  Future<void> updateCragApproachPath({
+    required String cragId,
+    required List<LatLng> points,
+  }) async {
+    await _adminCoordinateUpdate('admin_update_crag_approach_path', {
+      'crag_id': cragId,
+      'points': _pathJson(points),
+    });
+  }
+
+  Future<void> updateSkiRoutePath({
+    required String routeName,
+    required List<LatLng> points,
+  }) async {
+    await _adminCoordinateUpdate('admin_update_ski_route_path', {
+      'route_name': routeName,
+      'points': _pathJson(points),
+    });
+  }
+
   Future<void> clearCatalogCache() async {
     final preferences = await SharedPreferences.getInstance();
     await preferences.remove(_catalogCacheKey);
@@ -370,6 +409,28 @@ class DatabaseService {
   List<Map> _list(Object? value) {
     if (value is List) return value.whereType<Map>().toList();
     return const [];
+  }
+
+  Map<String, List<LatLng>> _pathMap(Object? value, {required String keyName}) {
+    final result = <String, List<LatLng>>{};
+    for (final item in _list(value)) {
+      final json = Map<String, Object?>.from(item);
+      final key = _string(json[keyName]);
+      final points = <LatLng>[];
+      final rawPoints = json['points'];
+      for (final point in rawPoints is List ? rawPoints : const []) {
+        if (point is! List || point.length < 2) continue;
+        points.add(LatLng(_double(point[0]), _double(point[1])));
+      }
+      if (key.isNotEmpty && points.length >= 2) result[key] = points;
+    }
+    return result;
+  }
+
+  List<List<double>> _pathJson(List<LatLng> points) {
+    return [
+      for (final point in points) [point.latitude, point.longitude],
+    ];
   }
 
   String _string(Object? value, [String fallback = '']) {
