@@ -374,7 +374,7 @@ class _SkiProfileBody extends StatelessWidget {
           ),
         ),
         _SectionCard(
-          title: 'Recent ski tours',
+          title: 'Recent ski routes',
           child: skiLog.sends.isEmpty
               ? const _EmptyProfileState(
                   text: 'Mark ski tours completed from the feed.',
@@ -679,7 +679,7 @@ class _ProfileHeader extends StatelessWidget {
             ),
             const SizedBox(height: 4),
             Text(
-              subtitle.isEmpty ? 'Your climbing logbook' : subtitle,
+              subtitle.isEmpty ? 'Your outdoor logbook' : subtitle,
               textAlign: TextAlign.center,
             ),
             if (user != null) ...[
@@ -797,20 +797,40 @@ class _SkiProfileHeader extends StatelessWidget {
         ? '@${profile!.username}'
         : profile?.displayName.isNotEmpty == true
         ? profile!.displayName
-        : user?.userMetadata?['full_name']?.toString() ?? 'Ski tourer';
+        : user?.userMetadata?['full_name']?.toString() ?? 'Climber';
+    final subtitle = [
+      if (profile?.displayName.isNotEmpty == true) profile!.displayName,
+      if (profile?.homeArea.isNotEmpty == true) profile!.homeArea,
+      if (profile?.bio.isNotEmpty == true) profile!.bio,
+    ].join(' - ');
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
           children: [
-            CircleAvatar(
-              radius: 44,
-              backgroundImage: avatarUrl == null || avatarUrl.isEmpty
-                  ? null
-                  : NetworkImage(avatarUrl),
-              child: avatarUrl == null || avatarUrl.isEmpty
-                  ? const Icon(Icons.person, size: 42)
-                  : null,
+            Stack(
+              clipBehavior: Clip.none,
+              children: [
+                CircleAvatar(
+                  radius: 44,
+                  backgroundImage: avatarUrl == null || avatarUrl.isEmpty
+                      ? null
+                      : NetworkImage(avatarUrl),
+                  child: avatarUrl == null || avatarUrl.isEmpty
+                      ? const Icon(Icons.person, size: 42)
+                      : null,
+                ),
+                if (user != null)
+                  Positioned(
+                    right: -6,
+                    bottom: -6,
+                    child: IconButton.filled(
+                      tooltip: 'Edit profile picture',
+                      onPressed: () => context.go('/profile/setup'),
+                      icon: const Icon(Icons.photo_camera_outlined),
+                    ),
+                  ),
+              ],
             ),
             const SizedBox(height: 12),
             Text(
@@ -820,7 +840,18 @@ class _SkiProfileHeader extends StatelessWidget {
               ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w900),
             ),
             const SizedBox(height: 4),
-            const Text('Backcountry days, objectives, and terrain history'),
+            Text(
+              subtitle.isEmpty ? 'Your outdoor logbook' : subtitle,
+              textAlign: TextAlign.center,
+            ),
+            if (user != null) ...[
+              const SizedBox(height: 6),
+              TextButton.icon(
+                onPressed: () => context.go('/profile/setup'),
+                icon: const Icon(Icons.edit_outlined),
+                label: const Text('Edit username and profile'),
+              ),
+            ],
             const SizedBox(height: 14),
             Wrap(
               spacing: 10,

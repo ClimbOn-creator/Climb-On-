@@ -25,7 +25,7 @@ class AuthService {
     await Supabase.instance.client.auth.signInWithOAuth(
       OAuthProvider.google,
       redirectTo: kIsWeb
-          ? null
+          ? Uri.base.origin
           : SupabaseConfig.redirectUrl(path: redirectPath),
     );
   }
