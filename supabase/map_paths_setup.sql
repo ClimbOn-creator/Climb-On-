@@ -9,7 +9,9 @@ alter table public.crags
 
 alter table public.ski_routes
   add column if not exists route_path geography(linestring, 4326),
-  add column if not exists route_path_points jsonb not null default '[]';
+  add column if not exists route_path_points jsonb not null default '[]',
+  add column if not exists descent_path geography(linestring, 4326),
+  add column if not exists descent_path_points jsonb not null default '[]';
 
 create or replace function public.map_paths()
 returns jsonb
@@ -31,10 +33,12 @@ as $$
       select jsonb_agg(jsonb_build_object(
         'id', s.id::text,
         'name', s.name,
-        'points', s.route_path_points
+        'points', s.route_path_points,
+        'ascentPoints', s.route_path_points,
+        'descentPoints', s.descent_path_points
       ))
       from public.ski_routes s
-      where s.route_path is not null
+      where s.route_path is not null or s.descent_path is not null
     ), '[]'::jsonb)
   );
 $$;
@@ -110,8 +114,41 @@ begin
 end;
 $$;
 
+create or replace function public.admin_update_ski_route_segment(
+  route_name text,
+  segment_kind text,
+  points jsonb
+)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if not public.is_app_admin() then
+    raise exception 'Not authorized';
+  end if;
+
+  if lower(segment_kind) = 'ascent' then
+    update public.ski_routes
+    set route_path = st_segmentize(public.path_from_lat_lng(points), 3.048),
+        route_path_points = points
+    where lower(name) = lower(route_name);
+  elsif lower(segment_kind) = 'descent' then
+    update public.ski_routes
+    set descent_path = st_segmentize(public.path_from_lat_lng(points), 3.048),
+        descent_path_points = points
+    where lower(name) = lower(route_name);
+  else
+    raise exception 'segment_kind must be ascent or descent';
+  end if;
+end;
+$$;
+
 grant execute on function public.map_paths() to anon, authenticated;
 grant execute on function public.admin_update_crag_approach_path(uuid, jsonb)
   to authenticated;
 grant execute on function public.admin_update_ski_route_path(text, jsonb)
+  to authenticated;
+grant execute on function public.admin_update_ski_route_segment(text, text, jsonb)
   to authenticated;

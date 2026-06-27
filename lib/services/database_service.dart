@@ -271,7 +271,17 @@ class DatabaseService {
 
       return MapPathCatalog(
         cragApproaches: _pathMap(json['crags'], keyName: 'id'),
-        skiRoutes: _pathMap(json['skiRoutes'], keyName: 'name'),
+        skiAscents: _pathMap(
+          json['skiRoutes'],
+          keyName: 'name',
+          pointsName: 'ascentPoints',
+          legacyPointsName: 'points',
+        ),
+        skiDescents: _pathMap(
+          json['skiRoutes'],
+          keyName: 'name',
+          pointsName: 'descentPoints',
+        ),
       );
     } catch (_) {
       return const MapPathCatalog();
@@ -290,10 +300,12 @@ class DatabaseService {
 
   Future<void> updateSkiRoutePath({
     required String routeName,
+    required String segmentKind,
     required List<LatLng> points,
   }) async {
-    await _adminCoordinateUpdate('admin_update_ski_route_path', {
+    await _adminCoordinateUpdate('admin_update_ski_route_segment', {
       'route_name': routeName,
+      'segment_kind': segmentKind,
       'points': _pathJson(points),
     });
   }
@@ -411,13 +423,20 @@ class DatabaseService {
     return const [];
   }
 
-  Map<String, List<LatLng>> _pathMap(Object? value, {required String keyName}) {
+  Map<String, List<LatLng>> _pathMap(
+    Object? value, {
+    required String keyName,
+    String pointsName = 'points',
+    String? legacyPointsName,
+  }) {
     final result = <String, List<LatLng>>{};
     for (final item in _list(value)) {
       final json = Map<String, Object?>.from(item);
       final key = _string(json[keyName]);
       final points = <LatLng>[];
-      final rawPoints = json['points'];
+      final rawPoints =
+          json[pointsName] ??
+          (legacyPointsName == null ? null : json[legacyPointsName]);
       for (final point in rawPoints is List ? rawPoints : const []) {
         if (point is! List || point.length < 2) continue;
         points.add(LatLng(_double(point[0]), _double(point[1])));
