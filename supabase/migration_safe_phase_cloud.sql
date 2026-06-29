@@ -1,5 +1,11 @@
 create extension if not exists postgis;
 
+alter table public.crags
+add column if not exists created_by uuid references auth.users(id) on delete set null;
+
+alter table public.routes
+add column if not exists created_by uuid references auth.users(id) on delete set null;
+
 create table if not exists public.route_attempts (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users(id) on delete cascade,
@@ -30,9 +36,13 @@ create table if not exists public.route_photos (
   user_id uuid not null references auth.users(id) on delete cascade,
   route_id uuid not null references public.routes(id) on delete cascade,
   url text not null,
+  storage_path text not null default '',
   caption text default '',
   created_at timestamptz not null default now()
 );
+
+alter table public.route_photos
+add column if not exists storage_path text not null default '';
 
 create table if not exists public.user_projects (
   id uuid primary key default gen_random_uuid(),
@@ -69,6 +79,12 @@ create table if not exists public.route_submissions (
   status text not null default 'pending',
   created_at timestamptz not null default now()
 );
+
+alter table public.route_submissions
+add column if not exists crag_id uuid references public.crags(id) on delete set null;
+
+alter table public.route_submissions
+add column if not exists wall_id uuid references public.walls(id) on delete set null;
 
 alter table public.profiles enable row level security;
 alter table public.user_sends enable row level security;
@@ -149,6 +165,7 @@ as $$
       'accessNotes', crags.access_notes,
       'season', crags.season,
       'dangerInfo', crags.danger_info,
+      'createdBy', coalesce(crags.created_by::text, ''),
       'walls', coalesce((
         select jsonb_agg(jsonb_build_object(
           'id', walls.id::text,
@@ -185,7 +202,8 @@ as $$
               'topRope', routes.top_rope,
               'approachNotes', routes.approach_notes,
               'descentNotes', routes.descent_notes,
-              'dangerInfo', routes.danger_info
+              'dangerInfo', routes.danger_info,
+              'createdBy', coalesce(routes.created_by::text, '')
             ) order by routes.name)
             from public.routes
             where routes.wall_id = walls.id

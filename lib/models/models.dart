@@ -6,5 +6,6 @@ export 'crag.dart';
 export 'friend_activity.dart';
 export 'gym.dart';
 export 'route_photo.dart';
+export 'social.dart';
 export 'user_profile.dart';
 export 'wall.dart';

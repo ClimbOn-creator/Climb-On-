@@ -19,6 +19,7 @@ class SkiRoute {
     required this.descentNotes,
     required this.dangerInfo,
     required this.imageUrl,
+    this.createdBy = '',
   });
 
   final String id;
@@ -38,4 +39,5 @@ class SkiRoute {
   final String descentNotes;
   final String dangerInfo;
   final String imageUrl;
+  final String createdBy;
 }

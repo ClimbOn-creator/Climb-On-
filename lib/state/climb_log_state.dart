@@ -143,18 +143,39 @@ class GradeOpinion {
 
 class LocalRouteComment {
   const LocalRouteComment({
+    this.id = '',
+    this.userId = '',
     required this.routeId,
     required this.body,
+    this.authorUsername = '',
+    this.authorDisplayName = '',
+    this.authorAvatarUrl = '',
+    this.authorBio = '',
+    this.authorHomeArea = '',
     required this.createdAt,
   });
 
+  final String id;
+  final String userId;
   final String routeId;
   final String body;
+  final String authorUsername;
+  final String authorDisplayName;
+  final String authorAvatarUrl;
+  final String authorBio;
+  final String authorHomeArea;
   final DateTime createdAt;
 
   Map<String, Object?> toJson() => {
+    'id': id,
+    'userId': userId,
     'routeId': routeId,
     'body': body,
+    'authorUsername': authorUsername,
+    'authorDisplayName': authorDisplayName,
+    'authorAvatarUrl': authorAvatarUrl,
+    'authorBio': authorBio,
+    'authorHomeArea': authorHomeArea,
     'createdAt': createdAt.toIso8601String(),
   };
 
@@ -163,8 +184,35 @@ class LocalRouteComment {
     final createdAt = DateTime.tryParse(value['createdAt']?.toString() ?? '');
     if (createdAt == null) return null;
     return LocalRouteComment(
+      id: value['id']?.toString() ?? '',
+      userId: value['userId']?.toString() ?? '',
       routeId: value['routeId']?.toString() ?? '',
       body: value['body']?.toString() ?? '',
+      authorUsername: value['authorUsername']?.toString() ?? '',
+      authorDisplayName: value['authorDisplayName']?.toString() ?? '',
+      authorAvatarUrl: value['authorAvatarUrl']?.toString() ?? '',
+      authorBio: value['authorBio']?.toString() ?? '',
+      authorHomeArea: value['authorHomeArea']?.toString() ?? '',
+      createdAt: createdAt,
+    );
+  }
+
+  static LocalRouteComment? fromCloudJson(
+    Map<String, dynamic> value, [
+    Map<String, dynamic>? profile,
+  ]) {
+    final createdAt = DateTime.tryParse(value['created_at']?.toString() ?? '');
+    if (createdAt == null) return null;
+    return LocalRouteComment(
+      id: value['id']?.toString() ?? '',
+      userId: value['user_id']?.toString() ?? '',
+      routeId: value['route_id']?.toString() ?? '',
+      body: value['body']?.toString() ?? '',
+      authorUsername: profile?['username']?.toString() ?? '',
+      authorDisplayName: profile?['display_name']?.toString() ?? '',
+      authorAvatarUrl: profile?['avatar_url']?.toString() ?? '',
+      authorBio: profile?['bio']?.toString() ?? '',
+      authorHomeArea: profile?['home_area']?.toString() ?? '',
       createdAt: createdAt,
     );
   }
@@ -172,20 +220,29 @@ class LocalRouteComment {
 
 class LocalRoutePhoto {
   const LocalRoutePhoto({
+    this.id = '',
+    this.userId = '',
     required this.routeId,
     required this.url,
+    this.storagePath = '',
     required this.caption,
     required this.createdAt,
   });
 
+  final String id;
+  final String userId;
   final String routeId;
   final String url;
+  final String storagePath;
   final String caption;
   final DateTime createdAt;
 
   Map<String, Object?> toJson() => {
+    'id': id,
+    'userId': userId,
     'routeId': routeId,
     'url': url,
+    'storagePath': storagePath,
     'caption': caption,
     'createdAt': createdAt.toIso8601String(),
   };
@@ -195,8 +252,25 @@ class LocalRoutePhoto {
     final createdAt = DateTime.tryParse(value['createdAt']?.toString() ?? '');
     if (createdAt == null) return null;
     return LocalRoutePhoto(
+      id: value['id']?.toString() ?? '',
+      userId: value['userId']?.toString() ?? '',
       routeId: value['routeId']?.toString() ?? '',
       url: value['url']?.toString() ?? '',
+      storagePath: value['storagePath']?.toString() ?? '',
+      caption: value['caption']?.toString() ?? '',
+      createdAt: createdAt,
+    );
+  }
+
+  static LocalRoutePhoto? fromCloudJson(Map<String, dynamic> value) {
+    final createdAt = DateTime.tryParse(value['created_at']?.toString() ?? '');
+    if (createdAt == null) return null;
+    return LocalRoutePhoto(
+      id: value['id']?.toString() ?? '',
+      userId: value['user_id']?.toString() ?? '',
+      routeId: value['route_id']?.toString() ?? '',
+      url: value['url']?.toString() ?? '',
+      storagePath: value['storage_path']?.toString() ?? '',
       caption: value['caption']?.toString() ?? '',
       createdAt: createdAt,
     );
@@ -226,12 +300,18 @@ class ClimbLogState extends ChangeNotifier {
   final List<LocalRoutePhoto> _photos = [];
   final Set<String> _projectRouteIds = {};
   final Set<String> _completedRoutes = {};
+  final Set<String> _loadedPhotoRoutes = {};
+  final Set<String> _loadingPhotoRoutes = {};
+  final Set<String> _loadingCommentRoutes = {};
   bool _disposed = false;
 
   List<Send> get sends => List.unmodifiable(_sends);
   List<Attempt> get attempts => List.unmodifiable(_attempts);
   List<GradeOpinion> get gradeOpinions => List.unmodifiable(_gradeOpinions);
   Set<String> get projectRouteIds => Set.unmodifiable(_projectRouteIds);
+  String? get currentUserId => databaseService.currentUserId;
+  bool get canUploadPhotos => currentUserId != null;
+  bool get canComment => !databaseService.isConfigured || currentUserId != null;
 
   bool isCompleted(ClimbRoute route) => _completedRoutes.contains(route.id);
   bool isProject(ClimbRoute route) => _projectRouteIds.contains(route.id);
@@ -254,10 +334,52 @@ class ClimbLogState extends ChangeNotifier {
         .toList(growable: false);
   }
 
+  Future<void> loadCommentsFor(ClimbRoute route) async {
+    if (!databaseService.isConfigured || !_loadingCommentRoutes.add(route.id)) {
+      return;
+    }
+
+    try {
+      final comments = await databaseService.loadComments(route.id);
+      _comments.removeWhere((comment) => comment.routeId == route.id);
+      _comments.addAll(comments);
+      notifyListeners();
+    } catch (_) {
+      // Keep cached comments visible when the cloud is temporarily offline.
+    } finally {
+      _loadingCommentRoutes.remove(route.id);
+    }
+  }
+
   List<LocalRoutePhoto> photosFor(ClimbRoute route) {
     return _photos
         .where((photo) => photo.routeId == route.id)
         .toList(growable: false);
+  }
+
+  bool canDeletePhoto(LocalRoutePhoto photo) {
+    final userId = currentUserId;
+    return userId != null && photo.userId == userId;
+  }
+
+  Future<void> loadPhotosFor(ClimbRoute route) async {
+    if (!databaseService.isConfigured ||
+        _loadedPhotoRoutes.contains(route.id) ||
+        !_loadingPhotoRoutes.add(route.id)) {
+      return;
+    }
+
+    try {
+      final photos = await databaseService.loadPhotos(route.id);
+      _photos.removeWhere((photo) => photo.routeId == route.id);
+      _photos.addAll(photos);
+      _loadedPhotoRoutes.add(route.id);
+      notifyListeners();
+    } catch (_) {
+      // Keep any cached pictures visible when the cloud is temporarily offline.
+    } finally {
+      _loadingPhotoRoutes.remove(route.id);
+    }
   }
 
   void toggleRoute(ClimbRoute route) {
@@ -316,18 +438,19 @@ class ClimbLogState extends ChangeNotifier {
     notifyListeners();
   }
 
-  void addComment(ClimbRoute route, String body) {
+  Future<void> addComment(ClimbRoute route, String body) async {
     final comment = body.trim();
     if (comment.isEmpty) return;
 
-    final savedComment = LocalRouteComment(
-      routeId: route.id,
-      body: comment,
-      createdAt: DateTime.now(),
-    );
+    final savedComment = databaseService.isConfigured
+        ? await databaseService.saveComment(route.id, comment)
+        : LocalRouteComment(
+            routeId: route.id,
+            body: comment,
+            createdAt: DateTime.now(),
+          );
     _comments.insert(0, savedComment);
-    unawaited(_persist());
-    unawaited(databaseService.saveComment(savedComment));
+    await _persist();
     notifyListeners();
   }
 
@@ -348,6 +471,36 @@ class ClimbLogState extends ChangeNotifier {
     _photos.insert(0, photo);
     unawaited(_persist());
     unawaited(databaseService.savePhoto(photo));
+    notifyListeners();
+  }
+
+  Future<void> uploadPhoto(
+    ClimbRoute route, {
+    required List<int> bytes,
+    required String fileName,
+    required String contentType,
+    required String caption,
+  }) async {
+    final photo = await databaseService.uploadPhoto(
+      routeId: route.id,
+      bytes: bytes,
+      fileName: fileName,
+      contentType: contentType,
+      caption: caption.trim(),
+    );
+    _photos.insert(0, photo);
+    _loadedPhotoRoutes.add(route.id);
+    await _persist();
+    notifyListeners();
+  }
+
+  Future<void> removePhoto(LocalRoutePhoto photo) async {
+    if (!canDeletePhoto(photo)) {
+      throw StateError('Only the person who added this picture can remove it.');
+    }
+    await databaseService.deletePhoto(photo);
+    _photos.removeWhere((item) => item.id == photo.id);
+    await _persist();
     notifyListeners();
   }
 
@@ -382,7 +535,7 @@ class ClimbLogState extends ChangeNotifier {
       payload['sends'],
     ).map(Send.fromJson).whereType<Send>().toList(growable: false);
 
-    if (_disposed || restored.isEmpty) return;
+    if (_disposed) return;
 
     _sends
       ..clear()

@@ -1,5 +1,8 @@
 import 'package:climb_on/models/climb_route.dart';
+import 'package:climb_on/models/social.dart';
+import 'package:climb_on/services/database_service.dart';
 import 'package:climb_on/state/climb_log_state.dart';
+import 'package:climb_on/state/social_state.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -28,7 +31,7 @@ void main() {
     climbLog.dispose();
   });
 
-  test('Climb log stores feed action state', () {
+  test('Climb log stores feed action state', () async {
     final climbLog = ClimbLogState(persistenceEnabled: false);
     final route = ClimbRoute(
       id: 'moss-boss',
@@ -39,7 +42,7 @@ void main() {
 
     climbLog.addAttempt(route, note: 'One-hang burn');
     climbLog.addGradeOpinion(route, 'V5');
-    climbLog.addComment(route, 'Left heel beta helped.');
+    await climbLog.addComment(route, 'Left heel beta helped.');
     climbLog.addPhoto(
       route,
       url: 'https://example.com/moss-boss.jpg',
@@ -55,4 +58,159 @@ void main() {
 
     climbLog.dispose();
   });
+
+  test('Only a route picture creator can remove their picture', () async {
+    final database = _PhotoDatabaseService();
+    final climbLog = ClimbLogState(
+      persistenceEnabled: false,
+      databaseService: database,
+    );
+    final route = ClimbRoute(
+      id: 'moss-boss',
+      name: 'Moss Boss',
+      grade: 'V4',
+      rating: 4.4,
+    );
+
+    await climbLog.loadPhotosFor(route);
+    final ownPhoto = climbLog.photosFor(route).first;
+    final otherPhoto = climbLog.photosFor(route).last;
+
+    expect(climbLog.canDeletePhoto(ownPhoto), isTrue);
+    expect(climbLog.canDeletePhoto(otherPhoto), isFalse);
+    await expectLater(climbLog.removePhoto(otherPhoto), throwsStateError);
+
+    await climbLog.removePhoto(ownPhoto);
+    expect(climbLog.photosFor(route), [otherPhoto]);
+    expect(database.deletedPhotoIds, ['mine']);
+
+    climbLog.dispose();
+  });
+
+  test('Cloud comments retain their author profile and timestamp', () {
+    final createdAt = DateTime.utc(2026, 6, 28, 18, 30);
+    final comment = LocalRouteComment.fromCloudJson(
+      {
+        'id': 'comment-1',
+        'user_id': 'climber-1',
+        'route_id': 'moss-boss',
+        'body': 'Great heel hook beta.',
+        'created_at': createdAt.toIso8601String(),
+      },
+      {
+        'username': 'rockstar',
+        'display_name': 'Rock Star',
+        'avatar_url': 'https://example.com/avatar.jpg',
+        'bio': 'Victoria climber',
+        'home_area': 'The Boulders',
+      },
+    );
+
+    expect(comment, isNotNull);
+    expect(comment!.userId, 'climber-1');
+    expect(comment.authorUsername, 'rockstar');
+    expect(comment.authorDisplayName, 'Rock Star');
+    expect(comment.authorHomeArea, 'The Boulders');
+    expect(comment.createdAt, createdAt);
+  });
+
+  test('Social state loads real friends, sends, and recent comments', () async {
+    final database = _SocialDatabaseService();
+    final social = SocialState(databaseService: database);
+
+    await social.refresh();
+
+    expect(social.friends.single.username, 'maya');
+    expect(social.friendSends.single.routeId, 'moss-boss');
+    expect(social.recentComments.single.body, 'Great movement.');
+    expect(social.isFriend('maya-id'), isTrue);
+
+    await social.removeFriend(social.friends.single);
+    expect(database.removedFriendIds, ['maya-id']);
+    social.dispose();
+  });
+}
+
+class _PhotoDatabaseService extends DatabaseService {
+  final deletedPhotoIds = <String>[];
+
+  @override
+  String? get currentUserId => 'current-user';
+
+  @override
+  bool get isConfigured => true;
+
+  @override
+  Future<List<LocalRoutePhoto>> loadPhotos(String routeId) async {
+    final now = DateTime(2026, 6, 28);
+    return [
+      LocalRoutePhoto(
+        id: 'mine',
+        userId: 'current-user',
+        routeId: routeId,
+        url: 'https://example.com/mine.jpg',
+        caption: 'Mine',
+        createdAt: now,
+      ),
+      LocalRoutePhoto(
+        id: 'theirs',
+        userId: 'another-user',
+        routeId: routeId,
+        url: 'https://example.com/theirs.jpg',
+        caption: 'Theirs',
+        createdAt: now,
+      ),
+    ];
+  }
+
+  @override
+  Future<void> deletePhoto(LocalRoutePhoto photo) async {
+    deletedPhotoIds.add(photo.id);
+  }
+}
+
+class _SocialDatabaseService extends DatabaseService {
+  final removedFriendIds = <String>[];
+
+  static const maya = FriendProfile(
+    id: 'maya-id',
+    username: 'maya',
+    displayName: 'Maya',
+    avatarUrl: '',
+    bio: 'Climber',
+    homeArea: 'Victoria',
+  );
+
+  @override
+  String? get currentUserId => 'current-user';
+
+  @override
+  Future<List<FriendProfile>> loadFriends() async => const [maya];
+
+  @override
+  Future<List<FriendSendActivity>> loadFriendSends() async => [
+    FriendSendActivity(
+      user: maya,
+      routeId: 'moss-boss',
+      grade: 'V4',
+      style: 'Redpoint',
+      sentAt: DateTime(2026, 6, 28),
+    ),
+  ];
+
+  @override
+  Future<List<UserRouteComment>> loadMyRecentComments() async => [
+    UserRouteComment(
+      id: 'comment-id',
+      routeId: 'moss-boss',
+      routeName: 'Moss Boss',
+      body: 'Great movement.',
+      createdAt: DateTime(2026, 6, 28),
+    ),
+  ];
+
+  @override
+  Future<void> removeFriend(String friendId) async {
+    removedFriendIds.add(friendId);
+  }
 }

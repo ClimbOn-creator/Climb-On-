@@ -4,11 +4,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/climb_route.dart';
 import '../models/crag.dart';
 import '../models/ski_route.dart';
+import '../models/social.dart';
 import '../data/sample_ski_routes.dart';
 import '../state/activity_mode_state.dart';
 import '../state/catalog_state.dart';
 import '../state/climb_log_state.dart';
 import '../state/ski_log_state.dart';
+import '../state/social_state.dart';
 import '../widgets/route_card.dart';
 import '../widgets/side_banner_layout.dart';
 
@@ -23,10 +25,19 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
   String query = '';
 
   @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(socialProvider).refresh();
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
     final catalog = ref.watch(catalogProvider);
     final mode = ref.watch(activityModeProvider);
     final climbLog = ref.watch(climbLogProvider);
+    final social = ref.watch(socialProvider);
     final focusedRoute = ref.watch(focusedRouteProvider);
     final showTitleBar = MediaQuery.sizeOf(context).width >= 1024;
 
@@ -93,8 +104,11 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
                 const SizedBox(height: 24),
               ] else ...[
                 _FriendSendsSection(
+                  social: social,
                   routes: allRoutes,
                   onRouteTap: _openRouteDetails,
+                  onAddFriends: () => _showFriendsManager(social),
+                  onProfileTap: _showFriendProfile,
                 ),
                 _YourRecentSendsSection(
                   sends: climbLog.sends,
@@ -105,13 +119,6 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
                   title: 'Routes near you',
                   routes: allRoutes.take(4).toList(),
                   subtitleFor: (route) => '${route.grade} - nearby Victoria',
-                  onRouteTap: _openRouteDetails,
-                ),
-                _RouteSection(
-                  title: 'Recommended projects',
-                  routes: _recommendedProjects(climbLog, allRoutes),
-                  subtitleFor: (route) =>
-                      '${route.grade} - good next ${route.typeLabel.toLowerCase()}',
                   onRouteTap: _openRouteDetails,
                 ),
                 _RouteSection(
@@ -159,21 +166,6 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
     }).toList();
   }
 
-  List<ClimbRoute> _recommendedProjects(
-    ClimbLogState climbLog,
-    List<ClimbRoute> routes,
-  ) {
-    final savedProjects = routes
-        .where(climbLog.isProject)
-        .toList(growable: false);
-    if (savedProjects.isNotEmpty) return savedProjects;
-
-    return routes
-        .where((route) => !climbLog.isCompleted(route))
-        .take(4)
-        .toList(growable: false);
-  }
-
   void _openRouteDetails(BuildContext context, ClimbRoute route) {
     showModalBottomSheet(
       context: context,
@@ -219,6 +211,25 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
           },
         );
       },
+    );
+  }
+
+  void _showFriendsManager(SocialState social) {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      showDragHandle: true,
+      builder: (context) =>
+          _FriendsManager(social: social, onProfileTap: _showFriendProfile),
+    );
+  }
+
+  void _showFriendProfile(FriendProfile profile) {
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) => _FriendProfileSheet(profile: profile),
     );
   }
 
@@ -442,28 +453,116 @@ class _SkiTourCard extends ConsumerWidget {
 }
 
 class _FriendSendsSection extends StatelessWidget {
-  const _FriendSendsSection({required this.routes, required this.onRouteTap});
+  const _FriendSendsSection({
+    required this.social,
+    required this.routes,
+    required this.onRouteTap,
+    required this.onAddFriends,
+    required this.onProfileTap,
+  });
 
+  final SocialState social;
   final List<ClimbRoute> routes;
   final void Function(BuildContext context, ClimbRoute route) onRouteTap;
+  final VoidCallback onAddFriends;
+  final ValueChanged<FriendProfile> onProfileTap;
 
   @override
   Widget build(BuildContext context) {
-    final visibleRoutes = routes.take(3).toList();
-    final friends = ['Maya', 'Noah', 'Priya'];
+    final routesById = {for (final route in routes) route.id: route};
+    final activities = social.friendSends
+        .where((activity) => routesById.containsKey(activity.routeId))
+        .take(6)
+        .toList(growable: false);
 
     return _Section(
       title: 'Friends\' sends',
-      child: Column(
-        children: [
-          for (var index = 0; index < visibleRoutes.length; index++)
-            _RouteListTile(
-              route: visibleRoutes[index],
-              leading: CircleAvatar(child: Text(friends[index][0])),
-              subtitle: '${friends[index]} sent ${visibleRoutes[index].grade}',
-              onTap: () => onRouteTap(context, visibleRoutes[index]),
+      action: TextButton.icon(
+        onPressed: onAddFriends,
+        icon: const Icon(Icons.person_add_alt_1),
+        label: const Text('Add friends'),
+      ),
+      child: !social.signedIn
+          ? const _EmptyFeedState(
+              icon: Icons.people_outline,
+              text: 'Sign in to add friends and see their sends.',
+            )
+          : social.loading && activities.isEmpty
+          ? const Center(child: CircularProgressIndicator())
+          : activities.isEmpty
+          ? _EmptyFeedState(
+              icon: Icons.people_outline,
+              text: social.friends.isEmpty
+                  ? 'Add a friend to start your social feed.'
+                  : 'Your friends\' recent sends will appear here.',
+            )
+          : Column(
+              children: [
+                for (final activity in activities)
+                  _FriendSendTile(
+                    activity: activity,
+                    route: routesById[activity.routeId]!,
+                    onRouteTap: () =>
+                        onRouteTap(context, routesById[activity.routeId]!),
+                    onProfileTap: () => onProfileTap(activity.user),
+                  ),
+              ],
             ),
-        ],
+    );
+  }
+}
+
+class _FriendSendTile extends StatelessWidget {
+  const _FriendSendTile({
+    required this.activity,
+    required this.route,
+    required this.onRouteTap,
+    required this.onProfileTap,
+  });
+
+  final FriendSendActivity activity;
+  final ClimbRoute route;
+  final VoidCallback onRouteTap;
+  final VoidCallback onProfileTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final username = activity.user.username.isEmpty
+        ? activity.user.displayName
+        : '@${activity.user.username}';
+    return Card(
+      margin: const EdgeInsets.only(bottom: 10),
+      child: ListTile(
+        onTap: onRouteTap,
+        leading: ClipRRect(
+          borderRadius: BorderRadius.circular(8),
+          child: Image.network(
+            route.imageUrl,
+            width: 58,
+            height: 58,
+            fit: BoxFit.cover,
+            errorBuilder: (_, _, _) => const SizedBox.square(
+              dimension: 58,
+              child: Icon(Icons.terrain),
+            ),
+          ),
+        ),
+        title: Text(route.name),
+        subtitle: Text(
+          '$username sent ${activity.grade} · ${_socialTime(activity.sentAt)}',
+        ),
+        trailing: InkWell(
+          borderRadius: BorderRadius.circular(28),
+          onTap: onProfileTap,
+          child: CircleAvatar(
+            backgroundImage: activity.user.avatarUrl.isEmpty
+                ? null
+                : NetworkImage(activity.user.avatarUrl),
+            child: activity.user.avatarUrl.isEmpty
+                ? const Icon(Icons.person_outline)
+                : null,
+          ),
+        ),
       ),
     );
   }
@@ -548,10 +647,11 @@ class _RouteSection extends StatelessWidget {
 }
 
 class _Section extends StatelessWidget {
-  const _Section({required this.title, required this.child});
+  const _Section({required this.title, required this.child, this.action});
 
   final String title;
   final Widget child;
+  final Widget? action;
 
   @override
   Widget build(BuildContext context) {
@@ -560,7 +660,7 @@ class _Section extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _SectionHeader(title: title),
+          _SectionHeader(title: title, action: action),
           const SizedBox(height: 8),
           child,
         ],
@@ -598,20 +698,32 @@ class _RouteListTile extends StatelessWidget {
     required this.route,
     required this.subtitle,
     required this.onTap,
-    this.leading,
   });
 
   final ClimbRoute route;
   final String subtitle;
   final VoidCallback onTap;
-  final Widget? leading;
 
   @override
   Widget build(BuildContext context) {
     return Card(
       margin: const EdgeInsets.only(bottom: 10),
       child: ListTile(
-        leading: leading ?? const Icon(Icons.route),
+        leading: ClipRRect(
+          borderRadius: BorderRadius.circular(8),
+          child: SizedBox(
+            width: 64,
+            height: 64,
+            child: Image.network(
+              route.imageUrl,
+              fit: BoxFit.cover,
+              errorBuilder: (context, error, stackTrace) => ColoredBox(
+                color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                child: const Icon(Icons.terrain_outlined),
+              ),
+            ),
+          ),
+        ),
         title: Text(route.name),
         subtitle: Text(subtitle),
         trailing: const Icon(Icons.chevron_right),
@@ -642,4 +754,240 @@ class _EmptyFeedState extends StatelessWidget {
       ),
     );
   }
+}
+
+class _FriendsManager extends StatefulWidget {
+  const _FriendsManager({required this.social, required this.onProfileTap});
+
+  final SocialState social;
+  final ValueChanged<FriendProfile> onProfileTap;
+
+  @override
+  State<_FriendsManager> createState() => _FriendsManagerState();
+}
+
+class _FriendsManagerState extends State<_FriendsManager> {
+  final searchController = TextEditingController();
+  List<FriendProfile> results = const [];
+  bool searching = false;
+  String busyUserId = '';
+
+  @override
+  void dispose() {
+    searchController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!widget.social.signedIn) {
+      return const Padding(
+        padding: EdgeInsets.all(24),
+        child: _EmptyFeedState(
+          icon: Icons.login,
+          text: 'Sign in from your profile before adding friends.',
+        ),
+      );
+    }
+
+    return FractionallySizedBox(
+      heightFactor: 0.85,
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+        children: [
+          Text(
+            'Friends',
+            style: Theme.of(
+              context,
+            ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w900),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: searchController,
+            textInputAction: TextInputAction.search,
+            onSubmitted: (_) => _search(),
+            decoration: InputDecoration(
+              hintText: 'Search username or name',
+              prefixIcon: const Icon(Icons.search),
+              suffixIcon: IconButton(
+                tooltip: 'Search climbers',
+                onPressed: searching ? null : _search,
+                icon: searching
+                    ? const SizedBox.square(
+                        dimension: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.arrow_forward),
+              ),
+            ),
+          ),
+          if (results.isNotEmpty) ...[
+            const SizedBox(height: 18),
+            Text(
+              'Search results',
+              style: Theme.of(
+                context,
+              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900),
+            ),
+            for (final profile in results) _profileTile(profile),
+          ],
+          const SizedBox(height: 20),
+          Text(
+            'Your friends',
+            style: Theme.of(
+              context,
+            ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900),
+          ),
+          if (widget.social.friends.isEmpty)
+            const Padding(
+              padding: EdgeInsets.only(top: 12),
+              child: Text('Search for a climber to add your first friend.'),
+            )
+          else
+            for (final profile in widget.social.friends) _profileTile(profile),
+        ],
+      ),
+    );
+  }
+
+  Widget _profileTile(FriendProfile profile) {
+    final isFriend = widget.social.isFriend(profile.id);
+    return ListTile(
+      contentPadding: EdgeInsets.zero,
+      onTap: () => widget.onProfileTap(profile),
+      leading: CircleAvatar(
+        backgroundImage: profile.avatarUrl.isEmpty
+            ? null
+            : NetworkImage(profile.avatarUrl),
+        child: profile.avatarUrl.isEmpty
+            ? const Icon(Icons.person_outline)
+            : null,
+      ),
+      title: Text(
+        profile.username.isEmpty ? profile.displayName : '@${profile.username}',
+      ),
+      subtitle: Text(
+        [
+          profile.displayName,
+          profile.homeArea,
+        ].where((value) => value.isNotEmpty).join(' · '),
+      ),
+      trailing: busyUserId == profile.id
+          ? const SizedBox.square(
+              dimension: 22,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          : isFriend
+          ? TextButton(
+              onPressed: () => _remove(profile),
+              child: const Text('Remove'),
+            )
+          : FilledButton(
+              onPressed: () => _add(profile),
+              child: const Text('Add'),
+            ),
+    );
+  }
+
+  Future<void> _search() async {
+    final query = searchController.text.trim();
+    if (query.isEmpty) return;
+    setState(() => searching = true);
+    try {
+      final found = await widget.social.search(query);
+      if (mounted) setState(() => results = found);
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not search climbers: $error')),
+      );
+    } finally {
+      if (mounted) setState(() => searching = false);
+    }
+  }
+
+  Future<void> _add(FriendProfile profile) async {
+    setState(() => busyUserId = profile.id);
+    try {
+      await widget.social.addFriend(profile);
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Could not add friend: $error')));
+    } finally {
+      if (mounted) setState(() => busyUserId = '');
+    }
+  }
+
+  Future<void> _remove(FriendProfile profile) async {
+    setState(() => busyUserId = profile.id);
+    try {
+      await widget.social.removeFriend(profile);
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not remove friend: $error')),
+      );
+    } finally {
+      if (mounted) setState(() => busyUserId = '');
+    }
+  }
+}
+
+class _FriendProfileSheet extends StatelessWidget {
+  const _FriendProfileSheet({required this.profile});
+
+  final FriendProfile profile;
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(24, 8, 24, 28),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            CircleAvatar(
+              radius: 42,
+              backgroundImage: profile.avatarUrl.isEmpty
+                  ? null
+                  : NetworkImage(profile.avatarUrl),
+              child: profile.avatarUrl.isEmpty
+                  ? const Icon(Icons.person, size: 40)
+                  : null,
+            ),
+            const SizedBox(height: 12),
+            Text(
+              profile.username.isEmpty
+                  ? profile.displayName
+                  : '@${profile.username}',
+              style: Theme.of(
+                context,
+              ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900),
+            ),
+            if (profile.username.isNotEmpty && profile.displayName.isNotEmpty)
+              Text(profile.displayName),
+            if (profile.homeArea.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Text(profile.homeArea),
+            ],
+            if (profile.bio.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              Text(profile.bio, textAlign: TextAlign.center),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+String _socialTime(DateTime dateTime) {
+  final elapsed = DateTime.now().difference(dateTime.toLocal());
+  if (elapsed.inMinutes < 1) return 'just now';
+  if (elapsed.inHours < 1) return '${elapsed.inMinutes}m ago';
+  if (elapsed.inDays < 1) return '${elapsed.inHours}h ago';
+  if (elapsed.inDays < 7) return '${elapsed.inDays}d ago';
+  return '${dateTime.toLocal().month}/${dateTime.toLocal().day}/${dateTime.toLocal().year}';
 }

@@ -27,7 +27,8 @@ flutter run \
   --dart-define=SUPABASE_AUTH_REDIRECT_URL=climbon://login-callback
 ```
 
-See `AUTH_SETUP.md` for Google sign-in redirect URLs and dashboard setup.
+See [`docs/phases/AUTH_SETUP.md`](docs/phases/AUTH_SETUP.md) for Google sign-in
+redirect URLs and dashboard setup.
 
 ## Get It On Your Phone
 
@@ -100,8 +101,11 @@ For other testers, archive the app in Xcode and upload it to App Store Connect f
 
 ## Shipping Guide
 
-See `SHIPPING_GUIDE.md` for the step-by-step path for Cloudflare Pages, phone install, Google redirects, iPhone, and Android.
+See [`docs/phases/SHIPPING_GUIDE.md`](docs/phases/SHIPPING_GUIDE.md) for the
+step-by-step shipping path.
 
 ## Backend Setup
 
-See `PHASE_3_BACKEND.md` for the Supabase schema and seed data. See `AUTH_SETUP.md` for Google sign-in.
+Start with [`docs/EMPLOYEE_HANDOFF.md`](docs/EMPLOYEE_HANDOFF.md). Database setup
+order is documented in [`supabase/README.md`](supabase/README.md); historical
+phase notes remain under [`docs/phases/`](docs/phases/).

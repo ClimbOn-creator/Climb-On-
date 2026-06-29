@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:latlong2/latlong.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -10,6 +11,7 @@ import '../models/climb_route.dart';
 import '../models/crag.dart';
 import '../models/geo_bounds.dart';
 import '../models/map_path_catalog.dart';
+import '../models/social.dart';
 import '../models/wall.dart';
 import '../state/climb_log_state.dart';
 
@@ -22,6 +24,9 @@ class DatabaseService {
     if (!SupabaseConfig.isConfigured) return null;
     return Supabase.instance.client.auth.currentUser;
   }
+
+  String? get currentUserId => _currentUser?.id;
+  bool get isConfigured => SupabaseConfig.isConfigured;
 
   bool get isCloudReady {
     return _currentUser != null;
@@ -148,16 +153,55 @@ class DatabaseService {
     }, onConflict: 'user_id,route_id');
   }
 
-  Future<void> saveComment(LocalRouteComment comment) async {
+  Future<LocalRouteComment> saveComment(String routeId, String body) async {
     final user = _currentUser;
-    if (user == null) return;
+    if (user == null) {
+      throw const AuthException('Sign in before commenting.');
+    }
 
-    await Supabase.instance.client.from('route_comments').insert({
-      'user_id': user.id,
-      'route_id': comment.routeId,
-      'body': comment.body,
-      'created_at': comment.createdAt.toIso8601String(),
-    });
+    final row = await Supabase.instance.client
+        .from('route_comments')
+        .insert({'user_id': user.id, 'route_id': routeId, 'body': body})
+        .select()
+        .single();
+    final profiles = await _loadProfiles({user.id});
+    final comment = LocalRouteComment.fromCloudJson(row, profiles[user.id]);
+    if (comment == null) throw StateError('The saved comment was invalid.');
+    return comment;
+  }
+
+  Future<List<LocalRouteComment>> loadComments(String routeId) async {
+    if (!SupabaseConfig.isConfigured) return const [];
+
+    final result = await Supabase.instance.client.rpc(
+      'route_comments_with_authors',
+      params: {'target_route_id': routeId},
+    );
+    final rows = result is List ? result.whereType<Map>().toList() : const [];
+    return rows
+        .map(
+          (row) =>
+              LocalRouteComment.fromCloudJson(Map<String, dynamic>.from(row), {
+                'username': row['author_username'],
+                'display_name': row['author_display_name'],
+                'avatar_url': row['author_avatar_url'],
+                'bio': row['author_bio'],
+                'home_area': row['author_home_area'],
+              }),
+        )
+        .whereType<LocalRouteComment>()
+        .toList(growable: false);
+  }
+
+  Future<Map<String, Map<String, dynamic>>> _loadProfiles(
+    Set<String> userIds,
+  ) async {
+    if (userIds.isEmpty) return const {};
+    final rows = await Supabase.instance.client
+        .from('profiles')
+        .select('id, username, display_name, avatar_url, bio, home_area')
+        .inFilter('id', userIds.toList());
+    return {for (final row in rows) row['id'].toString(): row};
   }
 
   Future<void> savePhoto(LocalRoutePhoto photo) async {
@@ -171,6 +215,92 @@ class DatabaseService {
       'caption': photo.caption,
       'created_at': photo.createdAt.toIso8601String(),
     });
+  }
+
+  Future<List<LocalRoutePhoto>> loadPhotos(String routeId) async {
+    if (!SupabaseConfig.isConfigured) return const [];
+
+    final rows = await Supabase.instance.client
+        .from('route_photos')
+        .select()
+        .eq('route_id', routeId)
+        .order('created_at', ascending: false);
+    return rows
+        .map(LocalRoutePhoto.fromCloudJson)
+        .whereType<LocalRoutePhoto>()
+        .toList(growable: false);
+  }
+
+  Future<LocalRoutePhoto> uploadPhoto({
+    required String routeId,
+    required List<int> bytes,
+    required String fileName,
+    required String contentType,
+    required String caption,
+  }) async {
+    final user = _currentUser;
+    if (user == null) {
+      throw const AuthException('Sign in before adding a route picture.');
+    }
+
+    final extension = fileName.contains('.')
+        ? fileName
+              .split('.')
+              .last
+              .toLowerCase()
+              .replaceAll(RegExp(r'[^a-z0-9]'), '')
+        : 'jpg';
+    final safeExtension = extension.isEmpty ? 'jpg' : extension;
+    final storagePath =
+        '${user.id}/$routeId/${DateTime.now().microsecondsSinceEpoch}.$safeExtension';
+    final storage = Supabase.instance.client.storage.from('route-photos');
+
+    await storage.uploadBinary(
+      storagePath,
+      Uint8List.fromList(bytes),
+      fileOptions: FileOptions(contentType: contentType, upsert: false),
+    );
+
+    try {
+      final url = storage.getPublicUrl(storagePath);
+      final row = await Supabase.instance.client
+          .from('route_photos')
+          .insert({
+            'user_id': user.id,
+            'route_id': routeId,
+            'url': url,
+            'storage_path': storagePath,
+            'caption': caption,
+          })
+          .select()
+          .single();
+      final photo = LocalRoutePhoto.fromCloudJson(row);
+      if (photo == null) throw StateError('The uploaded picture was invalid.');
+      return photo;
+    } catch (_) {
+      await storage.remove([storagePath]);
+      rethrow;
+    }
+  }
+
+  Future<void> deletePhoto(LocalRoutePhoto photo) async {
+    final user = _currentUser;
+    if (user == null || user.id != photo.userId) {
+      throw const AuthException(
+        'Only the person who added this picture can remove it.',
+      );
+    }
+
+    if (photo.storagePath.isNotEmpty) {
+      await Supabase.instance.client.storage.from('route-photos').remove([
+        photo.storagePath,
+      ]);
+    }
+    await Supabase.instance.client
+        .from('route_photos')
+        .delete()
+        .eq('id', photo.id)
+        .eq('user_id', user.id);
   }
 
   Future<void> setProject(String routeId, bool saved) async {
@@ -188,28 +318,146 @@ class DatabaseService {
     }
   }
 
-  Future<void> submitRoute(Map<String, Object?> submission) async {
-    if (!SupabaseConfig.isConfigured) {
-      throw StateError('Supabase is not configured.');
-    }
+  Future<List<FriendProfile>> loadFriends() async {
+    if (_currentUser == null) return const [];
+    final result = await Supabase.instance.client.rpc('my_friends');
+    return _maps(result)
+        .map(FriendProfile.fromJson)
+        .where((profile) => profile.id.isNotEmpty)
+        .toList(growable: false);
+  }
 
+  Future<List<FriendProfile>> searchClimbers(String query) async {
+    if (_currentUser == null || query.trim().isEmpty) return const [];
+    final result = await Supabase.instance.client.rpc(
+      'search_climbers',
+      params: {'search_text': query.trim()},
+    );
+    return _maps(result)
+        .map(FriendProfile.fromJson)
+        .where((profile) => profile.id.isNotEmpty)
+        .toList(growable: false);
+  }
+
+  Future<void> addFriend(String friendId) async {
     final user = _currentUser;
-    await Supabase.instance.client.from('route_submissions').insert({
-      ...submission,
-      'user_id': user?.id,
+    if (user == null) throw const AuthException('Sign in to add friends.');
+    await Supabase.instance.client.from('user_friends').upsert({
+      'user_id': user.id,
+      'friend_id': friendId,
     });
   }
 
-  Future<void> submitSkiRoute(Map<String, Object?> submission) async {
+  Future<void> removeFriend(String friendId) async {
+    final user = _currentUser;
+    if (user == null) return;
+    await Supabase.instance.client
+        .from('user_friends')
+        .delete()
+        .eq('user_id', user.id)
+        .eq('friend_id', friendId);
+  }
+
+  Future<List<FriendSendActivity>> loadFriendSends() async {
+    if (_currentUser == null) return const [];
+    final result = await Supabase.instance.client.rpc('friend_send_feed');
+    return _maps(result)
+        .map(FriendSendActivity.fromJson)
+        .where((activity) => activity.routeId.isNotEmpty)
+        .toList(growable: false);
+  }
+
+  Future<List<UserRouteComment>> loadMyRecentComments() async {
+    if (_currentUser == null) return const [];
+    final result = await Supabase.instance.client.rpc('my_recent_comments');
+    return _maps(result)
+        .map(UserRouteComment.fromJson)
+        .where((comment) => comment.id.isNotEmpty)
+        .toList(growable: false);
+  }
+
+  List<Map<String, dynamic>> _maps(Object? value) {
+    if (value is! List) return const [];
+    return value
+        .whereType<Map>()
+        .map((item) => Map<String, dynamic>.from(item))
+        .toList(growable: false);
+  }
+
+  Future<void> submitRoute(
+    Map<String, Object?> submission, {
+    required List<int> photoBytes,
+    required String photoName,
+    required String photoContentType,
+  }) async {
+    await _submitWithPhoto(
+      table: 'route_submissions',
+      imageColumn: 'photo_url',
+      submission: submission,
+      photoBytes: photoBytes,
+      photoName: photoName,
+      photoContentType: photoContentType,
+    );
+  }
+
+  Future<void> submitSkiRoute(
+    Map<String, Object?> submission, {
+    required List<int> photoBytes,
+    required String photoName,
+    required String photoContentType,
+  }) async {
+    await _submitWithPhoto(
+      table: 'ski_route_submissions',
+      imageColumn: 'image_url',
+      submission: submission,
+      photoBytes: photoBytes,
+      photoName: photoName,
+      photoContentType: photoContentType,
+    );
+  }
+
+  Future<void> _submitWithPhoto({
+    required String table,
+    required String imageColumn,
+    required Map<String, Object?> submission,
+    required List<int> photoBytes,
+    required String photoName,
+    required String photoContentType,
+  }) async {
     if (!SupabaseConfig.isConfigured) {
       throw StateError('Supabase is not configured.');
     }
-
     final user = _currentUser;
-    await Supabase.instance.client.from('ski_route_submissions').insert({
-      ...submission,
-      'user_id': user?.id,
-    });
+    if (user == null) {
+      throw const AuthException('Sign in before submitting a route.');
+    }
+
+    final extension = photoName.contains('.')
+        ? photoName
+              .split('.')
+              .last
+              .toLowerCase()
+              .replaceAll(RegExp(r'[^a-z0-9]'), '')
+        : 'jpg';
+    final storagePath =
+        '${user.id}/${DateTime.now().microsecondsSinceEpoch}.${extension.isEmpty ? 'jpg' : extension}';
+    final storage = Supabase.instance.client.storage.from('submission-photos');
+    await storage.uploadBinary(
+      storagePath,
+      Uint8List.fromList(photoBytes),
+      fileOptions: FileOptions(contentType: photoContentType, upsert: false),
+    );
+
+    try {
+      await Supabase.instance.client.from(table).insert({
+        ...submission,
+        'user_id': user.id,
+        imageColumn: storage.getPublicUrl(storagePath),
+      });
+    } catch (_) {
+      await storage.remove([storagePath]);
+      rethrow;
+    }
   }
 
   Future<void> updateCragLocation({
@@ -234,6 +482,36 @@ class DatabaseService {
       'lat': latitude,
       'lng': longitude,
     });
+  }
+
+  Future<void> updateCreatorCragWarning({
+    required String cragId,
+    required String warning,
+  }) async {
+    await _creatorUpdate('creator_update_crag_warning', {
+      'target_crag_id': cragId,
+      'new_warning': warning.trim(),
+    });
+  }
+
+  Future<void> updateCreatorRouteWarning({
+    required String routeId,
+    required String warning,
+  }) async {
+    await _creatorUpdate('creator_update_route_warning', {
+      'target_route_id': routeId,
+      'new_warning': warning.trim(),
+    });
+  }
+
+  Future<void> _creatorUpdate(
+    String functionName,
+    Map<String, Object?> params,
+  ) async {
+    if (_currentUser == null) {
+      throw const AuthException('Sign in before editing this warning.');
+    }
+    await Supabase.instance.client.rpc(functionName, params: params);
   }
 
   Future<void> updateRouteLocation({
@@ -310,6 +588,36 @@ class DatabaseService {
     });
   }
 
+  Future<String> submitRecordedPath({
+    required String name,
+    required String kind,
+    required List<LatLng> points,
+    required double distanceMeters,
+    String? cragId,
+    String? skiRouteName,
+  }) async {
+    if (_currentUser == null) {
+      throw const AuthException('Sign in before submitting a GPS recording.');
+    }
+    if (points.length < 2) {
+      throw StateError('Record at least two GPS points.');
+    }
+    final result = await Supabase.instance.client.rpc(
+      'submit_recorded_path',
+      params: {
+        'path_name': name.trim(),
+        'submitted_kind': kind,
+        'target_crag_id': cragId,
+        'target_ski_route_name': skiRouteName,
+        'submitted_points': [
+          for (final point in points) [point.latitude, point.longitude],
+        ],
+        'submitted_distance_meters': distanceMeters,
+      },
+    );
+    return result?.toString() ?? '';
+  }
+
   Future<void> clearCatalogCache() async {
     final preferences = await SharedPreferences.getInstance();
     await preferences.remove(_catalogCacheKey);
@@ -371,6 +679,7 @@ class DatabaseService {
       accessNotes: _string(json['accessNotes']),
       season: _string(json['season']),
       dangerInfo: _string(json['dangerInfo']),
+      createdBy: _string(json['createdBy']),
       walls: _list(
         json['walls'],
       ).map((item) => _wallFromJson(Map<String, Object?>.from(item))).toList(),
@@ -415,6 +724,7 @@ class DatabaseService {
       ),
       descentNotes: _string(json['descentNotes'], 'Descent notes coming soon.'),
       dangerInfo: _string(json['dangerInfo']),
+      createdBy: _string(json['createdBy']),
     );
   }
 

@@ -35,6 +35,7 @@ class ClimbRoute {
     this.recentAscents = const [],
     this.photos = const [],
     this.comments = const [],
+    this.createdBy = '',
   });
 
   final String id;
@@ -60,6 +61,7 @@ class ClimbRoute {
   final List<String> recentAscents;
   final List<RoutePhoto> photos;
   final List<Comment> comments;
+  final String createdBy;
 
   String get typeLabel {
     return switch (type) {

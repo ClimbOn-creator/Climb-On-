@@ -9,12 +9,14 @@ import '../models/climb_route.dart';
 import '../models/crag.dart';
 import '../models/ski_route.dart';
 import '../models/user_profile.dart';
+import '../models/social.dart';
 import '../services/auth_service.dart';
 import '../state/activity_mode_state.dart';
 import '../state/catalog_state.dart';
 import '../state/climb_log_state.dart';
 import '../state/profile_state.dart';
 import '../state/ski_log_state.dart';
+import '../state/social_state.dart';
 import '../widgets/side_banner_layout.dart';
 
 class ProfileScreen extends ConsumerStatefulWidget {
@@ -29,6 +31,14 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   bool publicProfile = false;
 
   @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(socialProvider).refresh();
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
     final catalog = ref.watch(catalogProvider);
     final mode = ref.watch(activityModeProvider);
@@ -39,6 +49,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     ];
     final climbLog = ref.watch(climbLogProvider);
     final skiLog = ref.watch(skiLogProvider);
+    final social = ref.watch(socialProvider);
     final profile = ref.watch(currentProfileProvider).valueOrNull;
     final user = authService.currentUser;
     final signedIn = user != null;
@@ -102,43 +113,43 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                               'Using saved route data while the cloud reconnects.',
                             ),
                           ),
-                        _ProfileHeader(
-                          sendCount: completedRoutes.length,
-                          projectCount: projectRoutes.length,
-                        ),
+                        const _ProfileHeader(),
                         const SizedBox(height: 16),
                         _SectionCard(
                           title: 'Best sends',
-                          child: Wrap(
-                            spacing: 12,
-                            runSpacing: 12,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              _BestSendTile(
-                                icon: Icons.landscape_outlined,
-                                label: 'Best boulder',
-                                route: hardestBoulder,
+                              Wrap(
+                                spacing: 12,
+                                runSpacing: 12,
+                                children: [
+                                  _BestSendTile(
+                                    icon: Icons.landscape_outlined,
+                                    label: 'Best boulder',
+                                    route: hardestBoulder,
+                                  ),
+                                  _BestSendTile(
+                                    icon: Icons.bolt,
+                                    label: 'Best sport climb',
+                                    route: hardestSport,
+                                  ),
+                                ],
                               ),
-                              _BestSendTile(
-                                icon: Icons.bolt,
-                                label: 'Best sport climb',
-                                route: hardestSport,
-                              ),
-                            ],
-                          ),
-                        ),
-                        _SectionCard(
-                          title: 'Progress',
-                          child: Wrap(
-                            spacing: 10,
-                            runSpacing: 10,
-                            children: [
-                              _StatTile(
-                                label: 'Completed',
-                                value: '${completedRoutes.length}',
-                              ),
-                              _StatTile(
-                                label: 'Projects',
-                                value: '${projectRoutes.length}',
+                              const Divider(height: 28),
+                              Wrap(
+                                spacing: 10,
+                                runSpacing: 10,
+                                children: [
+                                  _StatTile(
+                                    label: 'Completed',
+                                    value: '${completedRoutes.length}',
+                                  ),
+                                  _StatTile(
+                                    label: 'Projects',
+                                    value: '${projectRoutes.length}',
+                                  ),
+                                ],
                               ),
                             ],
                           ),
@@ -190,6 +201,33 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                               : _RouteList(routes: completedRoutes),
                         ),
                         if (signedIn)
+                          _SectionCard(
+                            title: 'Recent comments',
+                            child:
+                                social.loading && social.recentComments.isEmpty
+                                ? const Center(
+                                    child: CircularProgressIndicator(),
+                                  )
+                                : social.recentComments.isEmpty
+                                ? const _EmptyProfileState(
+                                    text:
+                                        'Comments you make on routes will appear here.',
+                                  )
+                                : Column(
+                                    children: [
+                                      for (final comment
+                                          in social.recentComments.take(6))
+                                        _RecentCommentTile(
+                                          comment: comment,
+                                          onTap: () => _openCommentRoute(
+                                            comment.routeId,
+                                            allRoutes,
+                                          ),
+                                        ),
+                                    ],
+                                  ),
+                          ),
+                        if (signedIn)
                           _AccountCard(
                             authService: authService,
                             publicProfile: publicProfile,
@@ -205,6 +243,16 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               ),
       ),
     );
+  }
+
+  void _openCommentRoute(String routeId, List<ClimbRoute> routes) {
+    ClimbRoute? selected;
+    for (final route in routes) {
+      if (route.id == routeId) selected = route;
+    }
+    if (selected == null) return;
+    ref.read(focusedRouteProvider.notifier).state = selected;
+    context.go('/feed');
   }
 
   List<ClimbRoute> _completedRoutes(
@@ -294,6 +342,45 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     };
     return number * 10 + (suffixScores[suffix] ?? 0);
   }
+}
+
+class _RecentCommentTile extends StatelessWidget {
+  const _RecentCommentTile({required this.comment, required this.onTap});
+
+  final UserRouteComment comment;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListTile(
+      contentPadding: EdgeInsets.zero,
+      leading: const CircleAvatar(child: Icon(Icons.comment_outlined)),
+      title: Text(comment.routeName),
+      subtitle: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(comment.body, maxLines: 2, overflow: TextOverflow.ellipsis),
+          const SizedBox(height: 3),
+          Text(
+            _profileActivityTime(comment.createdAt),
+            style: Theme.of(context).textTheme.labelSmall,
+          ),
+        ],
+      ),
+      trailing: const Icon(Icons.chevron_right),
+      onTap: onTap,
+    );
+  }
+}
+
+String _profileActivityTime(DateTime dateTime) {
+  final local = dateTime.toLocal();
+  final elapsed = DateTime.now().difference(local);
+  if (elapsed.inMinutes < 1) return 'Just now';
+  if (elapsed.inHours < 1) return '${elapsed.inMinutes}m ago';
+  if (elapsed.inDays < 1) return '${elapsed.inHours}h ago';
+  if (elapsed.inDays < 7) return '${elapsed.inDays}d ago';
+  return '${local.month}/${local.day}/${local.year}';
 }
 
 class _SkiProfileBody extends StatelessWidget {
@@ -615,10 +702,7 @@ class _AccountCard extends ConsumerWidget {
 }
 
 class _ProfileHeader extends StatelessWidget {
-  const _ProfileHeader({required this.sendCount, required this.projectCount});
-
-  final int sendCount;
-  final int projectCount;
+  const _ProfileHeader();
 
   @override
   Widget build(BuildContext context) {
@@ -690,16 +774,6 @@ class _ProfileHeader extends StatelessWidget {
                 label: const Text('Edit username and profile'),
               ),
             ],
-            const SizedBox(height: 14),
-            Wrap(
-              spacing: 10,
-              runSpacing: 10,
-              alignment: WrapAlignment.center,
-              children: [
-                _StatTile(label: 'Sends', value: '$sendCount'),
-                _StatTile(label: 'Projects', value: '$projectCount'),
-              ],
-            ),
           ],
         ),
       ),

@@ -1,8 +1,13 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:image_picker/image_picker.dart';
 
+import '../models/crag.dart';
 import '../services/database_service.dart';
 import '../state/activity_mode_state.dart';
+import '../state/catalog_state.dart';
 import '../widgets/side_banner_layout.dart';
 
 class SubmitRouteScreen extends ConsumerStatefulWidget {
@@ -25,7 +30,6 @@ class _SubmitRouteScreenState extends ConsumerState<SubmitRouteScreen> {
   final ropeLength = TextEditingController(text: '60');
   final latitude = TextEditingController();
   final longitude = TextEditingController();
-  final photoUrl = TextEditingController();
   final description = TextEditingController();
   final approachNotes = TextEditingController();
   final descentNotes = TextEditingController();
@@ -47,6 +51,11 @@ class _SubmitRouteScreenState extends ConsumerState<SubmitRouteScreen> {
   String avalancheTerrain = 'Challenging';
   bool topRope = false;
   bool submitting = false;
+  Uint8List? photoBytes;
+  String photoName = '';
+  String photoContentType = '';
+  String? selectedCragId;
+  String? selectedWallId;
 
   @override
   void dispose() {
@@ -62,7 +71,6 @@ class _SubmitRouteScreenState extends ConsumerState<SubmitRouteScreen> {
       ropeLength,
       latitude,
       longitude,
-      photoUrl,
       description,
       approachNotes,
       descentNotes,
@@ -85,6 +93,8 @@ class _SubmitRouteScreenState extends ConsumerState<SubmitRouteScreen> {
   Widget build(BuildContext context) {
     final showTitleBar = MediaQuery.sizeOf(context).width >= 1024;
     final mode = ref.watch(activityModeProvider);
+    final catalogCrags =
+        ref.watch(catalogProvider).valueOrNull ?? const <Crag>[];
     final isSki = mode == ActivityMode.ski;
 
     return Scaffold(
@@ -109,7 +119,7 @@ class _SubmitRouteScreenState extends ConsumerState<SubmitRouteScreen> {
                   ),
                   const SizedBox(height: 12),
                   _Field(controller: submitterName, label: 'Your name'),
-                  if (isSki) ..._skiFields() else ..._climbFields(),
+                  if (isSki) ..._skiFields() else ..._climbFields(catalogCrags),
                   _Field(
                     controller: latitude,
                     label: isSki ? 'Tour high point latitude' : 'GPS latitude',
@@ -134,7 +144,11 @@ class _SubmitRouteScreenState extends ConsumerState<SubmitRouteScreen> {
                       decimal: true,
                     ),
                   ],
-                  _Field(controller: photoUrl, label: 'Picture URL'),
+                  _RequiredPictureUpload(
+                    bytes: photoBytes,
+                    fileName: photoName,
+                    onPressed: submitting ? null : pickPicture,
+                  ),
                   _Field(
                     controller: description,
                     label: isSki ? 'Tour description' : 'Route description',
@@ -177,10 +191,64 @@ class _SubmitRouteScreenState extends ConsumerState<SubmitRouteScreen> {
     );
   }
 
-  List<Widget> _climbFields() {
+  List<Widget> _climbFields(List<Crag> crags) {
+    Crag? selectedCrag;
+    for (final crag in crags) {
+      if (crag.id == selectedCragId) selectedCrag = crag;
+    }
+    final walls = selectedCrag?.walls ?? const [];
     return [
-      _Field(controller: cragName, label: 'Crag name'),
-      _Field(controller: wallName, label: 'Wall or sector name'),
+      _ExistingLocationField(
+        key: ValueKey('crag-${selectedCragId ?? 'new'}'),
+        label: 'Existing crag',
+        value: selectedCragId ?? '',
+        emptyLabel: 'New crag / not listed',
+        options: {for (final crag in crags) crag.id: crag.name},
+        onChanged: (id) {
+          setState(() {
+            selectedCragId = id.isEmpty ? null : id;
+            selectedWallId = null;
+            wallName.clear();
+            if (id.isEmpty) {
+              cragName.clear();
+            } else {
+              final crag = crags.firstWhere((item) => item.id == id);
+              cragName.text = crag.name;
+            }
+          });
+        },
+      ),
+      if (selectedCrag != null)
+        _ExistingLocationField(
+          key: ValueKey('wall-${selectedWallId ?? 'new'}'),
+          label: 'Existing wall',
+          value: selectedWallId ?? '',
+          emptyLabel: 'New wall / not listed',
+          options: {for (final wall in walls) wall.id: wall.name},
+          onChanged: (id) {
+            setState(() {
+              selectedWallId = id.isEmpty ? null : id;
+              if (id.isEmpty) {
+                wallName.clear();
+              } else {
+                final wall = walls.firstWhere((item) => item.id == id);
+                wallName.text = wall.name;
+                latitude.text = wall.location.latitude.toStringAsFixed(6);
+                longitude.text = wall.location.longitude.toStringAsFixed(6);
+              }
+            });
+          },
+        ),
+      _Field(
+        controller: cragName,
+        label: 'Crag name',
+        readOnly: selectedCragId != null,
+      ),
+      _Field(
+        controller: wallName,
+        label: 'Wall or sector name',
+        readOnly: selectedWallId != null,
+      ),
       _Field(controller: routeName, label: 'Route name'),
       _Field(controller: grade, label: 'Grade'),
       _MenuField(
@@ -285,59 +353,83 @@ class _SubmitRouteScreenState extends ConsumerState<SubmitRouteScreen> {
 
   Future<void> submit() async {
     if (!formKey.currentState!.validate()) return;
+    final selectedPhoto = photoBytes;
+    if (selectedPhoto == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('A picture upload is required.')),
+      );
+      return;
+    }
 
     setState(() => submitting = true);
     try {
       final mode = ref.read(activityModeProvider);
       if (mode == ActivityMode.ski) {
-        await const DatabaseService().submitSkiRoute({
-          'submitter_name': submitterName.text.trim(),
-          'route_name': routeName.text.trim(),
-          'area': skiArea.text.trim(),
-          'region': region.text.trim(),
-          'difficulty': skiDifficulty,
-          'distance_km': double.parse(distanceKm.text.trim()),
-          'elevation_gain_meters': int.parse(elevationGain.text.trim()),
-          'aspect': aspect,
-          'avalanche_terrain': avalancheTerrain,
-          'season': season.text.trim(),
-          'latitude': double.parse(latitude.text.trim()),
-          'longitude': double.parse(longitude.text.trim()),
-          'trailhead_latitude': double.parse(trailheadLatitude.text.trim()),
-          'trailhead_longitude': double.parse(trailheadLongitude.text.trim()),
-          'image_url': photoUrl.text.trim(),
-          'description': description.text.trim(),
-          'approach_notes': approachNotes.text.trim(),
-          'descent_notes': descentNotes.text.trim(),
-          'danger_info': dangerInfo.text.trim(),
-        });
+        await const DatabaseService().submitSkiRoute(
+          {
+            'submitter_name': submitterName.text.trim(),
+            'route_name': routeName.text.trim(),
+            'area': skiArea.text.trim(),
+            'region': region.text.trim(),
+            'difficulty': skiDifficulty,
+            'distance_km': double.parse(distanceKm.text.trim()),
+            'elevation_gain_meters': int.parse(elevationGain.text.trim()),
+            'aspect': aspect,
+            'avalanche_terrain': avalancheTerrain,
+            'season': season.text.trim(),
+            'latitude': double.parse(latitude.text.trim()),
+            'longitude': double.parse(longitude.text.trim()),
+            'trailhead_latitude': double.parse(trailheadLatitude.text.trim()),
+            'trailhead_longitude': double.parse(trailheadLongitude.text.trim()),
+            'description': description.text.trim(),
+            'approach_notes': approachNotes.text.trim(),
+            'descent_notes': descentNotes.text.trim(),
+            'danger_info': dangerInfo.text.trim(),
+          },
+          photoBytes: selectedPhoto,
+          photoName: photoName,
+          photoContentType: photoContentType,
+        );
       } else {
-        await const DatabaseService().submitRoute({
-          'submitter_name': submitterName.text.trim(),
-          'crag_name': cragName.text.trim(),
-          'wall_name': wallName.text.trim(),
-          'route_name': routeName.text.trim(),
-          'grade': grade.text.trim(),
-          'route_type': routeType,
-          'pitch_type': pitchType,
-          'angle': angle,
-          'bolts': int.parse(bolts.text.trim()),
-          'height_meters': int.parse(heightMeters.text.trim()),
-          'route_length': int.parse(routeLength.text.trim()),
-          'rope_length': int.parse(ropeLength.text.trim()),
-          'top_rope': topRope,
-          'latitude': double.parse(latitude.text.trim()),
-          'longitude': double.parse(longitude.text.trim()),
-          'photo_url': photoUrl.text.trim(),
-          'description': description.text.trim(),
-          'approach_notes': approachNotes.text.trim(),
-          'descent_notes': descentNotes.text.trim(),
-          'danger_info': dangerInfo.text.trim(),
-          'gear_notes': gearNotes.text.trim(),
-        });
+        await const DatabaseService().submitRoute(
+          {
+            'submitter_name': submitterName.text.trim(),
+            'crag_name': cragName.text.trim(),
+            'wall_name': wallName.text.trim(),
+            'crag_id': selectedCragId,
+            'wall_id': selectedWallId,
+            'route_name': routeName.text.trim(),
+            'grade': grade.text.trim(),
+            'route_type': routeType,
+            'pitch_type': pitchType,
+            'angle': angle,
+            'bolts': int.parse(bolts.text.trim()),
+            'height_meters': int.parse(heightMeters.text.trim()),
+            'route_length': int.parse(routeLength.text.trim()),
+            'rope_length': int.parse(ropeLength.text.trim()),
+            'top_rope': topRope,
+            'latitude': double.parse(latitude.text.trim()),
+            'longitude': double.parse(longitude.text.trim()),
+            'description': description.text.trim(),
+            'approach_notes': approachNotes.text.trim(),
+            'descent_notes': descentNotes.text.trim(),
+            'danger_info': dangerInfo.text.trim(),
+            'gear_notes': gearNotes.text.trim(),
+          },
+          photoBytes: selectedPhoto,
+          photoName: photoName,
+          photoContentType: photoContentType,
+        );
       }
       if (!mounted) return;
       formKey.currentState!.reset();
+      setState(() {
+        photoBytes = null;
+        photoName = '';
+        photoContentType = '';
+        selectedCragId = null;
+        selectedWallId = null;
+      });
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
@@ -356,6 +448,102 @@ class _SubmitRouteScreenState extends ConsumerState<SubmitRouteScreen> {
       if (mounted) setState(() => submitting = false);
     }
   }
+
+  Future<void> pickPicture() async {
+    try {
+      final picture = await ImagePicker().pickImage(
+        source: ImageSource.gallery,
+        imageQuality: 88,
+        maxWidth: 2400,
+      );
+      if (picture == null || !mounted) return;
+      final extension = picture.name.contains('.')
+          ? picture.name.split('.').last.toLowerCase()
+          : 'jpg';
+      final bytes = await picture.readAsBytes();
+      if (!mounted) return;
+      setState(() {
+        photoBytes = bytes;
+        photoName = picture.name;
+        photoContentType = _contentType(extension);
+      });
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Could not open picture: $error')));
+    }
+  }
+
+  String _contentType(String extension) {
+    return switch (extension) {
+      'png' => 'image/png',
+      'webp' => 'image/webp',
+      'heic' || 'heif' => 'image/heic',
+      _ => 'image/jpeg',
+    };
+  }
+}
+
+class _RequiredPictureUpload extends StatelessWidget {
+  const _RequiredPictureUpload({
+    required this.bytes,
+    required this.fileName,
+    required this.onPressed,
+  });
+
+  final Uint8List? bytes;
+  final String fileName;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          border: Border.all(color: Theme.of(context).colorScheme.outline),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Picture (required)',
+                style: Theme.of(
+                  context,
+                ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800),
+              ),
+              if (bytes != null) ...[
+                const SizedBox(height: 10),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: Image.memory(
+                    bytes!,
+                    height: 180,
+                    width: double.infinity,
+                    fit: BoxFit.cover,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(fileName, maxLines: 1, overflow: TextOverflow.ellipsis),
+              ],
+              const SizedBox(height: 10),
+              OutlinedButton.icon(
+                onPressed: onPressed,
+                icon: const Icon(Icons.add_photo_alternate_outlined),
+                label: Text(
+                  bytes == null ? 'Upload picture' : 'Change picture',
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class _Field extends StatelessWidget {
@@ -365,6 +553,7 @@ class _Field extends StatelessWidget {
     this.numeric = false,
     this.decimal = false,
     this.lines = 1,
+    this.readOnly = false,
   });
 
   final TextEditingController controller;
@@ -372,6 +561,7 @@ class _Field extends StatelessWidget {
   final bool numeric;
   final bool decimal;
   final int lines;
+  final bool readOnly;
 
   @override
   Widget build(BuildContext context) {
@@ -379,6 +569,7 @@ class _Field extends StatelessWidget {
       padding: const EdgeInsets.only(bottom: 12),
       child: TextFormField(
         controller: controller,
+        readOnly: readOnly,
         maxLines: lines,
         keyboardType: numeric || decimal
             ? const TextInputType.numberWithOptions(decimal: true, signed: true)
@@ -390,6 +581,43 @@ class _Field extends StatelessWidget {
           if (numeric && int.tryParse(text) == null) return 'Enter a number';
           if (decimal && double.tryParse(text) == null) return 'Enter a number';
           return null;
+        },
+      ),
+    );
+  }
+}
+
+class _ExistingLocationField extends StatelessWidget {
+  const _ExistingLocationField({
+    super.key,
+    required this.label,
+    required this.value,
+    required this.emptyLabel,
+    required this.options,
+    required this.onChanged,
+  });
+
+  final String label;
+  final String value;
+  final String emptyLabel;
+  final Map<String, String> options;
+  final ValueChanged<String> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: DropdownButtonFormField<String>(
+        initialValue: options.containsKey(value) ? value : '',
+        isExpanded: true,
+        decoration: InputDecoration(labelText: label),
+        items: [
+          DropdownMenuItem(value: '', child: Text(emptyLabel)),
+          for (final entry in options.entries)
+            DropdownMenuItem(value: entry.key, child: Text(entry.value)),
+        ],
+        onChanged: (value) {
+          if (value != null) onChanged(value);
         },
       ),
     );

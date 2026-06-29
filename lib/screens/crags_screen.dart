@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../data/sample_ski_routes.dart';
 import '../models/crag.dart';
 import '../models/climb_route.dart';
+import '../services/database_service.dart';
 import '../state/activity_mode_state.dart';
 import '../state/catalog_state.dart';
 import '../state/climb_log_state.dart';
@@ -134,18 +135,25 @@ class CragsScreen extends ConsumerWidget {
   }
 }
 
-class _CragRoutePicker extends StatefulWidget {
+class _CragRoutePicker extends ConsumerStatefulWidget {
   const _CragRoutePicker({required this.crag, required this.onRouteSelected});
 
   final Crag crag;
   final ValueChanged<ClimbRoute> onRouteSelected;
 
   @override
-  State<_CragRoutePicker> createState() => _CragRoutePickerState();
+  ConsumerState<_CragRoutePicker> createState() => _CragRoutePickerState();
 }
 
-class _CragRoutePickerState extends State<_CragRoutePicker> {
+class _CragRoutePickerState extends ConsumerState<_CragRoutePicker> {
   Wall? selectedWall;
+  late String dangerInfo;
+
+  @override
+  void initState() {
+    super.initState();
+    dangerInfo = widget.crag.dangerInfo;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -193,8 +201,12 @@ class _CragRoutePickerState extends State<_CragRoutePicker> {
             const SizedBox(height: 12),
             _CragNotice(
               icon: Icons.warning_amber,
-              label: widget.crag.dangerInfo,
+              label: dangerInfo,
               color: Theme.of(context).colorScheme.error,
+              onEdit:
+                  const DatabaseService().currentUserId == widget.crag.createdBy
+                  ? _editWarning
+                  : null,
             ),
             const SizedBox(height: 8),
             _CragNotice(
@@ -265,6 +277,49 @@ class _CragRoutePickerState extends State<_CragRoutePicker> {
       },
     );
   }
+
+  Future<void> _editWarning() async {
+    final controller = TextEditingController(text: dangerInfo);
+    final warning = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Edit crag warning'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          minLines: 3,
+          maxLines: 6,
+          decoration: const InputDecoration(labelText: 'Safety warning'),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, controller.text.trim()),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (warning == null || warning.isEmpty || !mounted) return;
+    try {
+      await const DatabaseService().updateCreatorCragWarning(
+        cragId: widget.crag.id,
+        warning: warning,
+      );
+      if (!mounted) return;
+      setState(() => dangerInfo = warning);
+      ref.invalidate(catalogProvider);
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not update warning: $error')),
+      );
+    }
+  }
 }
 
 class _CragNotice extends StatelessWidget {
@@ -272,11 +327,13 @@ class _CragNotice extends StatelessWidget {
     required this.icon,
     required this.label,
     required this.color,
+    this.onEdit,
   });
 
   final IconData icon;
   final String label;
   final Color color;
+  final VoidCallback? onEdit;
 
   @override
   Widget build(BuildContext context) {
@@ -294,6 +351,12 @@ class _CragNotice extends StatelessWidget {
             Icon(icon, color: color, size: 18),
             const SizedBox(width: 8),
             Expanded(child: Text(label)),
+            if (onEdit != null)
+              IconButton(
+                tooltip: 'Edit warning',
+                onPressed: onEdit,
+                icon: const Icon(Icons.edit_outlined, size: 18),
+              ),
           ],
         ),
       ),

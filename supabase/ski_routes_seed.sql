@@ -22,6 +22,7 @@ create table if not exists public.ski_routes (
   descent_notes text not null,
   danger_info text not null,
   image_url text not null,
+  created_by uuid references auth.users(id) on delete set null,
   created_at timestamptz not null default now()
 );
 
@@ -374,7 +375,8 @@ as $$
     'approachNotes', approach_notes,
     'descentNotes', descent_notes,
     'dangerInfo', danger_info,
-    'imageUrl', image_url
+    'imageUrl', image_url,
+    'createdBy', coalesce(created_by::text, '')
   ) order by name), '[]'::jsonb)
   from public.ski_routes;
 $$;

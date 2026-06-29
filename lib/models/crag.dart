@@ -15,6 +15,7 @@ class Crag {
     required this.season,
     required this.dangerInfo,
     required this.walls,
+    this.createdBy = '',
   });
 
   final String id;
@@ -28,4 +29,5 @@ class Crag {
   final String season;
   final String dangerInfo;
   final List<Wall> walls;
+  final String createdBy;
 }

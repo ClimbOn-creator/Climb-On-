@@ -19,6 +19,7 @@ create table public.crags (
   access_notes text default '',
   season text default '',
   danger_info text default '',
+  created_by uuid references auth.users(id) on delete set null,
   created_at timestamptz not null default now()
 );
 
@@ -51,6 +52,7 @@ create table public.routes (
   descent_notes text default '',
   danger_info text default '',
   rating double precision default 0,
+  created_by uuid references auth.users(id) on delete set null,
   created_at timestamptz not null default now()
 );
 
@@ -98,6 +100,7 @@ create table public.route_photos (
   user_id uuid not null references auth.users(id) on delete cascade,
   route_id uuid not null references public.routes(id) on delete cascade,
   url text not null,
+  storage_path text not null default '',
   caption text default '',
   created_at timestamptz not null default now()
 );
@@ -276,6 +279,7 @@ as $$
       'accessNotes', crags.access_notes,
       'season', crags.season,
       'dangerInfo', crags.danger_info,
+      'createdBy', coalesce(crags.created_by::text, ''),
       'walls', coalesce((
         select jsonb_agg(jsonb_build_object(
           'id', walls.id::text,
@@ -312,7 +316,8 @@ as $$
               'topRope', routes.top_rope,
               'approachNotes', routes.approach_notes,
               'descentNotes', routes.descent_notes,
-              'dangerInfo', routes.danger_info
+              'dangerInfo', routes.danger_info,
+              'createdBy', coalesce(routes.created_by::text, '')
             ) order by routes.name)
             from public.routes
             where routes.wall_id = walls.id

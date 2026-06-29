@@ -53,6 +53,9 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   final Set<_MapRouteFilter> activeFilters = {};
   final MapController mapController = MapController();
   StreamSubscription<Position>? positionSubscription;
+  bool gpsRecording = false;
+  _PathDraftKind? recordedPathKind;
+  List<LatLng> recordedPath = [];
 
   bool get showClusters => currentZoom < 13;
 
@@ -102,9 +105,17 @@ class _MapScreenState extends ConsumerState<MapScreen> {
 
   void _setUserPosition(Position position) {
     if (!mounted) return;
+    final point = LatLng(position.latitude, position.longitude);
     setState(() {
-      userLocation = LatLng(position.latitude, position.longitude);
+      userLocation = point;
       userLocationAccuracyMeters = position.accuracy;
+      if (gpsRecording && position.accuracy <= 50) {
+        final shouldAdd =
+            recordedPath.isEmpty ||
+            const Distance().as(LengthUnit.Meter, recordedPath.last, point) >=
+                3;
+        if (shouldAdd) recordedPath.add(point);
+      }
     });
   }
 
@@ -217,6 +228,15 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                                   _PathDraftKind.cragApproach.color,
                               strokeWidth: 5,
                             ),
+                          if (recordedPath.length >= 2)
+                            Polyline(
+                              points: recordedPath,
+                              color:
+                                  recordedPathKind?.color ?? Colors.deepPurple,
+                              strokeWidth: 6,
+                              borderColor: Colors.white,
+                              borderStrokeWidth: 2,
+                            ),
                         ],
                       ),
                       if (userLocation != null &&
@@ -304,6 +324,18 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                     onClear: pathDraft.isEmpty ? null : _clearPath,
                     onCancel: _cancelPathEditor,
                     onSave: pathDraft.length < 2 ? null : _savePath,
+                  ),
+                if (!pathEditMode && tileStyle != _MapTileStyle.terrain3d)
+                  _GpsRecorderTools(
+                    recording: gpsRecording,
+                    hasDraft: recordedPath.isNotEmpty,
+                    kind: recordedPathKind,
+                    pointCount: recordedPath.length,
+                    lengthMeters: _pathLength(recordedPath),
+                    onStart: () => _chooseAndStartRecording(mode),
+                    onStop: _stopGpsRecording,
+                    onSubmit: _submitGpsRecording,
+                    onDiscard: _discardGpsRecording,
                   ),
                 if (mode == ActivityMode.climb)
                   _MapFilters(
@@ -752,6 +784,132 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       total += distance.as(LengthUnit.Meter, points[index - 1], points[index]);
     }
     return total;
+  }
+
+  Future<void> _chooseAndStartRecording(ActivityMode mode) async {
+    if (const DatabaseService().currentUserId == null) {
+      _showMapMessage('Sign in from Profile before recording a trail');
+      return;
+    }
+    if (userLocation == null) {
+      _showMapMessage('Waiting for a GPS location');
+      return;
+    }
+
+    _PathDraftKind? kind;
+    if (mode == ActivityMode.climb) {
+      if (selectedCrag == null) {
+        _showMapMessage('Select the crag this approach belongs to first');
+        return;
+      }
+      kind = _PathDraftKind.cragApproach;
+    } else {
+      if (selectedSkiRoute == null) {
+        _showMapMessage('Select the ski tour this recording belongs to first');
+        return;
+      }
+      kind = await showModalBottomSheet<_PathDraftKind>(
+        context: context,
+        showDragHandle: true,
+        builder: (context) => SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ListTile(
+                  leading: const Icon(Icons.north_east),
+                  title: const Text('Record ascent'),
+                  onTap: () => Navigator.pop(context, _PathDraftKind.skiAscent),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.south_east),
+                  title: const Text('Record descent'),
+                  onTap: () =>
+                      Navigator.pop(context, _PathDraftKind.skiDescent),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+    if (kind == null || !mounted) return;
+    setState(() {
+      recordedPathKind = kind;
+      recordedPath = [userLocation!];
+      gpsRecording = true;
+    });
+    _showMapMessage('GPS recording started. Keep this screen open.');
+  }
+
+  void _stopGpsRecording() {
+    setState(() => gpsRecording = false);
+    _showMapMessage('Recording stopped. Review the line, then submit it.');
+  }
+
+  void _discardGpsRecording() {
+    setState(() {
+      gpsRecording = false;
+      recordedPathKind = null;
+      recordedPath = [];
+    });
+  }
+
+  Future<void> _submitGpsRecording() async {
+    final kind = recordedPathKind;
+    if (kind == null || recordedPath.length < 2) {
+      _showMapMessage('Record a longer trail before submitting');
+      return;
+    }
+    final defaultName = kind == _PathDraftKind.cragApproach
+        ? '${selectedCrag?.name ?? 'Crag'} approach'
+        : '${selectedSkiRoute?.name ?? 'Ski tour'} ${kind == _PathDraftKind.skiAscent ? 'ascent' : 'descent'}';
+    final controller = TextEditingController(text: defaultName);
+    final name = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Submit GPS recording'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: const InputDecoration(labelText: 'Recording name'),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, controller.text.trim()),
+            child: const Text('Submit for review'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (name == null || name.isEmpty || !mounted) return;
+
+    try {
+      await const DatabaseService().submitRecordedPath(
+        name: name,
+        kind: switch (kind) {
+          _PathDraftKind.cragApproach => 'climb_approach',
+          _PathDraftKind.skiAscent => 'ski_ascent',
+          _PathDraftKind.skiDescent => 'ski_descent',
+        },
+        points: recordedPath,
+        distanceMeters: _pathLength(recordedPath),
+        cragId: kind == _PathDraftKind.cragApproach ? selectedCrag?.id : null,
+        skiRouteName: kind == _PathDraftKind.cragApproach
+            ? null
+            : selectedSkiRoute?.name,
+      );
+      _discardGpsRecording();
+      _showMapMessage('GPS trail submitted for review');
+    } catch (error) {
+      _showMapMessage('Could not submit recording: $error');
+    }
   }
 
   void _showMapMessage(String message) {
@@ -1529,6 +1687,106 @@ class _GpsAccuracyBadge extends StatelessWidget {
                 ),
               ],
             ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _GpsRecorderTools extends StatelessWidget {
+  const _GpsRecorderTools({
+    required this.recording,
+    required this.hasDraft,
+    required this.kind,
+    required this.pointCount,
+    required this.lengthMeters,
+    required this.onStart,
+    required this.onStop,
+    required this.onSubmit,
+    required this.onDiscard,
+  });
+
+  final bool recording;
+  final bool hasDraft;
+  final _PathDraftKind? kind;
+  final int pointCount;
+  final double lengthMeters;
+  final VoidCallback onStart;
+  final VoidCallback onStop;
+  final VoidCallback onSubmit;
+  final VoidCallback onDiscard;
+
+  @override
+  Widget build(BuildContext context) {
+    final distance = lengthMeters >= 1000
+        ? '${(lengthMeters / 1000).toStringAsFixed(2)} km'
+        : '${lengthMeters.round()} m';
+    return Positioned(
+      right: 12,
+      top: 74,
+      child: SafeArea(
+        child: Material(
+          elevation: 5,
+          color: Theme.of(context).colorScheme.surface,
+          borderRadius: BorderRadius.circular(8),
+          child: Padding(
+            padding: const EdgeInsets.all(8),
+            child: hasDraft
+                ? Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            recording ? Icons.fiber_manual_record : Icons.route,
+                            color: recording ? Colors.red : kind?.color,
+                            size: 20,
+                          ),
+                          const SizedBox(width: 7),
+                          Text(
+                            recording ? 'Recording GPS' : 'Recording paused',
+                            style: const TextStyle(fontWeight: FontWeight.w900),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 5),
+                      Text('$pointCount points · $distance'),
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 6,
+                        runSpacing: 6,
+                        children: [
+                          if (recording)
+                            FilledButton.icon(
+                              onPressed: onStop,
+                              icon: const Icon(Icons.stop, size: 18),
+                              label: const Text('Stop'),
+                            )
+                          else
+                            FilledButton.icon(
+                              onPressed: pointCount < 2 ? null : onSubmit,
+                              icon: const Icon(Icons.cloud_upload, size: 18),
+                              label: const Text('Submit'),
+                            ),
+                          TextButton(
+                            onPressed: onDiscard,
+                            child: const Text('Discard'),
+                          ),
+                        ],
+                      ),
+                    ],
+                  )
+                : FilledButton.icon(
+                    onPressed: onStart,
+                    icon: const Icon(
+                      Icons.fiber_manual_record,
+                      color: Colors.red,
+                    ),
+                    label: const Text('Record GPS trail'),
+                  ),
           ),
         ),
       ),

@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 import '../state/activity_mode_state.dart';
+import '../widgets/climb_on_brand.dart';
 
 class MainShell extends ConsumerWidget {
   const MainShell({super.key, required this.child});
@@ -18,7 +18,27 @@ class MainShell extends ConsumerWidget {
 
     if (compact) {
       return Scaffold(
-        body: child,
+        body: Column(
+          children: [
+            SafeArea(
+              bottom: false,
+              child: Container(
+                height: 58,
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.surface,
+                  border: const Border(
+                    bottom: BorderSide(color: Color(0xFFE1DDD1)),
+                  ),
+                ),
+                alignment: Alignment.centerLeft,
+                child: const ClimbOnBrand(showTagline: false),
+              ),
+            ),
+            Expanded(child: child),
+          ],
+        ),
         bottomNavigationBar: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -58,24 +78,7 @@ class MainShell extends ConsumerWidget {
               ),
               child: Row(
                 children: [
-                  Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Climb On',
-                        style: GoogleFonts.bungee(
-                          fontSize: 22,
-                          fontWeight: FontWeight.w400,
-                          letterSpacing: 0,
-                        ),
-                      ),
-                      Text(
-                        'Built by Canadians for Canadians.',
-                        style: Theme.of(context).textTheme.labelSmall,
-                      ),
-                    ],
-                  ),
+                  const ClimbOnBrand(),
                   const SizedBox(width: 16),
                   Expanded(
                     child: SingleChildScrollView(

@@ -1,8 +1,13 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../models/climb_route.dart';
+import '../services/database_service.dart';
+import '../state/catalog_state.dart';
 import '../state/climb_log_state.dart';
 
 class RouteCard extends ConsumerStatefulWidget {
@@ -24,14 +29,30 @@ class RouteCard extends ConsumerStatefulWidget {
 class _RouteCardState extends ConsumerState<RouteCard> {
   final commentController = TextEditingController();
   final gradeController = TextEditingController();
-  final photoUrlController = TextEditingController();
   final photoCaptionController = TextEditingController();
+  bool uploadingPhoto = false;
+  String? dangerOverride;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(ref.read(climbLogProvider).loadPhotosFor(widget.route));
+    unawaited(ref.read(climbLogProvider).loadCommentsFor(widget.route));
+  }
+
+  @override
+  void didUpdateWidget(covariant RouteCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.route.id != widget.route.id) {
+      unawaited(ref.read(climbLogProvider).loadPhotosFor(widget.route));
+      unawaited(ref.read(climbLogProvider).loadCommentsFor(widget.route));
+    }
+  }
 
   @override
   void dispose() {
     commentController.dispose();
     gradeController.dispose();
-    photoUrlController.dispose();
     photoCaptionController.dispose();
     super.dispose();
   }
@@ -127,7 +148,9 @@ class _RouteCardState extends ConsumerState<RouteCard> {
                     onCompleted: () => climbLog.toggleRoute(widget.route),
                     onGradeOpinion: () => _showGradeDialog(climbLog),
                     onComment: () => _showCommentDialog(climbLog),
-                    onPhoto: () => _showPhotoDialog(climbLog),
+                    onPhoto: uploadingPhoto
+                        ? null
+                        : () => _pickAndUploadPhoto(climbLog),
                     onProject: () => climbLog.toggleProject(widget.route),
                     onShare: _shareRoute,
                   ),
@@ -151,9 +174,14 @@ class _RouteCardState extends ConsumerState<RouteCard> {
                     _InfoSection(
                       title: 'Danger Info',
                       child: _AlertText(
-                        text: widget.route.dangerInfo,
+                        text: dangerOverride ?? widget.route.dangerInfo,
                         color: Theme.of(context).colorScheme.error,
                         icon: Icons.warning_amber,
+                        onEdit:
+                            const DatabaseService().currentUserId ==
+                                widget.route.createdBy
+                            ? _editRouteWarning
+                            : null,
                       ),
                     ),
                     _InfoSection(
@@ -209,18 +237,18 @@ class _RouteCardState extends ConsumerState<RouteCard> {
                     ),
                     if (photos.isNotEmpty)
                       _InfoSection(
-                        title: 'Your Photos',
+                        title: 'Route Pictures',
                         child: Column(
                           children: [
                             for (final photo in photos)
                               Padding(
                                 padding: const EdgeInsets.only(bottom: 10),
-                                child: _ExpandableRouteImage(
-                                  imageUrl: photo.url,
-                                  title: photo.caption.isEmpty
-                                      ? widget.route.name
-                                      : photo.caption,
-                                  height: 160,
+                                child: _RoutePhoto(
+                                  photo: photo,
+                                  routeName: widget.route.name,
+                                  canDelete: climbLog.canDeletePhoto(photo),
+                                  onDelete: () =>
+                                      _confirmDeletePhoto(climbLog, photo),
                                 ),
                               ),
                           ],
@@ -296,7 +324,32 @@ class _RouteCardState extends ConsumerState<RouteCard> {
                       if (comments.isEmpty)
                         const ListTile(title: Text('No comments yet.')),
                       ...comments.map(
-                        (comment) => ListTile(title: Text(comment.body)),
+                        (comment) => ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          leading: CircleAvatar(
+                            backgroundImage: comment.authorAvatarUrl.isEmpty
+                                ? null
+                                : NetworkImage(comment.authorAvatarUrl),
+                            child: comment.authorAvatarUrl.isEmpty
+                                ? const Icon(Icons.person_outline)
+                                : null,
+                          ),
+                          title: Text(_commentAuthor(comment)),
+                          subtitle: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(comment.body),
+                              const SizedBox(height: 3),
+                              Text(
+                                _commentTime(comment.createdAt),
+                                style: Theme.of(context).textTheme.labelSmall,
+                              ),
+                            ],
+                          ),
+                          onTap: comment.userId.isEmpty
+                              ? null
+                              : () => _showCommenterProfile(comment),
+                        ),
                       ),
                       Padding(
                         padding: const EdgeInsets.only(bottom: 12),
@@ -313,13 +366,7 @@ class _RouteCardState extends ConsumerState<RouteCard> {
                             IconButton(
                               tooltip: 'Post comment',
                               icon: const Icon(Icons.send),
-                              onPressed: () {
-                                climbLog.addComment(
-                                  widget.route,
-                                  commentController.text,
-                                );
-                                commentController.clear();
-                              },
+                              onPressed: () => _postComment(climbLog),
                             ),
                           ],
                         ),
@@ -342,6 +389,51 @@ class _RouteCardState extends ConsumerState<RouteCard> {
             '${widget.route.name} (${widget.route.grade})\n${widget.route.description}',
       ),
     );
+  }
+
+  Future<void> _editRouteWarning() async {
+    final controller = TextEditingController(
+      text: dangerOverride ?? widget.route.dangerInfo,
+    );
+    final warning = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Edit route warning'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          minLines: 3,
+          maxLines: 6,
+          decoration: const InputDecoration(labelText: 'Safety warning'),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, controller.text.trim()),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (warning == null || warning.isEmpty || !mounted) return;
+    try {
+      await const DatabaseService().updateCreatorRouteWarning(
+        routeId: widget.route.id,
+        warning: warning,
+      );
+      if (!mounted) return;
+      setState(() => dangerOverride = warning);
+      ref.invalidate(catalogProvider);
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not update warning: $error')),
+      );
+    }
   }
 
   List<_RouteTag> _routeTags() {
@@ -437,8 +529,14 @@ class _RouteCardState extends ConsumerState<RouteCard> {
   }
 
   Future<void> _showCommentDialog(ClimbLogState climbLog) async {
+    if (!climbLog.canComment) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Sign in to comment.')));
+      return;
+    }
     commentController.text = '';
-    await showDialog<void>(
+    final comment = await showDialog<String>(
       context: context,
       builder: (context) {
         return AlertDialog(
@@ -459,45 +557,187 @@ class _RouteCardState extends ConsumerState<RouteCard> {
               child: const Text('Cancel'),
             ),
             FilledButton(
-              onPressed: () {
-                climbLog.addComment(widget.route, commentController.text);
-                Navigator.pop(context);
-              },
+              onPressed: () =>
+                  Navigator.pop(context, commentController.text.trim()),
               child: const Text('Post'),
             ),
           ],
         );
       },
     );
+    if (comment == null || comment.isEmpty || !mounted) return;
+    commentController.text = comment;
+    await _postComment(climbLog);
   }
 
-  Future<void> _showPhotoDialog(ClimbLogState climbLog) async {
-    photoUrlController.text = widget.route.imageUrl;
+  Future<void> _postComment(ClimbLogState climbLog) async {
+    if (!climbLog.canComment) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Sign in to comment.')));
+      return;
+    }
+    final comment = commentController.text.trim();
+    if (comment.isEmpty) return;
+    try {
+      await climbLog.addComment(widget.route, comment);
+      commentController.clear();
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Could not post comment: $error')));
+    }
+  }
+
+  String _commentAuthor(LocalRouteComment comment) {
+    if (comment.authorUsername.isNotEmpty) {
+      return '@${comment.authorUsername}';
+    }
+    if (comment.authorDisplayName.isNotEmpty) return comment.authorDisplayName;
+    return 'Climber';
+  }
+
+  String _commentTime(DateTime createdAt) {
+    final local = createdAt.toLocal();
+    final elapsed = DateTime.now().difference(local);
+    const months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
+    final hour = local.hour == 0
+        ? 12
+        : local.hour > 12
+        ? local.hour - 12
+        : local.hour;
+    final minute = local.minute.toString().padLeft(2, '0');
+    final period = local.hour >= 12 ? 'PM' : 'AM';
+    final exact =
+        '${months[local.month - 1]} ${local.day}, ${local.year} at $hour:$minute $period';
+    if (!elapsed.isNegative && elapsed.inMinutes < 1) {
+      return 'Just now · $exact';
+    }
+    if (!elapsed.isNegative && elapsed.inHours < 1) {
+      return '${elapsed.inMinutes}m ago · $exact';
+    }
+    if (!elapsed.isNegative && elapsed.inHours < 24) {
+      return '${elapsed.inHours}h ago · $exact';
+    }
+    return exact;
+  }
+
+  void _showCommenterProfile(LocalRouteComment comment) {
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(24, 8, 24, 28),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CircleAvatar(
+                radius: 38,
+                backgroundImage: comment.authorAvatarUrl.isEmpty
+                    ? null
+                    : NetworkImage(comment.authorAvatarUrl),
+                child: comment.authorAvatarUrl.isEmpty
+                    ? const Icon(Icons.person, size: 36)
+                    : null,
+              ),
+              const SizedBox(height: 12),
+              Text(
+                _commentAuthor(comment),
+                style: Theme.of(
+                  context,
+                ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900),
+              ),
+              if (comment.authorDisplayName.isNotEmpty &&
+                  comment.authorUsername.isNotEmpty)
+                Text(comment.authorDisplayName),
+              if (comment.authorHomeArea.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Text(comment.authorHomeArea),
+              ],
+              if (comment.authorBio.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                Text(comment.authorBio, textAlign: TextAlign.center),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _pickAndUploadPhoto(ClimbLogState climbLog) async {
+    if (!climbLog.canUploadPhotos) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Sign in to add a route picture.')),
+      );
+      return;
+    }
+
+    try {
+      final image = await ImagePicker().pickImage(
+        source: ImageSource.gallery,
+        imageQuality: 88,
+        maxWidth: 2400,
+      );
+      if (image == null || !mounted) return;
+
+      final caption = await _askForPhotoCaption();
+      if (caption == null || !mounted) return;
+
+      setState(() => uploadingPhoto = true);
+      final extension = image.name.contains('.')
+          ? image.name.split('.').last.toLowerCase()
+          : 'jpg';
+      await climbLog.uploadPhoto(
+        widget.route,
+        bytes: await image.readAsBytes(),
+        fileName: image.name,
+        contentType: _contentType(extension),
+        caption: caption,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Picture added to this route.')),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Could not add picture: $error')));
+    } finally {
+      if (mounted) setState(() => uploadingPhoto = false);
+    }
+  }
+
+  Future<String?> _askForPhotoCaption() async {
     photoCaptionController.text = '';
-    await showDialog<void>(
+    return showDialog<String>(
       context: context,
       builder: (context) {
         return AlertDialog(
-          title: const Text('Add photo'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: photoUrlController,
-                decoration: const InputDecoration(
-                  hintText: 'Photo URL',
-                  prefixIcon: Icon(Icons.link),
-                ),
-              ),
-              const SizedBox(height: 10),
-              TextField(
-                controller: photoCaptionController,
-                decoration: const InputDecoration(
-                  hintText: 'Caption',
-                  prefixIcon: Icon(Icons.short_text),
-                ),
-              ),
-            ],
+          title: const Text('Add a caption'),
+          content: TextField(
+            controller: photoCaptionController,
+            autofocus: true,
+            decoration: const InputDecoration(
+              hintText: 'Caption (optional)',
+              prefixIcon: Icon(Icons.short_text),
+            ),
           ),
           actions: [
             TextButton(
@@ -505,20 +745,57 @@ class _RouteCardState extends ConsumerState<RouteCard> {
               child: const Text('Cancel'),
             ),
             FilledButton(
-              onPressed: () {
-                climbLog.addPhoto(
-                  widget.route,
-                  url: photoUrlController.text,
-                  caption: photoCaptionController.text,
-                );
-                Navigator.pop(context);
-              },
+              onPressed: () =>
+                  Navigator.pop(context, photoCaptionController.text.trim()),
               child: const Text('Add'),
             ),
           ],
         );
       },
     );
+  }
+
+  Future<void> _confirmDeletePhoto(
+    ClimbLogState climbLog,
+    LocalRoutePhoto photo,
+  ) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Remove picture?'),
+        content: const Text(
+          'This removes the picture from the route for everyone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Remove'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      await climbLog.removePhoto(photo);
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not remove picture: $error')),
+      );
+    }
+  }
+
+  String _contentType(String extension) {
+    return switch (extension) {
+      'png' => 'image/png',
+      'webp' => 'image/webp',
+      'heic' || 'heif' => 'image/heic',
+      _ => 'image/jpeg',
+    };
   }
 }
 
@@ -543,7 +820,7 @@ class _RouteActions extends StatelessWidget {
   final VoidCallback onCompleted;
   final VoidCallback onGradeOpinion;
   final VoidCallback onComment;
-  final VoidCallback onPhoto;
+  final VoidCallback? onPhoto;
   final VoidCallback onProject;
   final VoidCallback onShare;
 
@@ -572,8 +849,15 @@ class _RouteActions extends StatelessWidget {
           onPressed: onComment,
         ),
         ActionChip(
-          avatar: const Icon(Icons.photo_camera, size: 18),
-          label: Text('Photo $photosCount'),
+          avatar: onPhoto == null
+              ? const SizedBox.square(
+                  dimension: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.add_photo_alternate_outlined, size: 18),
+          label: Text(
+            onPhoto == null ? 'Adding picture' : 'Add picture $photosCount',
+          ),
           backgroundColor: const Color(0xFFE5DCF0),
           onPressed: onPhoto,
         ),
@@ -597,6 +881,47 @@ class _RouteActions extends StatelessWidget {
   }
 }
 
+class _RoutePhoto extends StatelessWidget {
+  const _RoutePhoto({
+    required this.photo,
+    required this.routeName,
+    required this.canDelete,
+    required this.onDelete,
+  });
+
+  final LocalRoutePhoto photo;
+  final String routeName;
+  final bool canDelete;
+  final VoidCallback onDelete;
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      children: [
+        _ExpandableRouteImage(
+          imageUrl: photo.url,
+          title: photo.caption.isEmpty ? routeName : photo.caption,
+          height: 180,
+        ),
+        if (canDelete)
+          Positioned(
+            top: 8,
+            right: 8,
+            child: IconButton.filled(
+              tooltip: 'Remove your picture',
+              style: IconButton.styleFrom(
+                backgroundColor: Colors.black.withValues(alpha: 0.68),
+                foregroundColor: Colors.white,
+              ),
+              onPressed: onDelete,
+              icon: const Icon(Icons.delete_outline),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
 class _RouteTag {
   const _RouteTag({
     required this.label,
@@ -614,11 +939,13 @@ class _AlertText extends StatelessWidget {
     required this.text,
     required this.color,
     required this.icon,
+    this.onEdit,
   });
 
   final String text;
   final Color color;
   final IconData icon;
+  final VoidCallback? onEdit;
 
   @override
   Widget build(BuildContext context) {
@@ -636,6 +963,12 @@ class _AlertText extends StatelessWidget {
             Icon(icon, color: color, size: 18),
             const SizedBox(width: 8),
             Expanded(child: Text(text)),
+            if (onEdit != null)
+              IconButton(
+                tooltip: 'Edit warning',
+                onPressed: onEdit,
+                icon: const Icon(Icons.edit_outlined, size: 18),
+              ),
           ],
         ),
       ),
