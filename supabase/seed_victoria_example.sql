@@ -92,6 +92,18 @@ insert into public.crags (
     'Be discreet, keep noise down, and avoid blocking pullouts.',
     'Spring through fall',
     'Traffic exposure near parking and loose gravel at the base.'
+  ),
+  (
+    '10000000-0000-0000-0000-000000000007',
+    'Chosslandia',
+    'BC',
+    'Victoria / UVic',
+    st_setsrid(st_makepoint(-123.31170, 48.46340), 4326)::geography,
+    st_setsrid(st_makepoint(-123.31170, 48.46340), 4326)::geography,
+    'Approximate UVic-area pin. Record or submit the confirmed approach before visiting.',
+    'Confirm the exact location, land access, parking, and current climbing permission.',
+    'Confirm local conditions',
+    'New crag entry with an approximate location. Expect loose rock and verify all hazards before climbing.'
   )
 on conflict (id) do update set
   name = excluded.name,
@@ -117,7 +129,8 @@ insert into public.walls (id, crag_id, name) values
   ('20000000-0000-0000-0000-000000000009', '10000000-0000-0000-0000-000000000004', 'Forest Cluster'),
   ('20000000-0000-0000-0000-000000000010', '10000000-0000-0000-0000-000000000005', 'Lower Bluff'),
   ('20000000-0000-0000-0000-000000000011', '10000000-0000-0000-0000-000000000005', 'Upper Bluff'),
-  ('20000000-0000-0000-0000-000000000012', '10000000-0000-0000-0000-000000000006', 'Roadside Wall')
+  ('20000000-0000-0000-0000-000000000012', '10000000-0000-0000-0000-000000000006', 'Roadside Wall'),
+  ('20000000-0000-0000-0000-000000000013', '10000000-0000-0000-0000-000000000007', 'Main')
 on conflict (id) do update set
   crag_id = excluded.crag_id,
   name = excluded.name;

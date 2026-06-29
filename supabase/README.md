@@ -19,6 +19,7 @@ GitHub before applying them in the Supabase SQL Editor.
 12. `social_friends.sql`
 13. `creator_warnings_and_gps_recordings.sql`
 14. `fix_public_climb_catalog_access.sql`
+15. `add_chosslandia_crag.sql`
 
 Optional catalog data:
 

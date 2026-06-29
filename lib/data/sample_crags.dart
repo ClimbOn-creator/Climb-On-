@@ -4,6 +4,29 @@ import '../models/models.dart';
 
 final List<Crag> crags = [
   Crag(
+    id: 'chosslandia',
+    name: 'Chosslandia',
+    province: 'BC',
+    region: 'Victoria / UVic',
+    location: const LatLng(48.4634, -123.3117),
+    parking: const LatLng(48.4634, -123.3117),
+    approachTrail:
+        'Approximate UVic-area pin. Record or submit the confirmed approach before visiting.',
+    accessNotes:
+        'Confirm the exact location, land access, parking, and current climbing permission.',
+    season: 'Confirm local conditions',
+    dangerInfo:
+        'New crag entry with an approximate location. Expect loose rock and verify all hazards before climbing.',
+    walls: [
+      Wall(
+        id: 'chosslandia-main',
+        name: 'Main',
+        location: const LatLng(48.4634, -123.3117),
+        routes: const [],
+      ),
+    ],
+  ),
+  Crag(
     id: 'mount-macdonald',
     name: 'Mount Macdonald',
     province: 'BC',

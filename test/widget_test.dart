@@ -1,4 +1,5 @@
 import 'package:climb_on/models/climb_route.dart';
+import 'package:climb_on/data/sample_crags.dart' as sample_data;
 import 'package:climb_on/models/social.dart';
 import 'package:climb_on/services/database_service.dart';
 import 'package:climb_on/state/climb_log_state.dart';
@@ -6,6 +7,15 @@ import 'package:climb_on/state/social_state.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  test('Chosslandia has a Main wall ready for route submissions', () {
+    final crag = sample_data.crags.singleWhere(
+      (item) => item.name == 'Chosslandia',
+    );
+
+    expect(crag.walls.single.name, 'Main');
+    expect(crag.walls.single.routes, isEmpty);
+  });
+
   test('Climb log toggles completed routes', () {
     final climbLog = ClimbLogState(persistenceEnabled: false);
     final route = ClimbRoute(
