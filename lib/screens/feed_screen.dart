@@ -5,11 +5,11 @@ import '../models/climb_route.dart';
 import '../models/crag.dart';
 import '../models/ski_route.dart';
 import '../models/social.dart';
-import '../data/sample_ski_routes.dart';
 import '../state/activity_mode_state.dart';
 import '../state/catalog_state.dart';
 import '../state/climb_log_state.dart';
 import '../state/ski_log_state.dart';
+import '../state/ski_route_state.dart';
 import '../state/social_state.dart';
 import '../widgets/route_card.dart';
 import '../widgets/side_banner_layout.dart';
@@ -39,6 +39,8 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
     final climbLog = ref.watch(climbLogProvider);
     final social = ref.watch(socialProvider);
     final focusedRoute = ref.watch(focusedRouteProvider);
+    final skiCatalog = ref.watch(skiRouteCatalogProvider);
+    final skiRoutes = skiCatalog.valueOrNull ?? const <SkiRoute>[];
     final showTitleBar = MediaQuery.sizeOf(context).width >= 1024;
 
     final catalogCrags = catalog.valueOrNull ?? const <Crag>[];
@@ -47,7 +49,7 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
         for (final wall in crag.walls) ...wall.routes,
     ];
     final results = _searchResults(allRoutes);
-    final skiResults = _skiSearchResults();
+    final skiResults = _skiSearchResults(skiRoutes);
 
     return Scaffold(
       appBar: showTitleBar ? AppBar(title: const Text('Feed')) : null,
@@ -64,6 +66,8 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
             ),
             const SizedBox(height: 16),
             if (mode == ActivityMode.ski) ...[
+              if (skiCatalog.isLoading)
+                const LinearProgressIndicator(minHeight: 3),
               _SkiFeed(
                 query: query,
                 routes: skiResults,
@@ -155,10 +159,10 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
     }).toList();
   }
 
-  List<SkiRoute> _skiSearchResults() {
+  List<SkiRoute> _skiSearchResults(List<SkiRoute> routes) {
     final needle = query.trim().toLowerCase();
-    if (needle.isEmpty) return skiRoutes;
-    return skiRoutes.where((route) {
+    if (needle.isEmpty) return routes;
+    return routes.where((route) {
       return route.name.toLowerCase().contains(needle) ||
           route.area.toLowerCase().contains(needle) ||
           route.region.toLowerCase().contains(needle) ||

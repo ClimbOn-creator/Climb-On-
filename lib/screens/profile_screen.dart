@@ -4,7 +4,6 @@ import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../config/supabase_config.dart';
-import '../data/sample_ski_routes.dart';
 import '../models/climb_route.dart';
 import '../models/crag.dart';
 import '../models/ski_route.dart';
@@ -16,6 +15,7 @@ import '../state/catalog_state.dart';
 import '../state/climb_log_state.dart';
 import '../state/profile_state.dart';
 import '../state/ski_log_state.dart';
+import '../state/ski_route_state.dart';
 import '../state/social_state.dart';
 import '../widgets/side_banner_layout.dart';
 
@@ -49,6 +49,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     ];
     final climbLog = ref.watch(climbLogProvider);
     final skiLog = ref.watch(skiLogProvider);
+    final skiRoutes =
+        ref.watch(skiRouteCatalogProvider).valueOrNull ?? const <SkiRoute>[];
     final social = ref.watch(socialProvider);
     final profile = ref.watch(currentProfileProvider).valueOrNull;
     final user = authService.currentUser;
@@ -66,6 +68,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   setState(() => publicProfile = value);
                 },
                 skiLog: skiLog,
+                skiRoutes: skiRoutes,
                 profile: profile,
                 user: user,
                 onAuthChanged: () => setState(() {}),
@@ -389,6 +392,7 @@ class _SkiProfileBody extends StatelessWidget {
     required this.publicProfile,
     required this.onPrivacyChanged,
     required this.skiLog,
+    required this.skiRoutes,
     required this.profile,
     required this.user,
     required this.onAuthChanged,
@@ -398,14 +402,15 @@ class _SkiProfileBody extends StatelessWidget {
   final bool publicProfile;
   final ValueChanged<bool> onPrivacyChanged;
   final SkiLogState skiLog;
+  final List<SkiRoute> skiRoutes;
   final UserProfile? profile;
   final User? user;
   final VoidCallback onAuthChanged;
 
   @override
   Widget build(BuildContext context) {
-    final completedTours = _completedTours(skiLog);
-    final savedTours = _savedTours(skiLog);
+    final completedTours = _completedTours(skiLog, skiRoutes);
+    final savedTours = _savedTours(skiLog, skiRoutes);
     final totalDistance = skiLog.sends.fold<double>(
       0,
       (total, send) => total + send.distanceKm,
@@ -541,13 +546,13 @@ class _SkiProfileBody extends StatelessWidget {
     );
   }
 
-  List<SkiRoute> _completedTours(SkiLogState skiLog) {
+  List<SkiRoute> _completedTours(SkiLogState skiLog, List<SkiRoute> routes) {
     final ids = skiLog.sends.map((send) => send.routeId).toSet();
-    return skiRoutes.where((route) => ids.contains(route.id)).toList();
+    return routes.where((route) => ids.contains(route.id)).toList();
   }
 
-  List<SkiRoute> _savedTours(SkiLogState skiLog) {
-    return skiRoutes
+  List<SkiRoute> _savedTours(SkiLogState skiLog, List<SkiRoute> routes) {
+    return routes
         .where((route) => skiLog.projectTourIds.contains(route.id))
         .toList();
   }

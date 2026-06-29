@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../data/sample_ski_routes.dart';
 import '../models/crag.dart';
 import '../models/climb_route.dart';
 import '../services/database_service.dart';
@@ -10,6 +9,7 @@ import '../state/activity_mode_state.dart';
 import '../state/admin_state.dart';
 import '../state/catalog_state.dart';
 import '../state/climb_log_state.dart';
+import '../state/ski_route_state.dart';
 import '../models/wall.dart';
 import '../widgets/side_banner_layout.dart';
 import '../widgets/admin_route_editor.dart';
@@ -22,6 +22,8 @@ class CragsScreen extends ConsumerWidget {
     final showTitleBar = MediaQuery.sizeOf(context).width >= 1024;
     final mode = ref.watch(activityModeProvider);
     final catalog = ref.watch(catalogProvider);
+    final skiCatalog = ref.watch(skiRouteCatalogProvider);
+    final skiRoutes = skiCatalog.valueOrNull ?? const [];
     final catalogCrags = catalog.valueOrNull ?? const <Crag>[];
 
     return Scaffold(
@@ -32,24 +34,26 @@ class CragsScreen extends ConsumerWidget {
           : null,
       body: SideBannerLayout(
         child: mode == ActivityMode.ski
-            ? ListView.separated(
-                padding: const EdgeInsets.all(16),
-                itemCount: skiRoutes.length,
-                separatorBuilder: (_, _) => const SizedBox(height: 12),
-                itemBuilder: (context, index) {
-                  final route = skiRoutes[index];
-                  return Card(
-                    child: ListTile(
-                      leading: const Icon(Icons.downhill_skiing),
-                      title: Text(route.name),
-                      subtitle: Text(
-                        '${route.area} - ${route.distanceKm} km - ${route.elevationGainMeters} m',
-                      ),
-                      trailing: Chip(label: Text(route.difficulty)),
-                    ),
-                  );
-                },
-              )
+            ? skiRoutes.isEmpty && skiCatalog.isLoading
+                  ? const Center(child: CircularProgressIndicator())
+                  : ListView.separated(
+                      padding: const EdgeInsets.all(16),
+                      itemCount: skiRoutes.length,
+                      separatorBuilder: (_, _) => const SizedBox(height: 12),
+                      itemBuilder: (context, index) {
+                        final route = skiRoutes[index];
+                        return Card(
+                          child: ListTile(
+                            leading: const Icon(Icons.downhill_skiing),
+                            title: Text(route.name),
+                            subtitle: Text(
+                              '${route.area} - ${route.distanceKm} km - ${route.elevationGainMeters} m',
+                            ),
+                            trailing: Chip(label: Text(route.difficulty)),
+                          ),
+                        );
+                      },
+                    )
             : catalogCrags.isEmpty && catalog.isLoading
             ? const Center(child: CircularProgressIndicator())
             : ListView.separated(

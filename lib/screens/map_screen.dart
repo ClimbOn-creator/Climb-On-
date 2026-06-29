@@ -45,6 +45,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   Wall? selectedWall;
   Crag? selectedParkingCrag;
   SkiRoute? selectedSkiRoute;
+  String? selectedSkiRouteId;
   _MapTileStyle tileStyle = _MapTileStyle.clean;
   bool editMode = false;
   bool pathEditMode = false;
@@ -52,6 +53,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   int? selectedPathPointIndex;
   List<LatLng> pathDraft = [];
   LatLng? currentMapCenter;
+  double currentMapRotation = 0;
   final Set<_MapRouteFilter> activeFilters = {};
   final MapController mapController = MapController();
   StreamSubscription<Position>? positionSubscription;
@@ -67,6 +69,9 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   ];
 
   bool get showClusters => currentZoom < 13;
+  bool get showSkiAllCluster => currentZoom < 8;
+  bool get showSkiRegionClusters => currentZoom >= 8 && currentZoom < 12;
+  bool get mapIsRotated => currentMapRotation.abs() > 0.5;
 
   List<Crag> visibleCrags(List<Crag> sourceCrags) {
     if (activeFilters.isEmpty) return sourceCrags;
@@ -74,6 +79,16 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     return sourceCrags.where((crag) {
       return crag.walls.any((wall) => wall.routes.any(_routeMatchesFilters));
     }).toList();
+  }
+
+  SkiRoute? _activeSkiRoute(List<SkiRoute> routes) {
+    final selectedId = selectedSkiRouteId ?? selectedSkiRoute?.id;
+    if (selectedId != null) {
+      for (final route in routes) {
+        if (route.id == selectedId) return route;
+      }
+    }
+    return selectedSkiRoute;
   }
 
   @override
@@ -174,6 +189,49 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     }).toList();
   }
 
+  List<_SkiRouteCluster> clusterSkiRoutesByRegion(List<SkiRoute> routes) {
+    final regions = <String, List<SkiRoute>>{};
+    for (final route in routes) {
+      regions.putIfAbsent(route.region, () => []).add(route);
+    }
+
+    return regions.entries.map((entry) {
+      final bucket = entry.value;
+      final avgLat =
+          bucket.fold<double>(
+            0,
+            (sum, route) => sum + route.location.latitude,
+          ) /
+          bucket.length;
+      final avgLng =
+          bucket.fold<double>(
+            0,
+            (sum, route) => sum + route.location.longitude,
+          ) /
+          bucket.length;
+      return _SkiRouteCluster(
+        label: entry.key,
+        point: LatLng(avgLat, avgLng),
+        routes: bucket,
+      );
+    }).toList();
+  }
+
+  _SkiRouteCluster? clusterAllSkiRoutes(List<SkiRoute> routes) {
+    if (routes.isEmpty) return null;
+    final avgLat =
+        routes.fold<double>(0, (sum, route) => sum + route.location.latitude) /
+        routes.length;
+    final avgLng =
+        routes.fold<double>(0, (sum, route) => sum + route.location.longitude) /
+        routes.length;
+    return _SkiRouteCluster(
+      label: 'Ski tours',
+      point: LatLng(avgLat, avgLng),
+      routes: routes,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final width = MediaQuery.sizeOf(context).width;
@@ -183,6 +241,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     final catalog = ref.watch(catalogProvider);
     final skiCatalog =
         ref.watch(skiRouteCatalogProvider).valueOrNull ?? const <SkiRoute>[];
+    final activeSkiRoute = _activeSkiRoute(skiCatalog);
     final mapPaths =
         ref.watch(mapPathCatalogProvider).valueOrNull ?? const MapPathCatalog();
     final catalogCrags = catalog.valueOrNull ?? const <Crag>[];
@@ -213,7 +272,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                     skiRoutes: skiCatalog,
                     paths: mapPaths,
                     selectedCrag: selectedCrag,
-                    selectedSkiRoute: selectedSkiRoute,
+                    selectedSkiRoute: activeSkiRoute,
                     userLocation: userLocation,
                     onCragTap: (crag) => _selectCrag(context, wide, crag),
                     onSkiRouteTap: (route) => _selectSkiRoute(context, route),
@@ -224,7 +283,20 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                     options: MapOptions(
                       initialCenter: initialCenter,
                       initialZoom: currentZoom,
+                      interactionOptions: const InteractionOptions(
+                        flags: InteractiveFlag.all,
+                        enableMultiFingerGestureRace: true,
+                        rotationThreshold: 5,
+                      ),
                       onTap: (_, point) => _handleMapTap(point),
+                      onMapEvent: (event) {
+                        if (event is MapEventRotate ||
+                            event is MapEventRotateEnd) {
+                          setState(() {
+                            currentMapRotation = event.camera.rotation;
+                          });
+                        }
+                      },
                       onPositionChanged: (position, _) {
                         if (position.zoom != null) {
                           final nextZoom = position.zoom!;
@@ -291,7 +363,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                       MarkerLayer(
                         markers: [
                           ...(mode == ActivityMode.ski
-                              ? _skiMarkers(context, skiCatalog)
+                              ? _skiMarkers(context, skiCatalog, activeSkiRoute)
                               : _markers(context, wide, mapCrags)),
                           ..._pathEditorMarkers(),
                         ],
@@ -324,16 +396,24 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                   editMode: editMode,
                   selectedCrag: selectedCrag,
                   selectedWall: selectedWall,
-                  selectedSkiRoute: selectedSkiRoute,
+                  selectedSkiRoute: activeSkiRoute,
                   mode: mode,
                   mapCenter: currentMapCenter ?? initialCenter,
                   onToggleEditMode: () {
                     setState(() => editMode = !editMode);
                   },
                   onEdit: _openCoordinateEditor,
-                  onTracePath: (kind) => _startPathEditor(kind, mapPaths),
+                  onTracePath: (kind) =>
+                      _startPathEditor(kind, mapPaths, activeSkiRoute),
                   onCreateSkiRoute: _startNewSkiRoutePath,
                 ),
+                if (tileStyle != _MapTileStyle.terrain3d && mapIsRotated)
+                  _NorthResetButton(
+                    onPressed: () {
+                      mapController.rotate(0);
+                      setState(() => currentMapRotation = 0);
+                    },
+                  ),
                 if (editMode && !pathEditMode)
                   const IgnorePointer(
                     child: Center(
@@ -379,7 +459,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                     onToggle: _toggleFilter,
                   )
                 else
-                  const _SkiMapLegend(),
+                  _SkiMapLegend(top: recordedTrack.isNotEmpty ? 168 : 66),
                 if (catalog.isLoading)
                   const Positioned(
                     left: 0,
@@ -527,7 +607,12 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     ];
   }
 
-  List<Marker> _skiMarkers(BuildContext context, List<SkiRoute> routes) {
+  List<Marker> _skiMarkers(
+    BuildContext context,
+    List<SkiRoute> routes,
+    SkiRoute? activeRoute,
+  ) {
+    final allCluster = clusterAllSkiRoutes(routes);
     return [
       if (userLocation != null)
         Marker(
@@ -536,25 +621,122 @@ class _MapScreenState extends ConsumerState<MapScreen> {
           height: 56,
           child: const PulsingUserMarker(),
         ),
-      ...routes.map(
-        (route) => Marker(
-          point: route.location,
-          width: 160,
-          height: 52,
-          child: Tooltip(
-            message: route.name,
-            child: GestureDetector(
-              onTap: () => _selectSkiRoute(context, route),
-              child: _LabeledMapMarker(
-                label: route.name,
-                icon: Icons.downhill_skiing,
-                selected: selectedSkiRoute == route,
+      if (showSkiAllCluster && allCluster != null)
+        _skiClusterMarker(
+          context,
+          cluster: allCluster,
+          label: 'All ski tours',
+          zoomTarget: 8.5,
+        )
+      else if (showSkiRegionClusters)
+        for (final cluster in clusterSkiRoutesByRegion(routes))
+          _skiClusterMarker(
+            context,
+            cluster: cluster,
+            label: cluster.label,
+            zoomTarget: 12,
+          )
+      else
+        ...routes.map(
+          (route) => Marker(
+            point: route.location,
+            width: 160,
+            height: 52,
+            child: Tooltip(
+              message: route.name,
+              child: GestureDetector(
+                onTap: () => _selectSkiRoute(context, route),
+                child: _LabeledMapMarker(
+                  label: route.name,
+                  icon: Icons.downhill_skiing,
+                  selected: activeRoute?.id == route.id,
+                ),
               ),
             ),
           ),
         ),
-      ),
     ];
+  }
+
+  Marker _skiClusterMarker(
+    BuildContext context, {
+    required _SkiRouteCluster cluster,
+    required String label,
+    required double zoomTarget,
+  }) {
+    final count = cluster.routes.length;
+    final markerSize = count > 99
+        ? 70.0
+        : count > 9
+        ? 62.0
+        : 54.0;
+
+    return Marker(
+      point: cluster.point,
+      width: markerSize + 76,
+      height: markerSize + 32,
+      child: Tooltip(
+        message: '$label · $count ski tours',
+        child: GestureDetector(
+          onTap: () => mapController.move(cluster.point, zoomTarget),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              DecoratedBox(
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.primary,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: Colors.white, width: 3),
+                  boxShadow: const [
+                    BoxShadow(
+                      blurRadius: 5,
+                      color: Color(0x55000000),
+                      offset: Offset(0, 1),
+                    ),
+                  ],
+                ),
+                child: SizedBox(
+                  width: markerSize,
+                  height: markerSize,
+                  child: Center(
+                    child: Text(
+                      '$count',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 4),
+              DecoratedBox(
+                decoration: BoxDecoration(
+                  color: Theme.of(
+                    context,
+                  ).colorScheme.surface.withValues(alpha: 0.92),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 3,
+                  ),
+                  child: Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   List<Polyline> _skiLines(MapPathCatalog mapPaths, List<SkiRoute> routes) {
@@ -605,6 +787,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       selectedCrag = crag;
       selectedWall = crag.walls.isEmpty ? null : crag.walls.first;
       selectedSkiRoute = null;
+      selectedSkiRouteId = null;
     });
 
     if (wide) return;
@@ -627,9 +810,14 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   void _selectSkiRoute(BuildContext context, SkiRoute route) {
     setState(() {
       selectedSkiRoute = route;
+      selectedSkiRouteId = route.id;
       selectedCrag = null;
       selectedWall = null;
     });
+    if (editMode) {
+      _showMapMessage('${route.name} selected for ski line editing');
+      return;
+    }
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -657,10 +845,15 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       selectedWall = null;
       selectedParkingCrag = null;
       selectedSkiRoute = null;
+      selectedSkiRouteId = null;
     });
   }
 
-  void _startPathEditor(_PathDraftKind kind, MapPathCatalog mapPaths) {
+  void _startPathEditor(
+    _PathDraftKind kind,
+    MapPathCatalog mapPaths, [
+    SkiRoute? activeSkiRoute,
+  ]) {
     if (kind == _PathDraftKind.cragApproach) {
       final crag = selectedCrag;
       if (crag == null) {
@@ -680,7 +873,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       return;
     }
 
-    final route = selectedSkiRoute;
+    final route = activeSkiRoute ?? selectedSkiRoute;
     if (route == null) {
       _showMapMessage('Select a ski route before tracing its line');
       return;
@@ -689,6 +882,8 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         ? mapPaths.skiAscent(route.name)
         : mapPaths.skiDescent(route.name);
     setState(() {
+      selectedSkiRoute = route;
+      selectedSkiRouteId = route.id;
       pathDraftKind = kind;
       pathDraft = saved.length >= 2
           ? [...saved]
@@ -704,6 +899,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     final center = currentMapCenter ?? userLocation;
     setState(() {
       selectedSkiRoute = null;
+      selectedSkiRouteId = null;
       selectedCrag = null;
       selectedWall = null;
       selectedParkingCrag = null;
@@ -873,7 +1069,10 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     ref.invalidate(skiRouteCatalogProvider);
     ref.invalidate(mapPathCatalogProvider);
     _cancelPathEditor();
-    setState(() => selectedSkiRoute = route);
+    setState(() {
+      selectedSkiRoute = route;
+      selectedSkiRouteId = route.id;
+    });
     _showMapMessage('${route.name} added to the ski map');
   }
 
@@ -1561,6 +1760,18 @@ class _CragCluster {
   final List<Crag> crags;
 }
 
+class _SkiRouteCluster {
+  const _SkiRouteCluster({
+    required this.label,
+    required this.point,
+    required this.routes,
+  });
+
+  final String label;
+  final LatLng point;
+  final List<SkiRoute> routes;
+}
+
 enum _MapTileStyle {
   clean(
     label: 'Clean',
@@ -1866,6 +2077,32 @@ class _GpsAccuracyBadge extends StatelessWidget {
                 ),
               ],
             ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _NorthResetButton extends StatelessWidget {
+  const _NorthResetButton({required this.onPressed});
+
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return Positioned(
+      right: 12,
+      bottom: 146,
+      child: SafeArea(
+        child: Material(
+          color: Theme.of(context).colorScheme.surface,
+          elevation: 4,
+          shape: const CircleBorder(),
+          child: IconButton(
+            tooltip: 'Reset north',
+            onPressed: onPressed,
+            icon: const Icon(Icons.explore),
           ),
         ),
       ),
@@ -2675,13 +2912,15 @@ class _SkiDetailLine extends StatelessWidget {
 }
 
 class _SkiMapLegend extends StatelessWidget {
-  const _SkiMapLegend();
+  const _SkiMapLegend({required this.top});
+
+  final double top;
 
   @override
   Widget build(BuildContext context) {
     return Positioned(
       right: 12,
-      top: 12,
+      top: top,
       child: Material(
         color: Theme.of(context).colorScheme.surface,
         elevation: 3,
