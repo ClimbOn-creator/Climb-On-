@@ -7,10 +7,12 @@ import '../models/crag.dart';
 import '../models/climb_route.dart';
 import '../services/database_service.dart';
 import '../state/activity_mode_state.dart';
+import '../state/admin_state.dart';
 import '../state/catalog_state.dart';
 import '../state/climb_log_state.dart';
 import '../models/wall.dart';
 import '../widgets/side_banner_layout.dart';
+import '../widgets/admin_route_editor.dart';
 
 class CragsScreen extends ConsumerWidget {
   const CragsScreen({super.key});
@@ -158,6 +160,7 @@ class _CragRoutePickerState extends ConsumerState<_CragRoutePicker> {
   @override
   Widget build(BuildContext context) {
     final walls = widget.crag.walls;
+    final isAdmin = ref.watch(isMapAdminProvider).valueOrNull == true;
 
     return DraggableScrollableSheet(
       expand: false,
@@ -204,7 +207,9 @@ class _CragRoutePickerState extends ConsumerState<_CragRoutePicker> {
               label: dangerInfo,
               color: Theme.of(context).colorScheme.error,
               onEdit:
-                  const DatabaseService().currentUserId == widget.crag.createdBy
+                  isAdmin ||
+                      const DatabaseService().currentUserId ==
+                          widget.crag.createdBy
                   ? _editWarning
                   : null,
             ),
@@ -241,11 +246,23 @@ class _CragRoutePickerState extends ConsumerState<_CragRoutePicker> {
               ],
             ),
             const SizedBox(height: 18),
-            Text(
-              selectedWall == null ? 'Select a wall' : 'Routes',
-              style: Theme.of(
-                context,
-              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    selectedWall == null ? 'Select a wall' : 'Routes',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ),
+                if (isAdmin && selectedWall != null)
+                  FilledButton.icon(
+                    onPressed: () => _openRouteEditor(selectedWall!),
+                    icon: const Icon(Icons.add),
+                    label: const Text('Add route'),
+                  ),
+              ],
             ),
             const SizedBox(height: 10),
             if (selectedWall == null)
@@ -253,6 +270,17 @@ class _CragRoutePickerState extends ConsumerState<_CragRoutePicker> {
                 child: Padding(
                   padding: EdgeInsets.all(16),
                   child: Text('Pick a wall to see its routes.'),
+                ),
+              )
+            else if (selectedWall!.routes.isEmpty)
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Text(
+                    isAdmin
+                        ? 'No routes yet. Use Add route to create the first one.'
+                        : 'No routes have been added to this wall yet.',
+                  ),
                 ),
               )
             else
@@ -266,7 +294,19 @@ class _CragRoutePickerState extends ConsumerState<_CragRoutePicker> {
                       subtitle: Text(
                         '${route.grade} - ${route.typeLabel} - ${route.pitchLabel} - ${route.rating}/5',
                       ),
-                      trailing: const Icon(Icons.chevron_right),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (isAdmin)
+                            IconButton(
+                              tooltip: 'Edit every route detail',
+                              onPressed: () =>
+                                  _openRouteEditor(selectedWall!, route: route),
+                              icon: const Icon(Icons.edit_outlined),
+                            ),
+                          const Icon(Icons.chevron_right),
+                        ],
+                      ),
                       onTap: () => widget.onRouteSelected(route),
                     ),
                   ),
@@ -276,6 +316,21 @@ class _CragRoutePickerState extends ConsumerState<_CragRoutePicker> {
         );
       },
     );
+  }
+
+  Future<void> _openRouteEditor(Wall wall, {ClimbRoute? route}) async {
+    final saved = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (context) => SizedBox(
+        height: MediaQuery.sizeOf(context).height * 0.94,
+        child: AdminRouteEditor(wall: wall, route: route),
+      ),
+    );
+    if (saved != true || !mounted) return;
+    ref.invalidate(catalogProvider);
+    Navigator.pop(context);
   }
 
   Future<void> _editWarning() async {

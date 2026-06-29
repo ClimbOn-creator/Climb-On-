@@ -504,6 +504,61 @@ class DatabaseService {
     });
   }
 
+  Future<String> adminSaveCatalogRoute({
+    String? routeId,
+    required String wallId,
+    required Map<String, Object?> values,
+    List<int>? imageBytes,
+    String imageName = '',
+    String imageContentType = 'image/jpeg',
+  }) async {
+    final user = _currentUser;
+    if (user == null) throw const AuthException('Sign in to edit routes.');
+
+    String imageUrl = values['route_image_url']?.toString() ?? '';
+    String? uploadedPath;
+    if (imageBytes != null && imageBytes.isNotEmpty) {
+      final extension = imageName.contains('.')
+          ? imageName
+                .split('.')
+                .last
+                .toLowerCase()
+                .replaceAll(RegExp(r'[^a-z0-9]'), '')
+          : 'jpg';
+      uploadedPath =
+          '${user.id}/catalog/${DateTime.now().microsecondsSinceEpoch}.${extension.isEmpty ? 'jpg' : extension}';
+      final storage = Supabase.instance.client.storage.from(
+        'submission-photos',
+      );
+      await storage.uploadBinary(
+        uploadedPath,
+        Uint8List.fromList(imageBytes),
+        fileOptions: FileOptions(contentType: imageContentType, upsert: false),
+      );
+      imageUrl = storage.getPublicUrl(uploadedPath);
+    }
+
+    try {
+      final result = await Supabase.instance.client.rpc(
+        'admin_save_catalog_route',
+        params: {
+          'target_route_id': routeId,
+          'target_wall_id': wallId,
+          ...values,
+          'route_image_url': imageUrl,
+        },
+      );
+      return result?.toString() ?? '';
+    } catch (_) {
+      if (uploadedPath != null) {
+        await Supabase.instance.client.storage.from('submission-photos').remove(
+          [uploadedPath],
+        );
+      }
+      rethrow;
+    }
+  }
+
   Future<void> _creatorUpdate(
     String functionName,
     Map<String, Object?> params,
@@ -724,6 +779,10 @@ class DatabaseService {
       ),
       descentNotes: _string(json['descentNotes'], 'Descent notes coming soon.'),
       dangerInfo: _string(json['dangerInfo']),
+      imageUrl: _string(
+        json['imageUrl'],
+        'https://images.squarespace-cdn.com/content/v1/53f4116fe4b0fc4173f54f3f/b372d92d-f15e-4605-8a1b-76629df27e73/Main-Wall-2.jpg',
+      ),
       createdBy: _string(json['createdBy']),
     );
   }

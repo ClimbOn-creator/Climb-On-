@@ -23,8 +23,9 @@ begin
   if auth.uid() is null then raise exception 'Sign in required'; end if;
   update public.crags
   set danger_info = trim(new_warning)
-  where id = target_crag_id and created_by = auth.uid();
-  if not found then raise exception 'Only the crag creator can edit this warning'; end if;
+  where id = target_crag_id
+    and (created_by = auth.uid() or public.is_app_admin());
+  if not found then raise exception 'Only the crag creator or an administrator can edit this warning'; end if;
 end;
 $$;
 
@@ -41,8 +42,9 @@ begin
   if auth.uid() is null then raise exception 'Sign in required'; end if;
   update public.routes
   set danger_info = trim(new_warning)
-  where id = target_route_id and created_by = auth.uid();
-  if not found then raise exception 'Only the route creator can edit this warning'; end if;
+  where id = target_route_id
+    and (created_by = auth.uid() or public.is_app_admin());
+  if not found then raise exception 'Only the route creator or an administrator can edit this warning'; end if;
 end;
 $$;
 

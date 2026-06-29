@@ -52,6 +52,7 @@ create table public.routes (
   descent_notes text default '',
   danger_info text default '',
   rating double precision default 0,
+  image_url text not null default '',
   created_by uuid references auth.users(id) on delete set null,
   created_at timestamptz not null default now()
 );
@@ -317,6 +318,7 @@ as $$
               'approachNotes', routes.approach_notes,
               'descentNotes', routes.descent_notes,
               'dangerInfo', routes.danger_info,
+              'imageUrl', routes.image_url,
               'createdBy', coalesce(routes.created_by::text, '')
             ) order by routes.name)
             from public.routes
