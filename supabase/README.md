@@ -21,6 +21,7 @@ GitHub before applying them in the Supabase SQL Editor.
 14. `fix_public_climb_catalog_access.sql`
 15. `add_chosslandia_crag.sql`
 16. `admin_catalog_route_editor.sql`
+17. `admin_ski_route_editor.sql`
 
 Optional catalog data:
 

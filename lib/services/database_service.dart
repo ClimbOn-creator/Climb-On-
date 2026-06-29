@@ -11,6 +11,7 @@ import '../models/climb_route.dart';
 import '../models/crag.dart';
 import '../models/geo_bounds.dart';
 import '../models/map_path_catalog.dart';
+import '../models/ski_route.dart';
 import '../models/social.dart';
 import '../models/wall.dart';
 import '../state/climb_log_state.dart';
@@ -400,6 +401,18 @@ class DatabaseService {
     );
   }
 
+  Future<void> submitRouteWithPhotos(
+    Map<String, Object?> submission, {
+    required List<UploadPhotoPayload> photos,
+  }) async {
+    await _submitWithPhotos(
+      table: 'route_submissions',
+      imageColumn: 'photo_url',
+      submission: submission,
+      photos: photos,
+    );
+  }
+
   Future<void> submitSkiRoute(
     Map<String, Object?> submission, {
     required List<int> photoBytes,
@@ -413,6 +426,18 @@ class DatabaseService {
       photoBytes: photoBytes,
       photoName: photoName,
       photoContentType: photoContentType,
+    );
+  }
+
+  Future<void> submitSkiRouteWithPhotos(
+    Map<String, Object?> submission, {
+    required List<UploadPhotoPayload> photos,
+  }) async {
+    await _submitWithPhotos(
+      table: 'ski_route_submissions',
+      imageColumn: 'image_url',
+      submission: submission,
+      photos: photos,
     );
   }
 
@@ -456,6 +481,57 @@ class DatabaseService {
       });
     } catch (_) {
       await storage.remove([storagePath]);
+      rethrow;
+    }
+  }
+
+  Future<void> _submitWithPhotos({
+    required String table,
+    required String imageColumn,
+    required Map<String, Object?> submission,
+    required List<UploadPhotoPayload> photos,
+  }) async {
+    if (!SupabaseConfig.isConfigured) {
+      throw StateError('Supabase is not configured.');
+    }
+    if (photos.isEmpty) {
+      throw StateError('Add at least one picture.');
+    }
+    final user = _currentUser;
+    if (user == null) {
+      throw const AuthException('Sign in before submitting a route.');
+    }
+
+    final storage = Supabase.instance.client.storage.from('submission-photos');
+    final uploadedPaths = <String>[];
+    final urls = <String>[];
+
+    try {
+      for (var index = 0; index < photos.length; index++) {
+        final photo = photos[index];
+        final extension = _safeFileExtension(photo.fileName);
+        final storagePath =
+            '${user.id}/${DateTime.now().microsecondsSinceEpoch}_$index.$extension';
+        await storage.uploadBinary(
+          storagePath,
+          Uint8List.fromList(photo.bytes),
+          fileOptions: FileOptions(
+            contentType: photo.contentType,
+            upsert: false,
+          ),
+        );
+        uploadedPaths.add(storagePath);
+        urls.add(storage.getPublicUrl(storagePath));
+      }
+
+      await Supabase.instance.client.from(table).insert({
+        ...submission,
+        'user_id': user.id,
+        imageColumn: urls.first,
+        'photo_urls': urls,
+      });
+    } catch (_) {
+      if (uploadedPaths.isNotEmpty) await storage.remove(uploadedPaths);
       rethrow;
     }
   }
@@ -703,6 +779,73 @@ class DatabaseService {
     });
   }
 
+  Future<List<SkiRoute>> loadSkiRoutes() async {
+    if (!SupabaseConfig.isConfigured) return const [];
+
+    try {
+      final result = await Supabase.instance.client.rpc('ski_catalog');
+      final value = result is String ? jsonDecode(result) : result;
+      return _list(value)
+          .map((item) => _skiRouteFromJson(Map<String, Object?>.from(item)))
+          .toList(growable: false);
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  Future<SkiRoute> adminSaveSkiRoute({
+    String? routeId,
+    required Map<String, Object?> values,
+    List<int>? imageBytes,
+    String imageName = '',
+    String imageContentType = 'image/jpeg',
+    List<LatLng> ascentPoints = const [],
+    List<LatLng> descentPoints = const [],
+  }) async {
+    if (!SupabaseConfig.isConfigured) {
+      throw StateError('Supabase is not configured.');
+    }
+
+    String imageUrl = values['route_image_url']?.toString() ?? '';
+    String? uploadedPath;
+    if (imageBytes != null && imageBytes.isNotEmpty) {
+      final extension = _safeFileExtension(imageName);
+      uploadedPath =
+          '${_currentUser?.id ?? 'admin'}/ski-route-${DateTime.now().microsecondsSinceEpoch}.$extension';
+      final storage = Supabase.instance.client.storage.from(
+        'submission-photos',
+      );
+      await storage.uploadBinary(
+        uploadedPath,
+        Uint8List.fromList(imageBytes),
+        fileOptions: FileOptions(contentType: imageContentType, upsert: false),
+      );
+      imageUrl = storage.getPublicUrl(uploadedPath);
+    }
+
+    try {
+      final result = await Supabase.instance.client.rpc(
+        'admin_save_ski_route',
+        params: {
+          'route_id': routeId,
+          ...values,
+          'route_image_url': imageUrl,
+          'ascent_points': _pathJson(ascentPoints),
+          'descent_points': _pathJson(descentPoints),
+        },
+      );
+      final value = result is String ? jsonDecode(result) : result;
+      return _skiRouteFromJson(Map<String, Object?>.from(value as Map));
+    } catch (_) {
+      if (uploadedPath != null) {
+        await Supabase.instance.client.storage.from('submission-photos').remove(
+          [uploadedPath],
+        );
+      }
+      rethrow;
+    }
+  }
+
   Future<String> submitRecordedPath({
     required String name,
     required String kind,
@@ -847,6 +990,32 @@ class DatabaseService {
     );
   }
 
+  SkiRoute _skiRouteFromJson(Map<String, Object?> json) {
+    return SkiRoute(
+      id: _string(json['id']),
+      name: _string(json['name']),
+      area: _string(json['area']),
+      region: _string(json['region']),
+      location: LatLng(_double(json['lat']), _double(json['lng'])),
+      trailhead: LatLng(
+        _double(json['trailheadLat']),
+        _double(json['trailheadLng']),
+      ),
+      distanceKm: _double(json['distanceKm']),
+      elevationGainMeters: _int(json['elevationGainMeters']),
+      difficulty: _string(json['difficulty'], 'Intermediate'),
+      aspect: _string(json['aspect'], 'North'),
+      avalancheTerrain: _string(json['avalancheTerrain'], 'Challenging'),
+      season: _string(json['season']),
+      description: _string(json['description']),
+      approachNotes: _string(json['approachNotes']),
+      descentNotes: _string(json['descentNotes']),
+      dangerInfo: _string(json['dangerInfo']),
+      imageUrl: _string(json['imageUrl']),
+      createdBy: _string(json['createdBy']),
+    );
+  }
+
   List<Map> _list(Object? value) {
     if (value is List) return value.whereType<Map>().toList();
     return const [];
@@ -897,6 +1066,17 @@ class DatabaseService {
     return double.tryParse(value?.toString() ?? '') ?? fallback;
   }
 
+  String _safeFileExtension(String fileName) {
+    final extension = fileName.contains('.')
+        ? fileName
+              .split('.')
+              .last
+              .toLowerCase()
+              .replaceAll(RegExp(r'[^a-z0-9]'), '')
+        : 'jpg';
+    return extension.isEmpty ? 'jpg' : extension;
+  }
+
   ClimbRouteType _routeType(String value) {
     return switch (value.toLowerCase()) {
       'trad' => ClimbRouteType.trad,
@@ -914,4 +1094,16 @@ class DatabaseService {
       _ => PitchType.singlePitch,
     };
   }
+}
+
+class UploadPhotoPayload {
+  const UploadPhotoPayload({
+    required this.bytes,
+    required this.fileName,
+    required this.contentType,
+  });
+
+  final List<int> bytes;
+  final String fileName;
+  final String contentType;
 }

@@ -14,7 +14,6 @@ import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../crag_sidebar.dart';
-import '../data/sample_ski_routes.dart';
 import '../models/climb_route.dart';
 import '../models/crag.dart';
 import '../models/map_path_catalog.dart';
@@ -26,6 +25,8 @@ import '../state/activity_mode_state.dart';
 import '../state/catalog_state.dart';
 import '../state/climb_log_state.dart';
 import '../state/map_path_state.dart';
+import '../state/ski_route_state.dart';
+import '../utils/number_parser.dart';
 import '../widgets/pulsing_user_marker.dart';
 
 class MapScreen extends ConsumerStatefulWidget {
@@ -180,6 +181,8 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     final showTitleBar = width >= 1024;
     final mode = ref.watch(activityModeProvider);
     final catalog = ref.watch(catalogProvider);
+    final skiCatalog =
+        ref.watch(skiRouteCatalogProvider).valueOrNull ?? const <SkiRoute>[];
     final mapPaths =
         ref.watch(mapPathCatalogProvider).valueOrNull ?? const MapPathCatalog();
     final catalogCrags = catalog.valueOrNull ?? const <Crag>[];
@@ -187,7 +190,9 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     final initialCenter =
         userLocation ??
         (mode == ActivityMode.ski
-            ? skiRoutes.first.location
+            ? (skiCatalog.isEmpty
+                  ? const LatLng(49.9120, -123.1050)
+                  : skiCatalog.first.location)
             : mapCrags.isEmpty
             ? const LatLng(48.43989, -123.56344)
             : mapCrags.first.location);
@@ -205,7 +210,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                     zoom: currentZoom,
                     mode: mode,
                     crags: mapCrags,
-                    skiRoutes: skiRoutes,
+                    skiRoutes: skiCatalog,
                     paths: mapPaths,
                     selectedCrag: selectedCrag,
                     selectedSkiRoute: selectedSkiRoute,
@@ -244,7 +249,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                       PolylineLayer(
                         polylines: [
                           ...(mode == ActivityMode.ski
-                              ? _skiLines(mapPaths)
+                              ? _skiLines(mapPaths, skiCatalog)
                               : _approachLines(mapPaths)),
                           if (pathEditMode && pathDraft.length >= 2)
                             Polyline(
@@ -286,7 +291,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                       MarkerLayer(
                         markers: [
                           ...(mode == ActivityMode.ski
-                              ? _skiMarkers(context)
+                              ? _skiMarkers(context, skiCatalog)
                               : _markers(context, wide, mapCrags)),
                           ..._pathEditorMarkers(),
                         ],
@@ -327,6 +332,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                   },
                   onEdit: _openCoordinateEditor,
                   onTracePath: (kind) => _startPathEditor(kind, mapPaths),
+                  onCreateSkiRoute: _startNewSkiRoutePath,
                 ),
                 if (editMode && !pathEditMode)
                   const IgnorePointer(
@@ -521,7 +527,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     ];
   }
 
-  List<Marker> _skiMarkers(BuildContext context) {
+  List<Marker> _skiMarkers(BuildContext context, List<SkiRoute> routes) {
     return [
       if (userLocation != null)
         Marker(
@@ -530,7 +536,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
           height: 56,
           child: const PulsingUserMarker(),
         ),
-      ...skiRoutes.map(
+      ...routes.map(
         (route) => Marker(
           point: route.location,
           width: 160,
@@ -551,9 +557,9 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     ];
   }
 
-  List<Polyline> _skiLines(MapPathCatalog mapPaths) {
+  List<Polyline> _skiLines(MapPathCatalog mapPaths, List<SkiRoute> routes) {
     return [
-      for (final route in skiRoutes) ...[
+      for (final route in routes) ...[
         Polyline(
           points: _skiAscentPoints(route, mapPaths),
           color: _PathDraftKind.skiAscent.color,
@@ -694,6 +700,21 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     });
   }
 
+  void _startNewSkiRoutePath() {
+    final center = currentMapCenter ?? userLocation;
+    setState(() {
+      selectedSkiRoute = null;
+      selectedCrag = null;
+      selectedWall = null;
+      selectedParkingCrag = null;
+      pathDraftKind = _PathDraftKind.skiAscent;
+      pathDraft = center == null ? [] : [center];
+      pathEditMode = true;
+      selectedPathPointIndex = null;
+    });
+    _showMapMessage('Tap the ski map to draw the ascent line.');
+  }
+
   List<Marker> _pathEditorMarkers() {
     if (!pathEditMode) return const [];
     final pathColor = pathDraftKind?.color ?? _PathDraftKind.cragApproach.color;
@@ -790,6 +811,10 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         );
       } else {
         final route = selectedSkiRoute;
+        if (route == null && kind == _PathDraftKind.skiAscent) {
+          await _createSkiRouteFromPath(points);
+          return;
+        }
         if (route == null) return;
         await const DatabaseService().updateSkiRoutePath(
           routeName: route.name,
@@ -804,6 +829,52 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     } on Object catch (error) {
       _showMapMessage('Could not save trail: $error');
     }
+  }
+
+  Future<void> _createSkiRouteFromPath(List<LatLng> points) async {
+    final draft = await showModalBottomSheet<_SkiRouteDraft>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      showDragHandle: true,
+      builder: (context) => _NewSkiRouteSheet(
+        distanceKm: _pathLength(points) / 1000,
+        trailhead: points.first,
+        highPoint: points.last,
+      ),
+    );
+    if (draft == null || !mounted) return;
+
+    final service = const DatabaseService();
+    final route = await service.adminSaveSkiRoute(
+      values: {
+        'route_name': draft.name,
+        'route_area': draft.area,
+        'route_region': draft.region,
+        'route_difficulty': draft.difficulty,
+        'route_distance_km': draft.distanceKm,
+        'route_elevation_gain_meters': draft.elevationGainMeters,
+        'route_aspect': draft.aspect,
+        'route_avalanche_terrain': draft.avalancheTerrain,
+        'route_season': draft.season,
+        'route_lat': points.last.latitude,
+        'route_lng': points.last.longitude,
+        'route_trailhead_lat': points.first.latitude,
+        'route_trailhead_lng': points.first.longitude,
+        'route_description': draft.description,
+        'route_approach_notes': draft.approachNotes,
+        'route_descent_notes': draft.descentNotes,
+        'route_danger_info': draft.dangerInfo,
+        'route_image_url': draft.imageUrl,
+      },
+      ascentPoints: points,
+    );
+
+    ref.invalidate(skiRouteCatalogProvider);
+    ref.invalidate(mapPathCatalogProvider);
+    _cancelPathEditor();
+    setState(() => selectedSkiRoute = route);
+    _showMapMessage('${route.name} added to the ski map');
   }
 
   double _pathLength(List<LatLng> points) {
@@ -1665,6 +1736,7 @@ class _AdminMapTools extends StatelessWidget {
     required this.onToggleEditMode,
     required this.onEdit,
     required this.onTracePath,
+    required this.onCreateSkiRoute,
   });
 
   final bool isAdmin;
@@ -1677,6 +1749,7 @@ class _AdminMapTools extends StatelessWidget {
   final VoidCallback onToggleEditMode;
   final VoidCallback onEdit;
   final ValueChanged<_PathDraftKind> onTracePath;
+  final VoidCallback onCreateSkiRoute;
 
   @override
   Widget build(BuildContext context) {
@@ -1724,6 +1797,11 @@ class _AdminMapTools extends StatelessWidget {
                       label: const Text('Trace approach'),
                     )
                   else ...[
+                    FilledButton.icon(
+                      onPressed: onCreateSkiRoute,
+                      icon: const Icon(Icons.add_road, size: 18),
+                      label: const Text('New ski route'),
+                    ),
                     OutlinedButton.icon(
                       onPressed: selectedSkiRoute == null
                           ? null
@@ -2047,6 +2125,298 @@ class _PathEditorTools extends StatelessWidget {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _SkiRouteDraft {
+  const _SkiRouteDraft({
+    required this.name,
+    required this.area,
+    required this.region,
+    required this.difficulty,
+    required this.distanceKm,
+    required this.elevationGainMeters,
+    required this.aspect,
+    required this.avalancheTerrain,
+    required this.season,
+    required this.description,
+    required this.approachNotes,
+    required this.descentNotes,
+    required this.dangerInfo,
+    required this.imageUrl,
+  });
+
+  final String name;
+  final String area;
+  final String region;
+  final String difficulty;
+  final double distanceKm;
+  final int elevationGainMeters;
+  final String aspect;
+  final String avalancheTerrain;
+  final String season;
+  final String description;
+  final String approachNotes;
+  final String descentNotes;
+  final String dangerInfo;
+  final String imageUrl;
+}
+
+class _NewSkiRouteSheet extends StatefulWidget {
+  const _NewSkiRouteSheet({
+    required this.distanceKm,
+    required this.trailhead,
+    required this.highPoint,
+  });
+
+  final double distanceKm;
+  final LatLng trailhead;
+  final LatLng highPoint;
+
+  @override
+  State<_NewSkiRouteSheet> createState() => _NewSkiRouteSheetState();
+}
+
+class _NewSkiRouteSheetState extends State<_NewSkiRouteSheet> {
+  final formKey = GlobalKey<FormState>();
+  final name = TextEditingController();
+  final area = TextEditingController();
+  final region = TextEditingController(text: 'Vancouver Island');
+  final distanceKm = TextEditingController();
+  final elevationGain = TextEditingController();
+  final season = TextEditingController(text: 'Winter through spring');
+  final description = TextEditingController();
+  final approachNotes = TextEditingController();
+  final descentNotes = TextEditingController();
+  final dangerInfo = TextEditingController();
+  final imageUrl = TextEditingController(
+    text: 'https://images.unsplash.com/photo-1517824806704-9040b037703b',
+  );
+
+  String difficulty = 'Intermediate';
+  String aspect = 'North';
+  String avalancheTerrain = 'Challenging';
+
+  @override
+  void initState() {
+    super.initState();
+    distanceKm.text = widget.distanceKm.toStringAsFixed(2);
+  }
+
+  @override
+  void dispose() {
+    for (final controller in [
+      name,
+      area,
+      region,
+      distanceKm,
+      elevationGain,
+      season,
+      description,
+      approachNotes,
+      descentNotes,
+      dangerInfo,
+      imageUrl,
+    ]) {
+      controller.dispose();
+    }
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.only(
+        left: 16,
+        right: 16,
+        bottom: MediaQuery.viewInsetsOf(context).bottom + 16,
+      ),
+      child: Form(
+        key: formKey,
+        child: ListView(
+          shrinkWrap: true,
+          children: [
+            Text(
+              'Create ski route from this line',
+              style: Theme.of(
+                context,
+              ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Trailhead: ${widget.trailhead.latitude.toStringAsFixed(5)}, ${widget.trailhead.longitude.toStringAsFixed(5)}\n'
+              'High point: ${widget.highPoint.latitude.toStringAsFixed(5)}, ${widget.highPoint.longitude.toStringAsFixed(5)}',
+              style: Theme.of(context).textTheme.labelMedium,
+            ),
+            const SizedBox(height: 12),
+            _SheetField(controller: name, label: 'Route name'),
+            _SheetField(controller: area, label: 'Ski area or zone'),
+            _SheetField(controller: region, label: 'Region'),
+            _SheetMenu(
+              label: 'Difficulty',
+              value: difficulty,
+              values: const [
+                'Beginner',
+                'Beginner to Intermediate',
+                'Intermediate',
+                'Advanced',
+                'Expert',
+              ],
+              onChanged: (value) => setState(() => difficulty = value),
+            ),
+            _SheetField(
+              controller: distanceKm,
+              label: 'Distance in km',
+              decimal: true,
+            ),
+            _SheetField(
+              controller: elevationGain,
+              label: 'Elevation gain in meters',
+              numeric: true,
+            ),
+            _SheetMenu(
+              label: 'Aspect',
+              value: aspect,
+              values: const [
+                'North',
+                'Northeast',
+                'East',
+                'Southeast',
+                'South',
+                'Southwest',
+                'West',
+                'Northwest',
+                'Rolling',
+              ],
+              onChanged: (value) => setState(() => aspect = value),
+            ),
+            _SheetMenu(
+              label: 'Avalanche terrain',
+              value: avalancheTerrain,
+              values: const ['Simple', 'Challenging', 'Complex'],
+              onChanged: (value) => setState(() => avalancheTerrain = value),
+            ),
+            _SheetField(controller: season, label: 'Best season'),
+            _SheetField(
+              controller: description,
+              label: 'Description',
+              lines: 3,
+            ),
+            _SheetField(
+              controller: approachNotes,
+              label: 'Approach notes',
+              lines: 2,
+            ),
+            _SheetField(
+              controller: descentNotes,
+              label: 'Descent notes',
+              lines: 2,
+            ),
+            _SheetField(
+              controller: dangerInfo,
+              label: 'Danger/safety notes',
+              lines: 2,
+            ),
+            _SheetField(controller: imageUrl, label: 'Picture URL'),
+            const SizedBox(height: 12),
+            FilledButton.icon(
+              onPressed: _submit,
+              icon: const Icon(Icons.add_location_alt),
+              label: const Text('Add route to ski map'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _submit() {
+    if (!formKey.currentState!.validate()) return;
+    Navigator.pop(
+      context,
+      _SkiRouteDraft(
+        name: name.text.trim(),
+        area: area.text.trim(),
+        region: region.text.trim(),
+        difficulty: difficulty,
+        distanceKm: parseNumberWithUnits(distanceKm.text) ?? 0,
+        elevationGainMeters: parseWholeNumberWithUnits(elevationGain.text) ?? 0,
+        aspect: aspect,
+        avalancheTerrain: avalancheTerrain,
+        season: season.text.trim(),
+        description: description.text.trim(),
+        approachNotes: approachNotes.text.trim(),
+        descentNotes: descentNotes.text.trim(),
+        dangerInfo: dangerInfo.text.trim(),
+        imageUrl: imageUrl.text.trim(),
+      ),
+    );
+  }
+}
+
+class _SheetField extends StatelessWidget {
+  const _SheetField({
+    required this.controller,
+    required this.label,
+    this.lines = 1,
+    this.numeric = false,
+    this.decimal = false,
+  });
+
+  final TextEditingController controller;
+  final String label;
+  final int lines;
+  final bool numeric;
+  final bool decimal;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: TextFormField(
+        controller: controller,
+        minLines: lines,
+        maxLines: lines,
+        keyboardType: numeric || decimal
+            ? const TextInputType.numberWithOptions(decimal: true)
+            : null,
+        decoration: InputDecoration(labelText: label),
+        validator: (value) =>
+            value == null || value.trim().isEmpty ? 'Required' : null,
+      ),
+    );
+  }
+}
+
+class _SheetMenu extends StatelessWidget {
+  const _SheetMenu({
+    required this.label,
+    required this.value,
+    required this.values,
+    required this.onChanged,
+  });
+
+  final String label;
+  final String value;
+  final List<String> values;
+  final ValueChanged<String> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: DropdownButtonFormField<String>(
+        initialValue: value,
+        decoration: InputDecoration(labelText: label),
+        items: [
+          for (final item in values)
+            DropdownMenuItem(value: item, child: Text(item)),
+        ],
+        onChanged: (next) {
+          if (next != null) onChanged(next);
+        },
       ),
     );
   }

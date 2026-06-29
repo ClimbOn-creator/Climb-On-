@@ -1,5 +1,3 @@
-import 'dart:typed_data';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -8,6 +6,8 @@ import '../services/database_service.dart';
 import '../state/activity_mode_state.dart';
 import '../state/catalog_state.dart';
 import '../state/admin_state.dart';
+import '../state/map_path_state.dart';
+import '../state/ski_route_state.dart';
 import '../utils/number_parser.dart';
 import '../utils/picked_upload_image.dart';
 import '../widgets/side_banner_layout.dart';
@@ -53,9 +53,7 @@ class _SubmitRouteScreenState extends ConsumerState<SubmitRouteScreen> {
   String avalancheTerrain = 'Challenging';
   bool topRope = false;
   bool submitting = false;
-  Uint8List? photoBytes;
-  String photoName = '';
-  String photoContentType = '';
+  List<PickedUploadImage> photos = [];
   String? selectedCragId;
   String? selectedWallId;
 
@@ -124,18 +122,6 @@ class _SubmitRouteScreenState extends ConsumerState<SubmitRouteScreen> {
                   const SizedBox(height: 12),
                   _Field(controller: submitterName, label: 'Your name'),
                   if (isSki) ..._skiFields() else ..._climbFields(catalogCrags),
-                  _Field(
-                    controller: latitude,
-                    label: isSki ? 'Tour high point latitude' : 'GPS latitude',
-                    decimal: true,
-                  ),
-                  _Field(
-                    controller: longitude,
-                    label: isSki
-                        ? 'Tour high point longitude'
-                        : 'GPS longitude',
-                    decimal: true,
-                  ),
                   if (isSki) ...[
                     _Field(
                       controller: trailheadLatitude,
@@ -147,11 +133,24 @@ class _SubmitRouteScreenState extends ConsumerState<SubmitRouteScreen> {
                       label: 'Trailhead longitude',
                       decimal: true,
                     ),
+                  ] else ...[
+                    _Field(
+                      controller: latitude,
+                      label: 'GPS latitude',
+                      decimal: true,
+                    ),
+                    _Field(
+                      controller: longitude,
+                      label: 'GPS longitude',
+                      decimal: true,
+                    ),
                   ],
                   _RequiredPictureUpload(
-                    bytes: photoBytes,
-                    fileName: photoName,
+                    photos: photos,
                     onPressed: submitting ? null : pickPicture,
+                    onRemove: submitting
+                        ? null
+                        : (index) => setState(() => photos.removeAt(index)),
                   ),
                   _Field(
                     controller: description,
@@ -186,6 +185,17 @@ class _SubmitRouteScreenState extends ConsumerState<SubmitRouteScreen> {
                         ),
                       ),
                     ),
+                  if (isAdmin && isSki)
+                    const Card(
+                      color: Color(0xFFDDEEDC),
+                      child: ListTile(
+                        leading: Icon(Icons.admin_panel_settings),
+                        title: Text('Administrator publishing mode'),
+                        subtitle: Text(
+                          'This ski tour will publish directly to the ski map.',
+                        ),
+                      ),
+                    ),
                   if (isOwnerAccount && !isAdmin && !isSki)
                     const Card(
                       color: Color(0xFFFFE0B2),
@@ -209,6 +219,8 @@ class _SubmitRouteScreenState extends ConsumerState<SubmitRouteScreen> {
                     label: Text(
                       isAdmin && !isSki
                           ? 'Publish route to map and feed'
+                          : isAdmin && isSki
+                          ? 'Publish ski tour to map'
                           : 'Submit for review',
                     ),
                   ),
@@ -383,47 +395,83 @@ class _SubmitRouteScreenState extends ConsumerState<SubmitRouteScreen> {
 
   Future<void> submit(bool isAdmin) async {
     if (!formKey.currentState!.validate()) return;
-    final selectedPhoto = photoBytes;
-    if (selectedPhoto == null) {
+    final selectedPhotos = [...photos];
+    if (selectedPhotos.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('A picture upload is required.')),
+        const SnackBar(content: Text('At least one picture is required.')),
       );
       return;
     }
+    final mainPhoto = selectedPhotos.first;
+    final uploadPhotos = [
+      for (final photo in selectedPhotos)
+        UploadPhotoPayload(
+          bytes: photo.bytes,
+          fileName: photo.fileName,
+          contentType: photo.contentType,
+        ),
+    ];
 
     setState(() => submitting = true);
     try {
       final mode = ref.read(activityModeProvider);
       if (mode == ActivityMode.ski) {
-        await const DatabaseService().submitSkiRoute(
-          {
-            'submitter_name': submitterName.text.trim(),
-            'route_name': routeName.text.trim(),
-            'area': skiArea.text.trim(),
-            'region': region.text.trim(),
-            'difficulty': skiDifficulty,
-            'distance_km': parseNumberWithUnits(distanceKm.text)!,
-            'elevation_gain_meters': parseWholeNumberWithUnits(
-              elevationGain.text,
-            )!,
-            'aspect': aspect,
-            'avalanche_terrain': avalancheTerrain,
-            'season': season.text.trim(),
-            'latitude': parseNumberWithUnits(latitude.text)!,
-            'longitude': parseNumberWithUnits(longitude.text)!,
-            'trailhead_latitude': parseNumberWithUnits(trailheadLatitude.text)!,
-            'trailhead_longitude': parseNumberWithUnits(
-              trailheadLongitude.text,
-            )!,
-            'description': description.text.trim(),
-            'approach_notes': approachNotes.text.trim(),
-            'descent_notes': descentNotes.text.trim(),
-            'danger_info': dangerInfo.text.trim(),
-          },
-          photoBytes: selectedPhoto,
-          photoName: photoName,
-          photoContentType: photoContentType,
-        );
+        final skiValues = {
+          'submitter_name': submitterName.text.trim(),
+          'route_name': routeName.text.trim(),
+          'area': skiArea.text.trim(),
+          'region': region.text.trim(),
+          'difficulty': skiDifficulty,
+          'distance_km': parseNumberWithUnits(distanceKm.text)!,
+          'elevation_gain_meters': parseWholeNumberWithUnits(
+            elevationGain.text,
+          )!,
+          'aspect': aspect,
+          'avalanche_terrain': avalancheTerrain,
+          'season': season.text.trim(),
+          'latitude': parseNumberWithUnits(trailheadLatitude.text)!,
+          'longitude': parseNumberWithUnits(trailheadLongitude.text)!,
+          'trailhead_latitude': parseNumberWithUnits(trailheadLatitude.text)!,
+          'trailhead_longitude': parseNumberWithUnits(trailheadLongitude.text)!,
+          'description': description.text.trim(),
+          'approach_notes': approachNotes.text.trim(),
+          'descent_notes': descentNotes.text.trim(),
+          'danger_info': dangerInfo.text.trim(),
+        };
+        if (isAdmin) {
+          await const DatabaseService().adminSaveSkiRoute(
+            values: {
+              'route_name': routeName.text.trim(),
+              'route_area': skiArea.text.trim(),
+              'route_region': region.text.trim(),
+              'route_difficulty': skiDifficulty,
+              'route_distance_km': skiValues['distance_km'],
+              'route_elevation_gain_meters': skiValues['elevation_gain_meters'],
+              'route_aspect': aspect,
+              'route_avalanche_terrain': avalancheTerrain,
+              'route_season': season.text.trim(),
+              'route_lat': skiValues['latitude'],
+              'route_lng': skiValues['longitude'],
+              'route_trailhead_lat': skiValues['trailhead_latitude'],
+              'route_trailhead_lng': skiValues['trailhead_longitude'],
+              'route_description': description.text.trim(),
+              'route_approach_notes': approachNotes.text.trim(),
+              'route_descent_notes': descentNotes.text.trim(),
+              'route_danger_info': dangerInfo.text.trim(),
+              'route_image_url': '',
+            },
+            imageBytes: mainPhoto.bytes,
+            imageName: mainPhoto.fileName,
+            imageContentType: mainPhoto.contentType,
+          );
+          ref.invalidate(skiRouteCatalogProvider);
+          ref.invalidate(mapPathCatalogProvider);
+        } else {
+          await const DatabaseService().submitSkiRouteWithPhotos(
+            skiValues,
+            photos: uploadPhotos,
+          );
+        }
       } else {
         final routeValues = <String, Object?>{
           'submitter_name': submitterName.text.trim(),
@@ -483,26 +531,22 @@ class _SubmitRouteScreenState extends ConsumerState<SubmitRouteScreen> {
               'route_danger_info': dangerInfo.text.trim(),
               'route_image_url': '',
             },
-            imageBytes: selectedPhoto,
-            imageName: photoName,
-            imageContentType: photoContentType,
+            imageBytes: mainPhoto.bytes,
+            imageName: mainPhoto.fileName,
+            imageContentType: mainPhoto.contentType,
           );
           ref.invalidate(catalogProvider);
         } else {
-          await const DatabaseService().submitRoute(
+          await const DatabaseService().submitRouteWithPhotos(
             routeValues,
-            photoBytes: selectedPhoto,
-            photoName: photoName,
-            photoContentType: photoContentType,
+            photos: uploadPhotos,
           );
         }
       }
       if (!mounted) return;
       formKey.currentState!.reset();
       setState(() {
-        photoBytes = null;
-        photoName = '';
-        photoContentType = '';
+        photos = [];
         selectedCragId = null;
         selectedWallId = null;
       });
@@ -529,12 +573,10 @@ class _SubmitRouteScreenState extends ConsumerState<SubmitRouteScreen> {
 
   Future<void> pickPicture() async {
     try {
-      final picture = await pickUploadImage();
-      if (picture == null || !mounted) return;
+      final pickedPhotos = await pickUploadImages();
+      if (pickedPhotos.isEmpty || !mounted) return;
       setState(() {
-        photoBytes = picture.bytes;
-        photoName = picture.fileName;
-        photoContentType = picture.contentType;
+        photos = [...photos, ...pickedPhotos];
       });
     } catch (error) {
       if (!mounted) return;
@@ -547,14 +589,14 @@ class _SubmitRouteScreenState extends ConsumerState<SubmitRouteScreen> {
 
 class _RequiredPictureUpload extends StatelessWidget {
   const _RequiredPictureUpload({
-    required this.bytes,
-    required this.fileName,
+    required this.photos,
     required this.onPressed,
+    required this.onRemove,
   });
 
-  final Uint8List? bytes;
-  final String fileName;
+  final List<PickedUploadImage> photos;
   final VoidCallback? onPressed;
+  final ValueChanged<int>? onRemove;
 
   @override
   Widget build(BuildContext context) {
@@ -571,32 +613,53 @@ class _RequiredPictureUpload extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'Picture (required)',
+                'Pictures (at least one required)',
                 style: Theme.of(
                   context,
                 ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800),
               ),
-              if (bytes != null) ...[
+              if (photos.isNotEmpty) ...[
                 const SizedBox(height: 10),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(8),
-                  child: Image.memory(
-                    bytes!,
-                    height: 180,
-                    width: double.infinity,
-                    fit: BoxFit.cover,
+                for (var index = 0; index < photos.length; index++)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: Row(
+                      children: [
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(8),
+                          child: Image.memory(
+                            photos[index].bytes,
+                            height: 70,
+                            width: 92,
+                            fit: BoxFit.cover,
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            index == 0
+                                ? '${photos[index].fileName} · main image'
+                                : photos[index].fileName,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        IconButton(
+                          tooltip: 'Remove picture',
+                          onPressed: onRemove == null
+                              ? null
+                              : () => onRemove!(index),
+                          icon: const Icon(Icons.close),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-                const SizedBox(height: 8),
-                Text(fileName, maxLines: 1, overflow: TextOverflow.ellipsis),
               ],
               const SizedBox(height: 10),
               OutlinedButton.icon(
                 onPressed: onPressed,
                 icon: const Icon(Icons.add_photo_alternate_outlined),
-                label: Text(
-                  bytes == null ? 'Upload picture' : 'Change picture',
-                ),
+                label: Text(photos.isEmpty ? 'Upload pictures' : 'Add another'),
               ),
             ],
           ),

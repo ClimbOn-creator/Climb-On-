@@ -42,6 +42,28 @@ Future<PickedUploadImage?> pickUploadImage({
   );
 }
 
+Future<List<PickedUploadImage>> pickUploadImages({
+  int imageQuality = 88,
+  double maxWidth = 2400,
+}) async {
+  final images = await ImagePicker().pickMultiImage(
+    imageQuality: imageQuality,
+    maxWidth: maxWidth,
+  );
+  final uploads = <PickedUploadImage>[];
+  for (final image in images) {
+    final bytes = await image.readAsBytes();
+    uploads.add(
+      normalizePickedUploadImage(
+        bytes: bytes,
+        originalName: image.name,
+        pickerMimeType: image.mimeType,
+      ),
+    );
+  }
+  return uploads;
+}
+
 PickedUploadImage normalizePickedUploadImage({
   required Uint8List bytes,
   required String originalName,
