@@ -39,6 +39,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   double currentZoom = 14;
   LatLng? userLocation;
   double? userLocationAccuracyMeters;
+  double? userAltitudeMeters;
   Crag? selectedCrag;
   Wall? selectedWall;
   Crag? selectedParkingCrag;
@@ -53,9 +54,16 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   final Set<_MapRouteFilter> activeFilters = {};
   final MapController mapController = MapController();
   StreamSubscription<Position>? positionSubscription;
+  Timer? recordingTimer;
   bool gpsRecording = false;
   _PathDraftKind? recordedPathKind;
-  List<LatLng> recordedPath = [];
+  DateTime? recordingStartedAt;
+  Duration recordingElapsed = Duration.zero;
+  List<_RecordedTrackPoint> recordedTrack = [];
+
+  List<LatLng> get recordedPath => [
+    for (final point in recordedTrack) point.location,
+  ];
 
   bool get showClusters => currentZoom < 13;
 
@@ -76,6 +84,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   @override
   void dispose() {
     positionSubscription?.cancel();
+    recordingTimer?.cancel();
     super.dispose();
   }
 
@@ -109,12 +118,29 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     setState(() {
       userLocation = point;
       userLocationAccuracyMeters = position.accuracy;
+      userAltitudeMeters = position.altitude.isFinite
+          ? position.altitude
+          : null;
       if (gpsRecording && position.accuracy <= 50) {
         final shouldAdd =
-            recordedPath.isEmpty ||
-            const Distance().as(LengthUnit.Meter, recordedPath.last, point) >=
+            recordedTrack.isEmpty ||
+            const Distance().as(
+                  LengthUnit.Meter,
+                  recordedTrack.last.location,
+                  point,
+                ) >=
                 3;
-        if (shouldAdd) recordedPath.add(point);
+        if (shouldAdd) {
+          recordedTrack.add(
+            _RecordedTrackPoint(
+              location: point,
+              altitudeMeters: position.altitude.isFinite
+                  ? position.altitude
+                  : null,
+              recordedAt: DateTime.now(),
+            ),
+          );
+        }
       }
     });
   }
@@ -328,10 +354,13 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                 if (!pathEditMode && tileStyle != _MapTileStyle.terrain3d)
                   _GpsRecorderTools(
                     recording: gpsRecording,
-                    hasDraft: recordedPath.isNotEmpty,
+                    elapsed: recordingElapsed,
+                    hasDraft: recordedTrack.isNotEmpty,
                     kind: recordedPathKind,
-                    pointCount: recordedPath.length,
+                    pointCount: recordedTrack.length,
                     lengthMeters: _pathLength(recordedPath),
+                    ascentMeters: _verticalMeters(recordedTrack).ascent,
+                    descentMeters: _verticalMeters(recordedTrack).descent,
                     onStart: () => _chooseAndStartRecording(mode),
                     onStop: _stopGpsRecording,
                     onSubmit: _submitGpsRecording,
@@ -340,6 +369,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                 if (mode == ActivityMode.climb)
                   _MapFilters(
                     activeFilters: activeFilters,
+                    top: recordedTrack.isNotEmpty ? 168 : 66,
                     onToggle: _toggleFilter,
                   )
                 else
@@ -483,7 +513,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                       selectedParkingCrag = crag;
                     });
                   },
-                  child: const Icon(Icons.local_parking, color: Colors.blue),
+                  child: const _ParkingMarkerIcon(),
                 ),
               ),
             ),
@@ -786,6 +816,33 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     return total;
   }
 
+  _VerticalMeters _verticalMeters(List<_RecordedTrackPoint> points) {
+    if (points.length < 2) return const _VerticalMeters();
+    var ascent = 0.0;
+    var descent = 0.0;
+    double? previousAltitude;
+
+    for (final point in points) {
+      final altitude = point.altitudeMeters;
+      if (altitude == null) continue;
+      if (previousAltitude != null) {
+        final delta = altitude - previousAltitude;
+        // Ignore tiny GPS altitude jitter so the totals don't creep upward while
+        // someone is standing still at the trailhead.
+        if (delta.abs() >= 1.5) {
+          if (delta > 0) {
+            ascent += delta;
+          } else {
+            descent += delta.abs();
+          }
+        }
+      }
+      previousAltitude = altitude;
+    }
+
+    return _VerticalMeters(ascent: ascent, descent: descent);
+  }
+
   Future<void> _chooseAndStartRecording(ActivityMode mode) async {
     if (const DatabaseService().currentUserId == null) {
       _showMapMessage('Sign in from Profile before recording a trail');
@@ -835,24 +892,44 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       );
     }
     if (kind == null || !mounted) return;
+    final now = DateTime.now();
     setState(() {
       recordedPathKind = kind;
-      recordedPath = [userLocation!];
+      recordingStartedAt = now;
+      recordingElapsed = Duration.zero;
+      recordedTrack = [
+        _RecordedTrackPoint(
+          location: userLocation!,
+          altitudeMeters: userAltitudeMeters,
+          recordedAt: now,
+        ),
+      ];
       gpsRecording = true;
     });
-    _showMapMessage('GPS recording started. Keep this screen open.');
+    recordingTimer?.cancel();
+    recordingTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted || !gpsRecording || recordingStartedAt == null) return;
+      setState(() {
+        recordingElapsed = DateTime.now().difference(recordingStartedAt!);
+      });
+    });
+    _showMapMessage('Recording started.');
   }
 
   void _stopGpsRecording() {
+    recordingTimer?.cancel();
     setState(() => gpsRecording = false);
     _showMapMessage('Recording stopped. Review the line, then submit it.');
   }
 
   void _discardGpsRecording() {
+    recordingTimer?.cancel();
     setState(() {
       gpsRecording = false;
       recordedPathKind = null;
-      recordedPath = [];
+      recordingStartedAt = null;
+      recordingElapsed = Duration.zero;
+      recordedTrack = [];
     });
   }
 
@@ -1375,6 +1452,25 @@ enum _MapRouteFilter {
   };
 }
 
+class _RecordedTrackPoint {
+  const _RecordedTrackPoint({
+    required this.location,
+    required this.altitudeMeters,
+    required this.recordedAt,
+  });
+
+  final LatLng location;
+  final double? altitudeMeters;
+  final DateTime recordedAt;
+}
+
+class _VerticalMeters {
+  const _VerticalMeters({this.ascent = 0, this.descent = 0});
+
+  final double ascent;
+  final double descent;
+}
+
 enum _PathDraftKind {
   cragApproach,
   skiAscent,
@@ -1449,16 +1545,21 @@ enum _MapTileStyle {
 }
 
 class _MapFilters extends StatelessWidget {
-  const _MapFilters({required this.activeFilters, required this.onToggle});
+  const _MapFilters({
+    required this.activeFilters,
+    required this.top,
+    required this.onToggle,
+  });
 
   final Set<_MapRouteFilter> activeFilters;
+  final double top;
   final ValueChanged<_MapRouteFilter> onToggle;
 
   @override
   Widget build(BuildContext context) {
     return Positioned(
       right: 12,
-      top: 12,
+      top: top,
       child: Material(
         color: Theme.of(context).colorScheme.surface,
         elevation: 3,
@@ -1697,10 +1798,13 @@ class _GpsAccuracyBadge extends StatelessWidget {
 class _GpsRecorderTools extends StatelessWidget {
   const _GpsRecorderTools({
     required this.recording,
+    required this.elapsed,
     required this.hasDraft,
     required this.kind,
     required this.pointCount,
     required this.lengthMeters,
+    required this.ascentMeters,
+    required this.descentMeters,
     required this.onStart,
     required this.onStop,
     required this.onSubmit,
@@ -1708,10 +1812,13 @@ class _GpsRecorderTools extends StatelessWidget {
   });
 
   final bool recording;
+  final Duration elapsed;
   final bool hasDraft;
   final _PathDraftKind? kind;
   final int pointCount;
   final double lengthMeters;
+  final double ascentMeters;
+  final double descentMeters;
   final VoidCallback onStart;
   final VoidCallback onStop;
   final VoidCallback onSubmit;
@@ -1724,7 +1831,7 @@ class _GpsRecorderTools extends StatelessWidget {
         : '${lengthMeters.round()} m';
     return Positioned(
       right: 12,
-      top: 74,
+      top: 12,
       child: SafeArea(
         child: Material(
           elevation: 5,
@@ -1747,13 +1854,21 @@ class _GpsRecorderTools extends StatelessWidget {
                           ),
                           const SizedBox(width: 7),
                           Text(
-                            recording ? 'Recording GPS' : 'Recording paused',
+                            recording
+                                ? _formatRecordingDuration(elapsed)
+                                : '${_formatRecordingDuration(elapsed)} paused',
                             style: const TextStyle(fontWeight: FontWeight.w900),
                           ),
                         ],
                       ),
                       const SizedBox(height: 5),
-                      Text('$pointCount points · $distance'),
+                      Text(
+                        '$distance · ↑${ascentMeters.round()} m · ↓${descentMeters.round()} m',
+                      ),
+                      Text(
+                        '$pointCount points',
+                        style: Theme.of(context).textTheme.labelSmall,
+                      ),
                       const SizedBox(height: 8),
                       Wrap(
                         spacing: 6,
@@ -1785,9 +1900,51 @@ class _GpsRecorderTools extends StatelessWidget {
                       Icons.fiber_manual_record,
                       color: Colors.red,
                     ),
-                    label: const Text('Record GPS trail'),
+                    label: const Text('Record'),
                   ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+String _formatRecordingDuration(Duration duration) {
+  final hours = duration.inHours;
+  final minutes = duration.inMinutes.remainder(60).toString().padLeft(2, '0');
+  final seconds = duration.inSeconds.remainder(60).toString().padLeft(2, '0');
+  if (hours > 0) return '$hours:$minutes:$seconds';
+  return '$minutes:$seconds';
+}
+
+class _ParkingMarkerIcon extends StatelessWidget {
+  const _ParkingMarkerIcon();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 24,
+      height: 24,
+      decoration: BoxDecoration(
+        color: const Color(0xFF1976D2),
+        shape: BoxShape.circle,
+        border: Border.all(color: Colors.white, width: 2),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x33000000),
+            blurRadius: 5,
+            offset: Offset(0, 2),
+          ),
+        ],
+      ),
+      alignment: Alignment.center,
+      child: const Text(
+        'P',
+        style: TextStyle(
+          color: Colors.white,
+          fontSize: 13,
+          fontWeight: FontWeight.w900,
+          height: 1,
         ),
       ),
     );

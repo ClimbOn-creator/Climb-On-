@@ -39,8 +39,14 @@
 	<true/>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Climb On uses your location to show nearby crags, parking, and approach context.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>Climb On uses background location only when you choose to record an approach, ascent, or descent so the map can keep tracing your route while the phone is locked.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Climb On uses photos you select for your profile and route pictures.</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>location</string>
+	</array>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

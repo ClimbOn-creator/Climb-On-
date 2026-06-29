@@ -3,12 +3,12 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../services/auth_service.dart';
 import '../services/profile_service.dart';
 import '../state/profile_state.dart';
+import '../utils/picked_upload_image.dart';
 
 class ProfileSetupScreen extends ConsumerStatefulWidget {
   const ProfileSetupScreen({super.key});
@@ -214,22 +214,16 @@ class _ProfileSetupScreenState extends ConsumerState<ProfileSetupScreen> {
   Future<void> _choosePhoto() async {
     setState(() => choosingPhoto = true);
     try {
-      final photo = await ImagePicker().pickImage(
-        source: ImageSource.gallery,
-        maxWidth: 1200,
-        imageQuality: 88,
-      );
+      final photo = await pickUploadImage(maxWidth: 1200);
       if (photo == null) return;
 
-      final bytes = await photo.readAsBytes();
-      final extension = photo.name.contains('.')
-          ? photo.name.split('.').last.toLowerCase()
-          : 'jpg';
       if (!mounted) return;
       setState(() {
-        pickedAvatarBytes = bytes;
-        pickedAvatarExtension = extension;
-        pickedAvatarContentType = photo.mimeType ?? _contentType(extension);
+        pickedAvatarBytes = photo.bytes;
+        pickedAvatarExtension = photo.fileName.contains('.')
+            ? photo.fileName.split('.').last.toLowerCase()
+            : 'jpg';
+        pickedAvatarContentType = photo.contentType;
       });
     } on Object catch (error) {
       if (!mounted) return;
@@ -239,16 +233,6 @@ class _ProfileSetupScreenState extends ConsumerState<ProfileSetupScreen> {
     } finally {
       if (mounted) setState(() => choosingPhoto = false);
     }
-  }
-
-  String _contentType(String extension) {
-    return switch (extension) {
-      'png' => 'image/png',
-      'webp' => 'image/webp',
-      'heic' => 'image/heic',
-      'heif' => 'image/heif',
-      _ => 'image/jpeg',
-    };
   }
 
   String _usernameFromEmail(String email) {

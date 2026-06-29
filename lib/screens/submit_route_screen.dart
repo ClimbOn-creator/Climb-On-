@@ -2,7 +2,6 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:image_picker/image_picker.dart';
 
 import '../models/crag.dart';
 import '../services/database_service.dart';
@@ -10,6 +9,7 @@ import '../state/activity_mode_state.dart';
 import '../state/catalog_state.dart';
 import '../state/admin_state.dart';
 import '../utils/number_parser.dart';
+import '../utils/picked_upload_image.dart';
 import '../widgets/side_banner_layout.dart';
 
 class SubmitRouteScreen extends ConsumerStatefulWidget {
@@ -529,21 +529,12 @@ class _SubmitRouteScreenState extends ConsumerState<SubmitRouteScreen> {
 
   Future<void> pickPicture() async {
     try {
-      final picture = await ImagePicker().pickImage(
-        source: ImageSource.gallery,
-        imageQuality: 88,
-        maxWidth: 2400,
-      );
+      final picture = await pickUploadImage();
       if (picture == null || !mounted) return;
-      final extension = picture.name.contains('.')
-          ? picture.name.split('.').last.toLowerCase()
-          : 'jpg';
-      final bytes = await picture.readAsBytes();
-      if (!mounted) return;
       setState(() {
-        photoBytes = bytes;
-        photoName = picture.name;
-        photoContentType = _contentType(extension);
+        photoBytes = picture.bytes;
+        photoName = picture.fileName;
+        photoContentType = picture.contentType;
       });
     } catch (error) {
       if (!mounted) return;
@@ -551,15 +542,6 @@ class _SubmitRouteScreenState extends ConsumerState<SubmitRouteScreen> {
         context,
       ).showSnackBar(SnackBar(content: Text('Could not open picture: $error')));
     }
-  }
-
-  String _contentType(String extension) {
-    return switch (extension) {
-      'png' => 'image/png',
-      'webp' => 'image/webp',
-      'heic' || 'heif' => 'image/heic',
-      _ => 'image/jpeg',
-    };
   }
 }
 

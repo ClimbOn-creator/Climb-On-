@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:image_picker/image_picker.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../models/climb_route.dart';
@@ -12,6 +11,7 @@ import '../services/database_service.dart';
 import '../state/admin_state.dart';
 import '../state/catalog_state.dart';
 import '../state/climb_log_state.dart';
+import '../utils/picked_upload_image.dart';
 import 'admin_route_editor.dart';
 
 class RouteCard extends ConsumerStatefulWidget {
@@ -747,25 +747,18 @@ class _RouteCardState extends ConsumerState<RouteCard> {
     }
 
     try {
-      final image = await ImagePicker().pickImage(
-        source: ImageSource.gallery,
-        imageQuality: 88,
-        maxWidth: 2400,
-      );
+      final image = await pickUploadImage();
       if (image == null || !mounted) return;
 
       final caption = await _askForPhotoCaption();
       if (caption == null || !mounted) return;
 
       setState(() => uploadingPhoto = true);
-      final extension = image.name.contains('.')
-          ? image.name.split('.').last.toLowerCase()
-          : 'jpg';
       await climbLog.uploadPhoto(
         widget.route,
-        bytes: await image.readAsBytes(),
-        fileName: image.name,
-        contentType: _contentType(extension),
+        bytes: image.bytes,
+        fileName: image.fileName,
+        contentType: image.contentType,
         caption: caption,
       );
       if (!mounted) return;
@@ -784,21 +777,14 @@ class _RouteCardState extends ConsumerState<RouteCard> {
 
   Future<void> _pickAndReplaceMainPicture() async {
     try {
-      final image = await ImagePicker().pickImage(
-        source: ImageSource.gallery,
-        imageQuality: 88,
-        maxWidth: 2400,
-      );
+      final image = await pickUploadImage();
       if (image == null || !mounted) return;
       setState(() => uploadingPhoto = true);
-      final extension = image.name.contains('.')
-          ? image.name.split('.').last.toLowerCase()
-          : 'jpg';
       final imageUrl = await const DatabaseService().adminReplaceRouteImage(
         routeId: widget.route.id,
-        imageBytes: await image.readAsBytes(),
-        imageName: image.name,
-        imageContentType: _contentType(extension),
+        imageBytes: image.bytes,
+        imageName: image.fileName,
+        imageContentType: image.contentType,
       );
       if (!mounted) return;
       setState(() => imageOverride = imageUrl);
@@ -879,15 +865,6 @@ class _RouteCardState extends ConsumerState<RouteCard> {
         SnackBar(content: Text('Could not remove picture: $error')),
       );
     }
-  }
-
-  String _contentType(String extension) {
-    return switch (extension) {
-      'png' => 'image/png',
-      'webp' => 'image/webp',
-      'heic' || 'heif' => 'image/heic',
-      _ => 'image/jpeg',
-    };
   }
 }
 
