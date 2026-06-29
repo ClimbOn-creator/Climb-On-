@@ -4,9 +4,17 @@ import 'package:climb_on/models/social.dart';
 import 'package:climb_on/services/database_service.dart';
 import 'package:climb_on/state/climb_log_state.dart';
 import 'package:climb_on/state/social_state.dart';
+import 'package:climb_on/utils/number_parser.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  test('Measurement fields accept common units', () {
+    expect(parseWholeNumberWithUnits('4m'), 4);
+    expect(parseWholeNumberWithUnits('60 m'), 60);
+    expect(parseNumberWithUnits('13.5 km'), 13.5);
+    expect(parseNumberWithUnits('-123.3117'), -123.3117);
+  });
+
   test('Chosslandia has a Main wall ready for route submissions', () {
     final crag = sample_data.crags.singleWhere(
       (item) => item.name == 'Chosslandia',

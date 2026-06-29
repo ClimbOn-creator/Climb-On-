@@ -6,6 +6,7 @@ import 'package:image_picker/image_picker.dart';
 import '../models/climb_route.dart';
 import '../models/wall.dart';
 import '../services/database_service.dart';
+import '../utils/number_parser.dart';
 
 class AdminRouteEditor extends StatefulWidget {
   const AdminRouteEditor({super.key, required this.wall, this.route});
@@ -218,10 +219,12 @@ class _AdminRouteEditorState extends State<AdminRouteEditor> {
         validator: (value) {
           final text = value?.trim() ?? '';
           if (text.isEmpty) return 'Required';
-          if (integer && int.tryParse(text) == null) {
-            return 'Enter a whole number';
+          if (integer && parseWholeNumberWithUnits(text) == null) {
+            return 'Enter a number, such as 4 or 4m';
           }
-          if (decimal && double.tryParse(text) == null) return 'Enter a number';
+          if (decimal && parseNumberWithUnits(text) == null) {
+            return 'Enter a number';
+          }
           return null;
         },
       ),
@@ -295,18 +298,20 @@ class _AdminRouteEditorState extends State<AdminRouteEditor> {
         values: {
           'route_name': fields['name']!.text.trim(),
           'route_grade': fields['grade']!.text.trim(),
-          'route_rating': double.parse(fields['rating']!.text.trim()),
+          'route_rating': parseNumberWithUnits(fields['rating']!.text)!,
           'route_type_value': routeType,
           'pitch_type_value': pitchType,
           'route_angle': angle,
-          'route_height': int.parse(fields['height']!.text.trim()),
-          'route_bolts': int.parse(fields['bolts']!.text.trim()),
+          'route_height': parseWholeNumberWithUnits(fields['height']!.text)!,
+          'route_bolts': parseWholeNumberWithUnits(fields['bolts']!.text)!,
           'route_gear_notes': fields['gear']!.text.trim(),
-          'route_length_value': int.parse(fields['length']!.text.trim()),
-          'route_rope_length': int.parse(fields['rope']!.text.trim()),
+          'route_length_value': parseWholeNumberWithUnits(
+            fields['length']!.text,
+          )!,
+          'route_rope_length': parseWholeNumberWithUnits(fields['rope']!.text)!,
           'route_top_rope': topRope,
-          'route_lat': double.parse(fields['lat']!.text.trim()),
-          'route_lng': double.parse(fields['lng']!.text.trim()),
+          'route_lat': parseNumberWithUnits(fields['lat']!.text)!,
+          'route_lng': parseNumberWithUnits(fields['lng']!.text)!,
           'route_description': fields['description']!.text.trim(),
           'route_approach_notes': fields['approach']!.text.trim(),
           'route_descent_notes': fields['descent']!.text.trim(),

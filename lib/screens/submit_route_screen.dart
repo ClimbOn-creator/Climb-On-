@@ -8,6 +8,8 @@ import '../models/crag.dart';
 import '../services/database_service.dart';
 import '../state/activity_mode_state.dart';
 import '../state/catalog_state.dart';
+import '../state/admin_state.dart';
+import '../utils/number_parser.dart';
 import '../widgets/side_banner_layout.dart';
 
 class SubmitRouteScreen extends ConsumerStatefulWidget {
@@ -95,6 +97,8 @@ class _SubmitRouteScreenState extends ConsumerState<SubmitRouteScreen> {
     final mode = ref.watch(activityModeProvider);
     final catalogCrags =
         ref.watch(catalogProvider).valueOrNull ?? const <Crag>[];
+    final isAdmin = ref.watch(isMapAdminProvider).valueOrNull == true;
+    final isOwnerAccount = ref.watch(isOwnerAccountProvider);
     final isSki = mode == ActivityMode.ski;
 
     return Scaffold(
@@ -171,8 +175,30 @@ class _SubmitRouteScreenState extends ConsumerState<SubmitRouteScreen> {
                   ),
                   _Field(controller: gearNotes, label: 'Gear notes', lines: 2),
                   const SizedBox(height: 12),
+                  if (isAdmin && !isSki)
+                    const Card(
+                      color: Color(0xFFDDEEDC),
+                      child: ListTile(
+                        leading: Icon(Icons.admin_panel_settings),
+                        title: Text('Administrator publishing mode'),
+                        subtitle: Text(
+                          'This route will publish directly to the map and feed.',
+                        ),
+                      ),
+                    ),
+                  if (isOwnerAccount && !isAdmin && !isSki)
+                    const Card(
+                      color: Color(0xFFFFE0B2),
+                      child: ListTile(
+                        leading: Icon(Icons.warning_amber),
+                        title: Text('Administrator mode is not enabled'),
+                        subtitle: Text(
+                          'Run admin_map_editor_setup.sql and check_and_add_admin_user.sql in Supabase.',
+                        ),
+                      ),
+                    ),
                   FilledButton.icon(
-                    onPressed: submitting ? null : submit,
+                    onPressed: submitting ? null : () => submit(isAdmin),
                     icon: submitting
                         ? const SizedBox(
                             width: 18,
@@ -180,7 +206,11 @@ class _SubmitRouteScreenState extends ConsumerState<SubmitRouteScreen> {
                             child: CircularProgressIndicator(strokeWidth: 2),
                           )
                         : const Icon(Icons.cloud_upload),
-                    label: const Text('Submit for review'),
+                    label: Text(
+                      isAdmin && !isSki
+                          ? 'Publish route to map and feed'
+                          : 'Submit for review',
+                    ),
                   ),
                 ],
               ),
@@ -351,7 +381,7 @@ class _SubmitRouteScreenState extends ConsumerState<SubmitRouteScreen> {
     ];
   }
 
-  Future<void> submit() async {
+  Future<void> submit(bool isAdmin) async {
     if (!formKey.currentState!.validate()) return;
     final selectedPhoto = photoBytes;
     if (selectedPhoto == null) {
@@ -372,15 +402,19 @@ class _SubmitRouteScreenState extends ConsumerState<SubmitRouteScreen> {
             'area': skiArea.text.trim(),
             'region': region.text.trim(),
             'difficulty': skiDifficulty,
-            'distance_km': double.parse(distanceKm.text.trim()),
-            'elevation_gain_meters': int.parse(elevationGain.text.trim()),
+            'distance_km': parseNumberWithUnits(distanceKm.text)!,
+            'elevation_gain_meters': parseWholeNumberWithUnits(
+              elevationGain.text,
+            )!,
             'aspect': aspect,
             'avalanche_terrain': avalancheTerrain,
             'season': season.text.trim(),
-            'latitude': double.parse(latitude.text.trim()),
-            'longitude': double.parse(longitude.text.trim()),
-            'trailhead_latitude': double.parse(trailheadLatitude.text.trim()),
-            'trailhead_longitude': double.parse(trailheadLongitude.text.trim()),
+            'latitude': parseNumberWithUnits(latitude.text)!,
+            'longitude': parseNumberWithUnits(longitude.text)!,
+            'trailhead_latitude': parseNumberWithUnits(trailheadLatitude.text)!,
+            'trailhead_longitude': parseNumberWithUnits(
+              trailheadLongitude.text,
+            )!,
             'description': description.text.trim(),
             'approach_notes': approachNotes.text.trim(),
             'descent_notes': descentNotes.text.trim(),
@@ -391,35 +425,77 @@ class _SubmitRouteScreenState extends ConsumerState<SubmitRouteScreen> {
           photoContentType: photoContentType,
         );
       } else {
-        await const DatabaseService().submitRoute(
-          {
-            'submitter_name': submitterName.text.trim(),
-            'crag_name': cragName.text.trim(),
-            'wall_name': wallName.text.trim(),
-            'crag_id': selectedCragId,
-            'wall_id': selectedWallId,
-            'route_name': routeName.text.trim(),
-            'grade': grade.text.trim(),
-            'route_type': routeType,
-            'pitch_type': pitchType,
-            'angle': angle,
-            'bolts': int.parse(bolts.text.trim()),
-            'height_meters': int.parse(heightMeters.text.trim()),
-            'route_length': int.parse(routeLength.text.trim()),
-            'rope_length': int.parse(ropeLength.text.trim()),
-            'top_rope': topRope,
-            'latitude': double.parse(latitude.text.trim()),
-            'longitude': double.parse(longitude.text.trim()),
-            'description': description.text.trim(),
-            'approach_notes': approachNotes.text.trim(),
-            'descent_notes': descentNotes.text.trim(),
-            'danger_info': dangerInfo.text.trim(),
-            'gear_notes': gearNotes.text.trim(),
-          },
-          photoBytes: selectedPhoto,
-          photoName: photoName,
-          photoContentType: photoContentType,
-        );
+        final routeValues = <String, Object?>{
+          'submitter_name': submitterName.text.trim(),
+          'crag_name': cragName.text.trim(),
+          'wall_name': wallName.text.trim(),
+          'crag_id': selectedCragId,
+          'wall_id': selectedWallId,
+          'route_name': routeName.text.trim(),
+          'grade': grade.text.trim(),
+          'route_type': routeType,
+          'pitch_type': pitchType,
+          'angle': angle,
+          'bolts': parseWholeNumberWithUnits(bolts.text)!,
+          'height_meters': parseWholeNumberWithUnits(heightMeters.text)!,
+          'route_length': parseWholeNumberWithUnits(routeLength.text)!,
+          'rope_length': parseWholeNumberWithUnits(ropeLength.text)!,
+          'top_rope': topRope,
+          'latitude': parseNumberWithUnits(latitude.text)!,
+          'longitude': parseNumberWithUnits(longitude.text)!,
+          'description': description.text.trim(),
+          'approach_notes': approachNotes.text.trim(),
+          'descent_notes': descentNotes.text.trim(),
+          'danger_info': dangerInfo.text.trim(),
+          'gear_notes': gearNotes.text.trim(),
+        };
+        if (isAdmin) {
+          final service = const DatabaseService();
+          final wallId = await service.adminResolveCatalogWall(
+            cragId: selectedCragId,
+            wallId: selectedWallId,
+            cragName: cragName.text.trim(),
+            wallName: wallName.text.trim(),
+            latitude: parseNumberWithUnits(latitude.text)!,
+            longitude: parseNumberWithUnits(longitude.text)!,
+            cragWarning: dangerInfo.text.trim(),
+          );
+          await service.adminSaveCatalogRoute(
+            wallId: wallId,
+            values: {
+              'route_name': routeName.text.trim(),
+              'route_grade': grade.text.trim(),
+              'route_rating': 0.0,
+              'route_type_value': routeType,
+              'pitch_type_value': pitchType,
+              'route_angle': angle,
+              'route_height': routeValues['height_meters'],
+              'route_bolts': routeValues['bolts'],
+              'route_gear_notes': gearNotes.text.trim(),
+              'route_length_value': routeValues['route_length'],
+              'route_rope_length': routeValues['rope_length'],
+              'route_top_rope': topRope,
+              'route_lat': routeValues['latitude'],
+              'route_lng': routeValues['longitude'],
+              'route_description': description.text.trim(),
+              'route_approach_notes': approachNotes.text.trim(),
+              'route_descent_notes': descentNotes.text.trim(),
+              'route_danger_info': dangerInfo.text.trim(),
+              'route_image_url': '',
+            },
+            imageBytes: selectedPhoto,
+            imageName: photoName,
+            imageContentType: photoContentType,
+          );
+          ref.invalidate(catalogProvider);
+        } else {
+          await const DatabaseService().submitRoute(
+            routeValues,
+            photoBytes: selectedPhoto,
+            photoName: photoName,
+            photoContentType: photoContentType,
+          );
+        }
       }
       if (!mounted) return;
       formKey.currentState!.reset();
@@ -435,6 +511,8 @@ class _SubmitRouteScreenState extends ConsumerState<SubmitRouteScreen> {
           content: Text(
             mode == ActivityMode.ski
                 ? 'Ski tour submitted for review'
+                : isAdmin
+                ? 'Route published to the map and feed'
                 : 'Climb submitted for review',
           ),
         ),
@@ -578,8 +656,12 @@ class _Field extends StatelessWidget {
         validator: (value) {
           final text = value?.trim() ?? '';
           if (text.isEmpty) return 'Required';
-          if (numeric && int.tryParse(text) == null) return 'Enter a number';
-          if (decimal && double.tryParse(text) == null) return 'Enter a number';
+          if (numeric && parseWholeNumberWithUnits(text) == null) {
+            return 'Enter a number, such as 4 or 4m';
+          }
+          if (decimal && parseNumberWithUnits(text) == null) {
+            return 'Enter a number';
+          }
           return null;
         },
       ),

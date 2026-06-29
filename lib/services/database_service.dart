@@ -559,6 +559,66 @@ class DatabaseService {
     }
   }
 
+  Future<String> adminResolveCatalogWall({
+    String? cragId,
+    String? wallId,
+    required String cragName,
+    required String wallName,
+    required double latitude,
+    required double longitude,
+    required String cragWarning,
+  }) async {
+    final result = await Supabase.instance.client.rpc(
+      'admin_resolve_catalog_wall',
+      params: {
+        'target_crag_id': cragId,
+        'target_wall_id': wallId,
+        'new_crag_name': cragName,
+        'new_wall_name': wallName,
+        'target_lat': latitude,
+        'target_lng': longitude,
+        'new_crag_warning': cragWarning,
+      },
+    );
+    return result?.toString() ?? '';
+  }
+
+  Future<String> adminReplaceRouteImage({
+    required String routeId,
+    required List<int> imageBytes,
+    required String imageName,
+    required String imageContentType,
+  }) async {
+    final user = _currentUser;
+    if (user == null) throw const AuthException('Sign in to edit routes.');
+    final extension = imageName.contains('.')
+        ? imageName
+              .split('.')
+              .last
+              .toLowerCase()
+              .replaceAll(RegExp(r'[^a-z0-9]'), '')
+        : 'jpg';
+    final path =
+        '${user.id}/catalog/${DateTime.now().microsecondsSinceEpoch}.${extension.isEmpty ? 'jpg' : extension}';
+    final storage = Supabase.instance.client.storage.from('submission-photos');
+    await storage.uploadBinary(
+      path,
+      Uint8List.fromList(imageBytes),
+      fileOptions: FileOptions(contentType: imageContentType, upsert: false),
+    );
+    final imageUrl = storage.getPublicUrl(path);
+    try {
+      await Supabase.instance.client.rpc(
+        'admin_update_route_image',
+        params: {'target_route_id': routeId, 'new_image_url': imageUrl},
+      );
+      return imageUrl;
+    } catch (_) {
+      await storage.remove([path]);
+      rethrow;
+    }
+  }
+
   Future<void> _creatorUpdate(
     String functionName,
     Map<String, Object?> params,

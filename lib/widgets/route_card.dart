@@ -6,9 +6,13 @@ import 'package:image_picker/image_picker.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../models/climb_route.dart';
+import '../models/crag.dart';
+import '../models/wall.dart';
 import '../services/database_service.dart';
+import '../state/admin_state.dart';
 import '../state/catalog_state.dart';
 import '../state/climb_log_state.dart';
+import 'admin_route_editor.dart';
 
 class RouteCard extends ConsumerStatefulWidget {
   const RouteCard({
@@ -32,6 +36,7 @@ class _RouteCardState extends ConsumerState<RouteCard> {
   final photoCaptionController = TextEditingController();
   bool uploadingPhoto = false;
   String? dangerOverride;
+  String? imageOverride;
 
   @override
   void initState() {
@@ -60,6 +65,9 @@ class _RouteCardState extends ConsumerState<RouteCard> {
   @override
   Widget build(BuildContext context) {
     final climbLog = ref.watch(climbLogProvider);
+    final catalog = ref.watch(catalogProvider).valueOrNull ?? const <Crag>[];
+    final routeWall = _findWall(catalog);
+    final isAdmin = ref.watch(isMapAdminProvider).valueOrNull == true;
 
     return AnimatedBuilder(
       animation: climbLog,
@@ -80,7 +88,7 @@ class _RouteCardState extends ConsumerState<RouteCard> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   _ExpandableRouteImage(
-                    imageUrl: widget.route.imageUrl,
+                    imageUrl: imageOverride ?? widget.route.imageUrl,
                     title: widget.route.name,
                     height: widget.expanded ? 320 : 220,
                   ),
@@ -144,16 +152,28 @@ class _RouteCardState extends ConsumerState<RouteCard> {
                     completed: completed,
                     savedProject: savedProject,
                     commentsCount: comments.length,
-                    photosCount: photos.length,
                     onCompleted: () => climbLog.toggleRoute(widget.route),
                     onGradeOpinion: () => _showGradeDialog(climbLog),
                     onComment: () => _showCommentDialog(climbLog),
                     onPhoto: uploadingPhoto
                         ? null
+                        : isAdmin
+                        ? _pickAndReplaceMainPicture
                         : () => _pickAndUploadPhoto(climbLog),
+                    photoActionLabel: isAdmin
+                        ? 'Replace top picture'
+                        : 'Add picture ${photos.length}',
                     onProject: () => climbLog.toggleProject(widget.route),
                     onShare: _shareRoute,
                   ),
+                  if (widget.expanded && isAdmin && routeWall != null) ...[
+                    const SizedBox(height: 10),
+                    OutlinedButton.icon(
+                      onPressed: () => _openAdminEditor(routeWall),
+                      icon: const Icon(Icons.admin_panel_settings),
+                      label: const Text('Edit every route detail'),
+                    ),
+                  ],
                   if (widget.expanded) ...[
                     const Divider(),
                     _InfoSection(
@@ -389,6 +409,44 @@ class _RouteCardState extends ConsumerState<RouteCard> {
             '${widget.route.name} (${widget.route.grade})\n${widget.route.description}',
       ),
     );
+  }
+
+  Wall? _findWall(List<Crag> crags) {
+    for (final crag in crags) {
+      for (final wall in crag.walls) {
+        if (wall.routes.any((route) => route.id == widget.route.id)) {
+          return wall;
+        }
+      }
+    }
+    return null;
+  }
+
+  Future<void> _openAdminEditor(Wall wall) async {
+    final saved = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (context) => SizedBox(
+        height: MediaQuery.sizeOf(context).height * 0.94,
+        child: AdminRouteEditor(wall: wall, route: widget.route),
+      ),
+    );
+    if (saved != true || !mounted) return;
+    final refreshed = await ref.refresh(catalogProvider.future);
+    for (final crag in refreshed) {
+      for (final refreshedWall in crag.walls) {
+        for (final route in refreshedWall.routes) {
+          if (route.id == widget.route.id) {
+            ref.read(focusedRouteProvider.notifier).state = route;
+          }
+        }
+      }
+    }
+    if (!mounted) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Route and feed updated.')));
   }
 
   Future<void> _editRouteWarning() async {
@@ -724,6 +782,40 @@ class _RouteCardState extends ConsumerState<RouteCard> {
     }
   }
 
+  Future<void> _pickAndReplaceMainPicture() async {
+    try {
+      final image = await ImagePicker().pickImage(
+        source: ImageSource.gallery,
+        imageQuality: 88,
+        maxWidth: 2400,
+      );
+      if (image == null || !mounted) return;
+      setState(() => uploadingPhoto = true);
+      final extension = image.name.contains('.')
+          ? image.name.split('.').last.toLowerCase()
+          : 'jpg';
+      final imageUrl = await const DatabaseService().adminReplaceRouteImage(
+        routeId: widget.route.id,
+        imageBytes: await image.readAsBytes(),
+        imageName: image.name,
+        imageContentType: _contentType(extension),
+      );
+      if (!mounted) return;
+      setState(() => imageOverride = imageUrl);
+      ref.invalidate(catalogProvider);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Top route picture replaced.')),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not replace picture: $error')),
+      );
+    } finally {
+      if (mounted) setState(() => uploadingPhoto = false);
+    }
+  }
+
   Future<String?> _askForPhotoCaption() async {
     photoCaptionController.text = '';
     return showDialog<String>(
@@ -804,11 +896,11 @@ class _RouteActions extends StatelessWidget {
     required this.completed,
     required this.savedProject,
     required this.commentsCount,
-    required this.photosCount,
     required this.onCompleted,
     required this.onGradeOpinion,
     required this.onComment,
     required this.onPhoto,
+    required this.photoActionLabel,
     required this.onProject,
     required this.onShare,
   });
@@ -816,11 +908,11 @@ class _RouteActions extends StatelessWidget {
   final bool completed;
   final bool savedProject;
   final int commentsCount;
-  final int photosCount;
   final VoidCallback onCompleted;
   final VoidCallback onGradeOpinion;
   final VoidCallback onComment;
   final VoidCallback? onPhoto;
+  final String photoActionLabel;
   final VoidCallback onProject;
   final VoidCallback onShare;
 
@@ -855,9 +947,7 @@ class _RouteActions extends StatelessWidget {
                   child: CircularProgressIndicator(strokeWidth: 2),
                 )
               : const Icon(Icons.add_photo_alternate_outlined, size: 18),
-          label: Text(
-            onPhoto == null ? 'Adding picture' : 'Add picture $photosCount',
-          ),
+          label: Text(onPhoto == null ? 'Updating picture' : photoActionLabel),
           backgroundColor: const Color(0xFFE5DCF0),
           onPressed: onPhoto,
         ),
