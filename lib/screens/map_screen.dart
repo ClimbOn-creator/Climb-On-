@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -70,7 +71,8 @@ class _MapScreenState extends ConsumerState<MapScreen> {
 
   bool get showClusters => currentZoom < 13;
   bool get showSkiAllCluster => currentZoom < 8;
-  bool get showSkiRegionClusters => currentZoom >= 8 && currentZoom < 12;
+  bool get showSkiRegionClusters => currentZoom >= 8 && currentZoom < 10;
+  bool get showSkiAreaClusters => currentZoom >= 10 && currentZoom < 12.5;
   bool get mapIsRotated => currentMapRotation.abs() > 0.5;
 
   List<Crag> visibleCrags(List<Crag> sourceCrags) {
@@ -190,9 +192,23 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   }
 
   List<_SkiRouteCluster> clusterSkiRoutesByRegion(List<SkiRoute> routes) {
+    return _clusterSkiRoutesBy(routes, (route) => route.region);
+  }
+
+  List<_SkiRouteCluster> clusterSkiRoutesByArea(List<SkiRoute> routes) {
+    return _clusterSkiRoutesBy(routes, (route) => route.area);
+  }
+
+  List<_SkiRouteCluster> _clusterSkiRoutesBy(
+    List<SkiRoute> routes,
+    String Function(SkiRoute route) labelFor,
+  ) {
     final regions = <String, List<SkiRoute>>{};
     for (final route in routes) {
-      regions.putIfAbsent(route.region, () => []).add(route);
+      final label = labelFor(route).trim().isEmpty
+          ? 'Unknown'
+          : labelFor(route);
+      regions.putIfAbsent(label, () => []).add(route);
     }
 
     return regions.entries.map((entry) {
@@ -284,19 +300,9 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                       initialCenter: initialCenter,
                       initialZoom: currentZoom,
                       interactionOptions: const InteractionOptions(
-                        flags: InteractiveFlag.all,
-                        enableMultiFingerGestureRace: true,
-                        rotationThreshold: 5,
+                        flags: InteractiveFlag.all & ~InteractiveFlag.rotate,
                       ),
                       onTap: (_, point) => _handleMapTap(point),
-                      onMapEvent: (event) {
-                        if (event is MapEventRotate ||
-                            event is MapEventRotateEnd) {
-                          setState(() {
-                            currentMapRotation = event.camera.rotation;
-                          });
-                        }
-                      },
                       onPositionChanged: (position, _) {
                         if (position.zoom != null) {
                           final nextZoom = position.zoom!;
@@ -407,12 +413,11 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                       _startPathEditor(kind, mapPaths, activeSkiRoute),
                   onCreateSkiRoute: _startNewSkiRoutePath,
                 ),
-                if (tileStyle != _MapTileStyle.terrain3d && mapIsRotated)
-                  _NorthResetButton(
-                    onPressed: () {
-                      mapController.rotate(0);
-                      setState(() => currentMapRotation = 0);
-                    },
+                if (tileStyle != _MapTileStyle.terrain3d)
+                  _HeadingControl(
+                    headingDegrees: currentMapRotation,
+                    onHeadingChanged: _setMapHeading,
+                    onResetNorth: () => _setMapHeading(0),
                   ),
                 if (editMode && !pathEditMode)
                   const IgnorePointer(
@@ -634,7 +639,15 @@ class _MapScreenState extends ConsumerState<MapScreen> {
             context,
             cluster: cluster,
             label: cluster.label,
-            zoomTarget: 12,
+            zoomTarget: 10.5,
+          )
+      else if (showSkiAreaClusters)
+        for (final cluster in clusterSkiRoutesByArea(routes))
+          _skiClusterMarker(
+            context,
+            cluster: cluster,
+            label: cluster.label,
+            zoomTarget: 12.8,
           )
       else
         ...routes.map(
@@ -1264,6 +1277,13 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  void _setMapHeading(double degrees) {
+    final normalized = degrees % 360;
+    final heading = normalized < 0 ? normalized + 360 : normalized;
+    mapController.rotate(heading);
+    setState(() => currentMapRotation = heading);
   }
 
   bool _shouldShowParking(Crag crag) {
@@ -2084,10 +2104,30 @@ class _GpsAccuracyBadge extends StatelessWidget {
   }
 }
 
-class _NorthResetButton extends StatelessWidget {
-  const _NorthResetButton({required this.onPressed});
+class _HeadingControl extends StatelessWidget {
+  const _HeadingControl({
+    required this.headingDegrees,
+    required this.onHeadingChanged,
+    required this.onResetNorth,
+  });
 
-  final VoidCallback onPressed;
+  final double headingDegrees;
+  final ValueChanged<double> onHeadingChanged;
+  final VoidCallback onResetNorth;
+
+  void _changeHeadingFromGlobalPosition(
+    BuildContext context,
+    Offset globalPosition,
+  ) {
+    final box = context.findRenderObject() as RenderBox?;
+    if (box == null) return;
+    final local = box.globalToLocal(globalPosition);
+    final center = box.size.center(Offset.zero);
+    final delta = local - center;
+    if (delta.distance < 8) return;
+    final radians = math.atan2(delta.dx, -delta.dy);
+    onHeadingChanged(radians * 180 / math.pi);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -2095,14 +2135,50 @@ class _NorthResetButton extends StatelessWidget {
       right: 12,
       bottom: 146,
       child: SafeArea(
-        child: Material(
-          color: Theme.of(context).colorScheme.surface,
-          elevation: 4,
-          shape: const CircleBorder(),
-          child: IconButton(
-            tooltip: 'Reset north',
-            onPressed: onPressed,
-            icon: const Icon(Icons.explore),
+        child: Builder(
+          builder: (controlContext) => GestureDetector(
+            onTapDown: (details) => _changeHeadingFromGlobalPosition(
+              controlContext,
+              details.globalPosition,
+            ),
+            onPanUpdate: (details) => _changeHeadingFromGlobalPosition(
+              controlContext,
+              details.globalPosition,
+            ),
+            onDoubleTap: onResetNorth,
+            child: Tooltip(
+              message: 'Drag to change map heading. Double tap for north.',
+              child: Material(
+                color: Theme.of(context).colorScheme.surface,
+                elevation: 4,
+                shape: const CircleBorder(),
+                child: SizedBox(
+                  width: 54,
+                  height: 54,
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      Transform.rotate(
+                        angle: headingDegrees * math.pi / 180,
+                        child: Icon(
+                          Icons.navigation,
+                          color: Theme.of(context).colorScheme.primary,
+                          size: 28,
+                        ),
+                      ),
+                      Positioned(
+                        bottom: 7,
+                        child: Text(
+                          'N',
+                          style: Theme.of(context).textTheme.labelSmall
+                              ?.copyWith(fontWeight: FontWeight.w900),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
           ),
         ),
       ),
