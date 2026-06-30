@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:latlong2/latlong.dart';
 
 import '../models/crag.dart';
 import '../services/database_service.dart';
@@ -10,6 +11,7 @@ import '../state/map_path_state.dart';
 import '../state/ski_route_state.dart';
 import '../utils/number_parser.dart';
 import '../utils/picked_upload_image.dart';
+import '../utils/vancouver_island.dart';
 import '../widgets/side_banner_layout.dart';
 
 class SubmitRouteScreen extends ConsumerStatefulWidget {
@@ -395,6 +397,21 @@ class _SubmitRouteScreenState extends ConsumerState<SubmitRouteScreen> {
 
   Future<void> submit(bool isAdmin) async {
     if (!formKey.currentState!.validate()) return;
+    final mode = ref.read(activityModeProvider);
+    if (mode == ActivityMode.ski) {
+      final trailhead = LatLng(
+        parseNumberWithUnits(trailheadLatitude.text)!,
+        parseNumberWithUnits(trailheadLongitude.text)!,
+      );
+      if (!isOnVancouverIsland(trailhead)) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Ski tours must be located on Vancouver Island.'),
+          ),
+        );
+        return;
+      }
+    }
     final selectedPhotos = [...photos];
     if (selectedPhotos.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -414,7 +431,6 @@ class _SubmitRouteScreenState extends ConsumerState<SubmitRouteScreen> {
 
     setState(() => submitting = true);
     try {
-      final mode = ref.read(activityModeProvider);
       if (mode == ActivityMode.ski) {
         final skiValues = {
           'submitter_name': submitterName.text.trim(),

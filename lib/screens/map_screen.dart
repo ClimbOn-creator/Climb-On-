@@ -2941,6 +2941,22 @@ class _SkiRouteMapSheet extends StatelessWidget {
             title: 'Hazards',
             body: route.dangerInfo,
           ),
+          if (route.sourceUrl.isNotEmpty) ...[
+            const SizedBox(height: 16),
+            OutlinedButton.icon(
+              onPressed: () => launchUrl(
+                Uri.parse(route.sourceUrl),
+                mode: LaunchMode.externalApplication,
+              ),
+              icon: const Icon(Icons.open_in_new),
+              label: const Text('View public route source'),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'Research lead only — confirm access, conditions, and the route in the field.',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ],
         ],
       ),
     );

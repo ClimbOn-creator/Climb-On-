@@ -22,6 +22,7 @@ GitHub before applying them in the Supabase SQL Editor.
 15. `add_chosslandia_crag.sql`
 16. `admin_catalog_route_editor.sql`
 17. `admin_ski_route_editor.sql`
+18. `vancouver_island_ski_catalog.sql`
 
 Optional catalog data:
 

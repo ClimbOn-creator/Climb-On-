@@ -1013,6 +1013,7 @@ class DatabaseService {
       dangerInfo: _string(json['dangerInfo']),
       imageUrl: _string(json['imageUrl']),
       createdBy: _string(json['createdBy']),
+      sourceUrl: _string(json['sourceUrl']),
     );
   }
 

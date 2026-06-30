@@ -14,13 +14,13 @@ class ClimbOnLogo extends StatelessWidget {
       child: Container(
         width: size,
         height: size,
-        decoration: const BoxDecoration(
-          color: Color(0xFF2F6B3B),
-          shape: BoxShape.circle,
+        decoration: BoxDecoration(
+          color: const Color(0xFFBFE8F7),
+          borderRadius: BorderRadius.circular(size * 0.22),
         ),
         child: Icon(
           Icons.terrain,
-          color: const Color(0xFFFFD84D),
+          color: const Color(0xFFFF5C9A),
           size: size * 0.62,
         ),
       ),

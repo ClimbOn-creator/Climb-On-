@@ -85,6 +85,9 @@ alter table public.ski_routes
   add column if not exists descent_path_points jsonb not null default '[]',
   add column if not exists created_by uuid references auth.users(id) on delete set null;
 
+alter table public.ski_routes
+  add column if not exists source_url text not null default '';
+
 create or replace function public.path_from_lat_lng(points jsonb)
 returns geography
 language plpgsql
@@ -141,9 +144,17 @@ as $$
     'descentNotes', s.descent_notes,
     'dangerInfo', s.danger_info,
     'imageUrl', s.image_url,
-    'createdBy', coalesce(s.created_by::text, '')
+    'createdBy', coalesce(s.created_by::text, ''),
+    'sourceUrl', s.source_url
   ) order by s.name), '[]'::jsonb)
-  from public.ski_routes s;
+  from public.ski_routes s
+  where st_covers(
+    st_geomfromtext(
+      'POLYGON((-128.65 50.92,-127.10 51.00,-126.60 50.63,-125.05 50.15,-123.72 49.30,-123.27 48.78,-123.30 48.30,-124.30 48.30,-125.05 48.58,-126.15 49.10,-127.20 49.85,-128.35 50.50,-128.65 50.92))',
+      4326
+    ),
+    s.location::geometry
+  );
 $$;
 
 create or replace function public.admin_save_ski_route(
