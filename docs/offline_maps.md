@@ -71,6 +71,18 @@ mosaic is resampled to 20 m before tiling for the same reason.
 The generated archives are deliberately ignored by Git; they can be many
 gigabytes and belong in R2 rather than GitHub.
 
+## Editing download sections
+
+Run `supabase/offline_map_regions.sql` once. An app administrator can then open
+Map, enable **Edit map**, choose **Edit download section**, and select any of the
+six BC sections. The existing outline opens in the same point editor used for
+approach and ski lines. Tap to add points, tap a numbered point and then the map
+to move it, or clear the draft and retrace it. Saving publishes the boundary to
+all users and caches it for offline use. Regular users have read-only access.
+The native map engine accepts rectangular download areas, so the app converts
+each saved polygon into narrow adjoining bands. Those bands follow the traced
+shape and prevent the original large overlapping rectangles from returning.
+
 ## Data and attribution
 
 - Basemap: Protomaps v4, derived from OpenStreetMap, distributed as an ODbL

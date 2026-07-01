@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../config/offline_map_config.dart';
 import '../models/offline_bc_region.dart';
 import '../state/offline_download_state.dart';
+import '../state/offline_region_state.dart';
 
 final _include3dProvider = StateProvider<bool>((ref) => false);
 
@@ -14,6 +15,8 @@ class OfflineDownloadsScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final downloads = ref.watch(offlineDownloadProvider);
     final include3d = ref.watch(_include3dProvider);
+    final regions =
+        ref.watch(offlineRegionCatalogProvider).valueOrNull ?? offlineBcRegions;
     return Scaffold(
       appBar: AppBar(title: const Text('Offline BC downloads')),
       body: ListView(
@@ -78,7 +81,7 @@ class OfflineDownloadsScreen extends ConsumerWidget {
               ),
             ),
           const SizedBox(height: 8),
-          for (final region in offlineBcRegions)
+          for (final region in regions)
             _RegionDownloadCard(
               region: region,
               status: downloads.statusFor(region.id),

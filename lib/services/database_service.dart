@@ -22,6 +22,7 @@ class DatabaseService {
   static const _catalogCacheKey = 'climb_on_catalog_cache_v1';
   static const _skiCatalogCacheKey = 'climb_on_ski_catalog_cache_v1';
   static const _mapPathsCacheKey = 'climb_on_map_paths_cache_v1';
+  static const _offlineRegionsCacheKey = 'climb_on_offline_regions_cache_v1';
 
   User? get _currentUser {
     if (!SupabaseConfig.isConfigured) return null;
@@ -801,6 +802,32 @@ class DatabaseService {
     });
   }
 
+  Future<Map<String, List<List<LatLng>>>> loadOfflineRegionPolygons() async {
+    Object? value;
+    if (SupabaseConfig.isConfigured) {
+      try {
+        value = await Supabase.instance.client
+            .from('offline_map_regions')
+            .select('id, boundary_polygons');
+        await _cacheJson(_offlineRegionsCacheKey, value);
+      } catch (_) {
+        // Use the last downloaded region boundaries below.
+      }
+    }
+    value ??= await _loadCachedJson(_offlineRegionsCacheKey);
+    return _parseOfflineRegionPolygons(value);
+  }
+
+  Future<void> updateOfflineRegionPolygons({
+    required String regionId,
+    required List<List<LatLng>> polygons,
+  }) async {
+    await _adminCoordinateUpdate('admin_update_offline_map_region', {
+      'region_id': regionId,
+      'boundary_polygons': [for (final polygon in polygons) _pathJson(polygon)],
+    });
+  }
+
   Future<List<SkiRoute>> loadSkiRoutes() async {
     if (SupabaseConfig.isConfigured) {
       try {
@@ -960,6 +987,26 @@ class DatabaseService {
         pointsName: 'descentPoints',
       ),
     );
+  }
+
+  Map<String, List<List<LatLng>>> _parseOfflineRegionPolygons(Object? value) {
+    final result = <String, List<List<LatLng>>>{};
+    for (final item in _list(value)) {
+      final json = Map<String, Object?>.from(item);
+      final id = _string(json['id']);
+      final polygons = <List<LatLng>>[];
+      final rawPolygons = json['boundary_polygons'];
+      for (final rawPolygon in rawPolygons is List ? rawPolygons : const []) {
+        final polygon = <LatLng>[];
+        for (final point in rawPolygon is List ? rawPolygon : const []) {
+          if (point is! List || point.length < 2) continue;
+          polygon.add(LatLng(_double(point[0]), _double(point[1])));
+        }
+        if (polygon.length >= 3) polygons.add(polygon);
+      }
+      if (id.isNotEmpty && polygons.isNotEmpty) result[id] = polygons;
+    }
+    return result;
   }
 
   Future<List<Crag>> _loadCachedCatalog() async {

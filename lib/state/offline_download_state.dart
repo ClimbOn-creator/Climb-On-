@@ -245,24 +245,29 @@ class OfflineDownloadState extends ChangeNotifier {
     final styles = OfflineMapConfig.downloadableStyles(
       includeTerrain3d: includeTerrain3d,
     ).entries.toList();
+    final sectionBounds = region.downloadBounds();
     var finished = 0;
-    final total = styles.length * (1 + points.length);
+    final total = styles.length * (sectionBounds.length + points.length);
 
     for (final style in styles) {
-      await _downloadPack(
-        region: region,
-        layer: style.key,
-        styleUrl: style.value,
-        bounds: ml.LatLngBounds(
-          southwest: ml.LatLng(region.bounds.south, region.bounds.west),
-          northeast: ml.LatLng(region.bounds.north, region.bounds.east),
-        ),
-        minZoom: 5,
-        maxZoom: 13,
-        detail: false,
-      );
-      finished++;
-      _mapProgress(region.id, finished, total, style.key);
+      for (var part = 0; part < sectionBounds.length; part++) {
+        final bounds = sectionBounds[part];
+        await _downloadPack(
+          region: region,
+          layer: style.key,
+          styleUrl: style.value,
+          bounds: ml.LatLngBounds(
+            southwest: ml.LatLng(bounds.south, bounds.west),
+            northeast: ml.LatLng(bounds.north, bounds.east),
+          ),
+          minZoom: 5,
+          maxZoom: 13,
+          detail: false,
+          sectionPart: part,
+        );
+        finished++;
+        _mapProgress(region.id, finished, total, style.key);
+      }
 
       for (final point in points) {
         const radius = 0.045;
@@ -302,6 +307,7 @@ class OfflineDownloadState extends ChangeNotifier {
     required double minZoom,
     required double maxZoom,
     required bool detail,
+    int? sectionPart,
   }) async {
     await ml.downloadOfflineRegion(
       ml.OfflineRegionDefinition(
@@ -314,6 +320,7 @@ class OfflineDownloadState extends ChangeNotifier {
         'climbOnRegionId': region.id,
         'layer': layer,
         'detail': detail,
+        'sectionPart': ?sectionPart,
       },
     );
   }

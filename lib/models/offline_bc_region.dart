@@ -21,8 +21,64 @@ class OfflineBcRegion {
   final List<List<LatLng>> polygons;
   final int colorValue;
 
+  OfflineBcRegion copyWith({List<List<LatLng>>? polygons}) {
+    return OfflineBcRegion(
+      id: id,
+      name: name,
+      description: description,
+      bounds: bounds,
+      center: center,
+      polygons: polygons ?? this.polygons,
+      colorValue: colorValue,
+    );
+  }
+
   bool contains(LatLng point) {
     return polygons.any((polygon) => _containsPoint(polygon, point));
+  }
+
+  List<GeoBounds> downloadBounds({int bandsPerPolygon = 16}) {
+    final result = <GeoBounds>[];
+    for (final polygon in polygons) {
+      if (polygon.length < 3) continue;
+      final latitudes = polygon.map((point) => point.latitude);
+      final south = latitudes.reduce((a, b) => a < b ? a : b);
+      final north = latitudes.reduce((a, b) => a > b ? a : b);
+      final height = north - south;
+      if (height <= 0) continue;
+
+      for (var band = 0; band < bandsPerPolygon; band++) {
+        final bandSouth = south + height * band / bandsPerPolygon;
+        final bandNorth = south + height * (band + 1) / bandsPerPolygon;
+        final latitude = (bandSouth + bandNorth) / 2;
+        final intersections = <double>[];
+        for (var index = 0; index < polygon.length; index++) {
+          final first = polygon[index];
+          final second = polygon[(index + 1) % polygon.length];
+          final crosses =
+              (first.latitude <= latitude && second.latitude > latitude) ||
+              (second.latitude <= latitude && first.latitude > latitude);
+          if (!crosses) continue;
+          final fraction =
+              (latitude - first.latitude) / (second.latitude - first.latitude);
+          intersections.add(
+            first.longitude + fraction * (second.longitude - first.longitude),
+          );
+        }
+        intersections.sort();
+        for (var index = 0; index + 1 < intersections.length; index += 2) {
+          result.add(
+            GeoBounds(
+              south: bandSouth,
+              west: intersections[index],
+              north: bandNorth,
+              east: intersections[index + 1],
+            ),
+          );
+        }
+      }
+    }
+    return result.isEmpty ? [bounds] : result;
   }
 
   static bool _containsPoint(List<LatLng> polygon, LatLng point) {

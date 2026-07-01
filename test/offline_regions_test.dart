@@ -19,6 +19,21 @@ void main() {
     ]);
   });
 
+  test('saved boundary polygons can replace a default section outline', () {
+    final original = offlineBcRegions.first;
+    const replacement = [
+      LatLng(48.0, -124.0),
+      LatLng(49.0, -124.0),
+      LatLng(48.5, -123.0),
+    ];
+    final edited = original.copyWith(polygons: const [replacement]);
+
+    expect(edited.name, original.name);
+    expect(edited.polygons.single, replacement);
+    expect(edited.contains(const LatLng(48.5, -123.5)), isTrue);
+    expect(edited.downloadBounds(), isNotEmpty);
+  });
+
   test('key BC destinations belong to an offline section', () {
     const destinations = [
       LatLng(48.4284, -123.3656), // Victoria

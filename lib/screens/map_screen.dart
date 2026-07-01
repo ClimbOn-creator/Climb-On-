@@ -29,6 +29,7 @@ import '../state/activity_mode_state.dart';
 import '../state/catalog_state.dart';
 import '../state/climb_log_state.dart';
 import '../state/map_path_state.dart';
+import '../state/offline_region_state.dart';
 import '../state/ski_route_state.dart';
 import '../utils/number_parser.dart';
 import '../widgets/pulsing_user_marker.dart';
@@ -57,6 +58,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   _PathDraftKind? pathDraftKind;
   int? selectedPathPointIndex;
   List<LatLng> pathDraft = [];
+  OfflineBcRegion? editingOfflineRegion;
   LatLng? currentMapCenter;
   double currentMapRotation = 0;
   final Set<_MapRouteFilter> activeFilters = {};
@@ -271,12 +273,14 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     final activeSkiRoute = _activeSkiRoute(skiCatalog);
     final mapPaths =
         ref.watch(mapPathCatalogProvider).valueOrNull ?? const MapPathCatalog();
+    final mapRegions =
+        ref.watch(offlineRegionCatalogProvider).valueOrNull ?? offlineBcRegions;
     final catalogCrags = catalog.valueOrNull ?? const <Crag>[];
     final mapCrags = visibleCrags(catalogCrags);
     final mapLibreStyle = _mapLibreStyleFor(tileStyle);
     final useMapLibre =
         tileStyle == _MapTileStyle.terrain3d ||
-        (!kIsWeb && mapLibreStyle != null);
+        (!pathEditMode && !kIsWeb && mapLibreStyle != null);
     final initialCenter =
         userLocation ??
         (mode == ActivityMode.ski
@@ -304,6 +308,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                     crags: mapCrags,
                     skiRoutes: skiCatalog,
                     paths: mapPaths,
+                    regions: mapRegions,
                     selectedCrag: selectedCrag,
                     selectedSkiRoute: activeSkiRoute,
                     userLocation: userLocation,
@@ -353,7 +358,9 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                         userAgentPackageName: 'com.climbon.app',
                       ),
                       if (currentZoom < 9)
-                        PolygonLayer(polygons: _offlineRegionPolygons()),
+                        PolygonLayer(
+                          polygons: _offlineRegionPolygons(mapRegions),
+                        ),
                       PolylineLayer(
                         polylines: [
                           ...(mode == ActivityMode.ski
@@ -361,7 +368,10 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                               : _approachLines(mapPaths)),
                           if (pathEditMode && pathDraft.length >= 2)
                             Polyline(
-                              points: pathDraft,
+                              points:
+                                  pathDraftKind == _PathDraftKind.regionBoundary
+                                  ? [...pathDraft, pathDraft.first]
+                                  : pathDraft,
                               color:
                                   pathDraftKind?.color ??
                                   _PathDraftKind.cragApproach.color,
@@ -399,7 +409,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                       MarkerLayer(
                         markers: [
                           if (currentZoom >= 6.5 && currentZoom < 9)
-                            ..._offlineRegionMarkers(),
+                            ..._offlineRegionMarkers(mapRegions),
                           ...(mode == ActivityMode.ski
                               ? _skiMarkers(context, skiCatalog, activeSkiRoute)
                               : _markers(context, wide, mapCrags)),
@@ -415,10 +425,10 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                     ],
                   ),
                 if (!useMapLibre && currentZoom < 6.5)
-                  const Positioned(
+                  Positioned(
                     left: 12,
                     top: 170,
-                    child: _BcRegionLegend(),
+                    child: _BcRegionLegend(regions: mapRegions),
                   ),
                 if (useMapLibre && OfflineMapConfig.mapsConfigured)
                   Positioned(
@@ -447,6 +457,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                   ),
                 _MapLayerSwitcher(
                   selected: tileStyle,
+                  terrainAvailable: OfflineMapConfig.terrainConfigured,
                   onChanged: (style) {
                     if (style == _MapTileStyle.terrain3d && pathEditMode) {
                       _cancelPathEditor();
@@ -454,6 +465,14 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                     setState(() {
                       tileStyle = style;
                       if (!_usesMapLibre(style)) mapLibreController = null;
+                    });
+                  },
+                  onTerrainChanged: (enabled) {
+                    if (enabled && pathEditMode) _cancelPathEditor();
+                    setState(() {
+                      tileStyle = enabled
+                          ? _MapTileStyle.terrain3d
+                          : _MapTileStyle.satellite;
                     });
                   },
                 ),
@@ -489,6 +508,9 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                   onTracePath: (kind) =>
                       _startPathEditor(kind, mapPaths, activeSkiRoute),
                   onCreateSkiRoute: _startNewSkiRoutePath,
+                  regions: mapRegions,
+                  editingRegion: editingOfflineRegion,
+                  onEditRegion: _startRegionBoundaryEditor,
                 ),
                 if (tileStyle != _MapTileStyle.terrain3d)
                   _HeadingControl(
@@ -517,7 +539,13 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                         : _deleteSelectedPathPoint,
                     onClear: pathDraft.isEmpty ? null : _clearPath,
                     onCancel: _cancelPathEditor,
-                    onSave: pathDraft.length < 2 ? null : _savePath,
+                    onSave:
+                        pathDraft.length <
+                            (pathDraftKind == _PathDraftKind.regionBoundary
+                                ? 3
+                                : 2)
+                        ? null
+                        : _savePath,
                   ),
                 if (!pathEditMode && tileStyle != _MapTileStyle.terrain3d)
                   _GpsRecorderTools(
@@ -697,9 +725,9 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     ];
   }
 
-  List<Polygon> _offlineRegionPolygons() {
+  List<Polygon> _offlineRegionPolygons(List<OfflineBcRegion> regions) {
     return [
-      for (final region in offlineBcRegions)
+      for (final region in regions)
         for (final boundary in region.polygons)
           Polygon(
             points: boundary,
@@ -711,9 +739,9 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     ];
   }
 
-  List<Marker> _offlineRegionMarkers() {
+  List<Marker> _offlineRegionMarkers(List<OfflineBcRegion> regions) {
     return [
-      for (final region in offlineBcRegions)
+      for (final region in regions)
         Marker(
           point: region.center,
           width: 128,
@@ -1059,6 +1087,34 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     _showMapMessage('Tap the ski map to draw the ascent line.');
   }
 
+  void _startRegionBoundaryEditor(OfflineBcRegion region) {
+    setState(() {
+      selectedCrag = null;
+      selectedWall = null;
+      selectedSkiRoute = null;
+      selectedSkiRouteId = null;
+      selectedParkingCrag = null;
+      editingOfflineRegion = region;
+      pathDraftKind = _PathDraftKind.regionBoundary;
+      pathDraft = [...region.polygons.first];
+      pathEditMode = true;
+      selectedPathPointIndex = null;
+      currentMapCenter = region.center;
+      currentZoom = 6.5;
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !pathEditMode) return;
+      try {
+        mapController.move(region.center, 6.5);
+      } on Object {
+        // The editor still opens at the saved center after a map-engine swap.
+      }
+    });
+    _showMapMessage(
+      'Editing ${region.name}. Tap to add points or select a numbered point to move it.',
+    );
+  }
+
   List<Marker> _pathEditorMarkers() {
     if (!pathEditMode) return const [];
     final pathColor = pathDraftKind?.color ?? _PathDraftKind.cragApproach.color;
@@ -1137,6 +1193,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       pathDraftKind = null;
       pathDraft = [];
       selectedPathPointIndex = null;
+      editingOfflineRegion = null;
     });
   }
 
@@ -1146,7 +1203,18 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     final points = [...pathDraft];
 
     try {
-      if (kind == _PathDraftKind.cragApproach) {
+      if (kind == _PathDraftKind.regionBoundary) {
+        final region = editingOfflineRegion;
+        if (region == null || points.length < 3) return;
+        await const DatabaseService().updateOfflineRegionPolygons(
+          regionId: region.id,
+          polygons: [points, ...region.polygons.skip(1)],
+        );
+        ref.invalidate(offlineRegionCatalogProvider);
+        _cancelPathEditor();
+        _showMapMessage('${region.name} download boundary saved');
+        return;
+      } else if (kind == _PathDraftKind.cragApproach) {
         final crag = selectedCrag;
         if (crag == null) return;
         await const DatabaseService().updateCragApproachPath(
@@ -1399,6 +1467,9 @@ class _MapScreenState extends ConsumerState<MapScreen> {
           _PathDraftKind.cragApproach => 'climb_approach',
           _PathDraftKind.skiAscent => 'ski_ascent',
           _PathDraftKind.skiDescent => 'ski_descent',
+          _PathDraftKind.regionBoundary => throw StateError(
+            'Download boundaries are saved through the admin editor.',
+          ),
         },
         points: recordedPath,
         distanceMeters: _pathLength(recordedPath),
@@ -1703,6 +1774,7 @@ class _Terrain3DMap extends StatefulWidget {
     required this.crags,
     required this.skiRoutes,
     required this.paths,
+    required this.regions,
     required this.selectedCrag,
     required this.selectedSkiRoute,
     required this.userLocation,
@@ -1719,6 +1791,7 @@ class _Terrain3DMap extends StatefulWidget {
   final List<Crag> crags;
   final List<SkiRoute> skiRoutes;
   final MapPathCatalog paths;
+  final List<OfflineBcRegion> regions;
   final Crag? selectedCrag;
   final SkiRoute? selectedSkiRoute;
   final LatLng? userLocation;
@@ -1785,6 +1858,7 @@ class _Terrain3DMapState extends State<_Terrain3DMap> {
     if (styleLoaded &&
         (oldWidget.mode != widget.mode ||
             oldWidget.paths != widget.paths ||
+            oldWidget.regions != widget.regions ||
             oldWidget.selectedCrag != widget.selectedCrag ||
             oldWidget.selectedSkiRoute != widget.selectedSkiRoute)) {
       unawaited(_drawAnnotations());
@@ -1848,7 +1922,7 @@ class _Terrain3DMapState extends State<_Terrain3DMap> {
       final symbolData = <Map<String, dynamic>>[];
       final zoom = map.cameraPosition?.zoom ?? widget.zoom;
       if (zoom < 9) {
-        for (final region in offlineBcRegions) {
+        for (final region in widget.regions) {
           final color =
               '#${(region.colorValue & 0xFFFFFF).toRadixString(16).padLeft(6, '0')}';
           for (final boundary in region.polygons) {
@@ -2014,7 +2088,7 @@ class _Terrain3DMapState extends State<_Terrain3DMap> {
       }
     }
     if (kind == 'offline-region') {
-      for (final region in offlineBcRegions) {
+      for (final region in widget.regions) {
         if (region.id == id) {
           unawaited(
             controller?.animateCamera(
@@ -2073,12 +2147,14 @@ class _VerticalMeters {
 enum _PathDraftKind {
   cragApproach,
   skiAscent,
-  skiDescent;
+  skiDescent,
+  regionBoundary;
 
   Color get color => switch (this) {
     cragApproach => const Color(0xFFF28C28),
     skiAscent => const Color(0xFFD33B2F),
     skiDescent => const Color(0xFFF28C28),
+    regionBoundary => const Color(0xFF1565C0),
   };
 }
 
@@ -2142,7 +2218,9 @@ enum _MapTileStyle {
 }
 
 class _BcRegionLegend extends StatelessWidget {
-  const _BcRegionLegend();
+  const _BcRegionLegend({required this.regions});
+
+  final List<OfflineBcRegion> regions;
 
   @override
   Widget build(BuildContext context) {
@@ -2173,7 +2251,7 @@ class _BcRegionLegend extends StatelessWidget {
                 ).textTheme.labelMedium?.copyWith(fontWeight: FontWeight.w900),
               ),
               const SizedBox(height: 5),
-              for (final region in offlineBcRegions)
+              for (final region in regions)
                 Padding(
                   padding: const EdgeInsets.symmetric(vertical: 2),
                   child: Row(
@@ -2263,13 +2341,27 @@ class _MapFilters extends StatelessWidget {
 }
 
 class _MapLayerSwitcher extends StatelessWidget {
-  const _MapLayerSwitcher({required this.selected, required this.onChanged});
+  const _MapLayerSwitcher({
+    required this.selected,
+    required this.terrainAvailable,
+    required this.onChanged,
+    required this.onTerrainChanged,
+  });
 
   final _MapTileStyle selected;
+  final bool terrainAvailable;
   final ValueChanged<_MapTileStyle> onChanged;
+  final ValueChanged<bool> onTerrainChanged;
 
   @override
   Widget build(BuildContext context) {
+    final satelliteSelected =
+        selected == _MapTileStyle.satellite ||
+        selected == _MapTileStyle.terrain3d;
+    final displayedStyle = selected == _MapTileStyle.terrain3d
+        ? _MapTileStyle.satellite
+        : selected;
+
     return Positioned(
       left: 12,
       top: 12,
@@ -2280,39 +2372,61 @@ class _MapLayerSwitcher extends StatelessWidget {
           borderRadius: BorderRadius.circular(8),
           child: Padding(
             padding: const EdgeInsets.all(6),
-            child: PopupMenuButton<_MapTileStyle>(
-              tooltip: 'Map layer',
-              initialValue: selected,
-              onSelected: onChanged,
-              itemBuilder: (context) => [
-                for (final style in _MapTileStyle.values.where(
-                  (style) =>
-                      style != _MapTileStyle.terrain3d ||
-                      OfflineMapConfig.terrainConfigured,
-                ))
-                  PopupMenuItem(
-                    value: style,
-                    child: ListTile(
-                      dense: true,
-                      contentPadding: EdgeInsets.zero,
-                      leading: Icon(style.icon),
-                      title: Text(style.label),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                PopupMenuButton<_MapTileStyle>(
+                  tooltip: 'Map layer',
+                  initialValue: displayedStyle,
+                  onSelected: onChanged,
+                  itemBuilder: (context) => [
+                    for (final style in const [
+                      _MapTileStyle.clean,
+                      _MapTileStyle.satellite,
+                    ])
+                      PopupMenuItem(
+                        value: style,
+                        child: ListTile(
+                          dense: true,
+                          contentPadding: EdgeInsets.zero,
+                          leading: Icon(style.icon),
+                          title: Text(style.label),
+                        ),
+                      ),
+                  ],
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 6,
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(displayedStyle.icon, size: 18),
+                        const SizedBox(width: 8),
+                        Text(displayedStyle.label),
+                        const SizedBox(width: 4),
+                        const Icon(Icons.arrow_drop_down),
+                      ],
                     ),
                   ),
-              ],
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(selected.icon, size: 18),
-                    const SizedBox(width: 8),
-                    Text(selected.label),
-                    const SizedBox(width: 4),
-                    const Icon(Icons.arrow_drop_down),
-                  ],
                 ),
-              ),
+                if (satelliteSelected) ...[
+                  const SizedBox(width: 4),
+                  Tooltip(
+                    message: terrainAvailable
+                        ? 'Show satellite over 3D Canadian terrain'
+                        : '3D activates when Canadian terrain is connected',
+                    child: FilterChip(
+                      avatar: const Icon(Icons.view_in_ar, size: 17),
+                      label: const Text('3D'),
+                      selected: selected == _MapTileStyle.terrain3d,
+                      onSelected: terrainAvailable ? onTerrainChanged : null,
+                      showCheckmark: false,
+                    ),
+                  ),
+                ],
+              ],
             ),
           ),
         ),
@@ -2334,6 +2448,9 @@ class _AdminMapTools extends StatelessWidget {
     required this.onEdit,
     required this.onTracePath,
     required this.onCreateSkiRoute,
+    required this.regions,
+    required this.editingRegion,
+    required this.onEditRegion,
   });
 
   final bool isAdmin;
@@ -2347,6 +2464,9 @@ class _AdminMapTools extends StatelessWidget {
   final VoidCallback onEdit;
   final ValueChanged<_PathDraftKind> onTracePath;
   final VoidCallback onCreateSkiRoute;
+  final List<OfflineBcRegion> regions;
+  final OfflineBcRegion? editingRegion;
+  final ValueChanged<OfflineBcRegion> onEditRegion;
 
   @override
   Widget build(BuildContext context) {
@@ -2414,6 +2534,55 @@ class _AdminMapTools extends StatelessWidget {
                       label: const Text('Edit descent'),
                     ),
                   ],
+                  PopupMenuButton<OfflineBcRegion>(
+                    tooltip: 'Edit download section boundary',
+                    onSelected: onEditRegion,
+                    itemBuilder: (context) => [
+                      for (final region in regions)
+                        PopupMenuItem(
+                          value: region,
+                          child: Row(
+                            children: [
+                              Container(
+                                width: 12,
+                                height: 12,
+                                decoration: BoxDecoration(
+                                  color: Color(region.colorValue),
+                                  borderRadius: BorderRadius.circular(2),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Flexible(child: Text(region.name)),
+                            ],
+                          ),
+                        ),
+                    ],
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 8,
+                      ),
+                      decoration: BoxDecoration(
+                        border: Border.all(
+                          color: Theme.of(context).colorScheme.outline,
+                        ),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.gesture, size: 18),
+                          const SizedBox(width: 7),
+                          Text(
+                            editingRegion == null
+                                ? 'Edit download section'
+                                : editingRegion!.name,
+                          ),
+                          const Icon(Icons.arrow_drop_down, size: 18),
+                        ],
+                      ),
+                    ),
+                  ),
                   Text(
                     '${mapCenter.latitude.toStringAsFixed(6)}, '
                     '${mapCenter.longitude.toStringAsFixed(6)}',
