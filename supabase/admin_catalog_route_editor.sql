@@ -39,6 +39,9 @@ add column if not exists created_by uuid references auth.users(id) on delete set
 alter table public.routes
 add column if not exists image_url text not null default '';
 
+alter table public.routes
+add column if not exists trailhead_image_url text not null default '';
+
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 values (
   'submission-photos',
@@ -246,6 +249,26 @@ $$;
 grant execute on function public.admin_update_route_image(uuid, text)
 to authenticated;
 
+create or replace function public.admin_update_route_trailhead_image(
+  target_route_id uuid,
+  new_image_url text
+)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if not public.is_app_admin() then raise exception 'Not authorized'; end if;
+  update public.routes set trailhead_image_url = trim(new_image_url)
+  where id = target_route_id;
+  if not found then raise exception 'Route not found'; end if;
+end;
+$$;
+
+grant execute on function public.admin_update_route_trailhead_image(uuid, text)
+to authenticated;
+
 create or replace function public.climb_catalog()
 returns jsonb
 language sql
@@ -307,6 +330,7 @@ as $$
               'descentNotes', routes.descent_notes,
               'dangerInfo', routes.danger_info,
               'imageUrl', routes.image_url,
+              'trailheadImageUrl', routes.trailhead_image_url,
               'createdBy', coalesce(routes.created_by::text, '')
             ) order by routes.name)
             from public.routes

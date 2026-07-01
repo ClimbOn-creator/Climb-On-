@@ -20,6 +20,8 @@ class DatabaseService {
   const DatabaseService();
 
   static const _catalogCacheKey = 'climb_on_catalog_cache_v1';
+  static const _skiCatalogCacheKey = 'climb_on_ski_catalog_cache_v1';
+  static const _mapPathsCacheKey = 'climb_on_map_paths_cache_v1';
 
   User? get _currentUser {
     if (!SupabaseConfig.isConfigured) return null;
@@ -665,6 +667,37 @@ class DatabaseService {
     required String imageName,
     required String imageContentType,
   }) async {
+    return _adminReplaceCatalogImage(
+      routeId: routeId,
+      imageBytes: imageBytes,
+      imageName: imageName,
+      imageContentType: imageContentType,
+      functionName: 'admin_update_route_image',
+    );
+  }
+
+  Future<String> adminReplaceRouteTrailheadImage({
+    required String routeId,
+    required List<int> imageBytes,
+    required String imageName,
+    required String imageContentType,
+  }) {
+    return _adminReplaceCatalogImage(
+      routeId: routeId,
+      imageBytes: imageBytes,
+      imageName: imageName,
+      imageContentType: imageContentType,
+      functionName: 'admin_update_route_trailhead_image',
+    );
+  }
+
+  Future<String> _adminReplaceCatalogImage({
+    required String routeId,
+    required List<int> imageBytes,
+    required String imageName,
+    required String imageContentType,
+    required String functionName,
+  }) async {
     final user = _currentUser;
     if (user == null) throw const AuthException('Sign in to edit routes.');
     final extension = imageName.contains('.')
@@ -685,7 +718,7 @@ class DatabaseService {
     final imageUrl = storage.getPublicUrl(path);
     try {
       await Supabase.instance.client.rpc(
-        'admin_update_route_image',
+        functionName,
         params: {'target_route_id': routeId, 'new_image_url': imageUrl},
       );
       return imageUrl;
@@ -730,31 +763,20 @@ class DatabaseService {
   }
 
   Future<MapPathCatalog> loadMapPaths() async {
-    if (!SupabaseConfig.isConfigured) return const MapPathCatalog();
-
-    try {
-      final result = await Supabase.instance.client.rpc('map_paths');
-      final value = result is String ? jsonDecode(result) : result;
-      if (value is! Map) return const MapPathCatalog();
-      final json = Map<String, Object?>.from(value);
-
-      return MapPathCatalog(
-        cragApproaches: _pathMap(json['crags'], keyName: 'id'),
-        skiAscents: _pathMap(
-          json['skiRoutes'],
-          keyName: 'name',
-          pointsName: 'ascentPoints',
-          legacyPointsName: 'points',
-        ),
-        skiDescents: _pathMap(
-          json['skiRoutes'],
-          keyName: 'name',
-          pointsName: 'descentPoints',
-        ),
-      );
-    } catch (_) {
-      return const MapPathCatalog();
+    if (SupabaseConfig.isConfigured) {
+      try {
+        final result = await Supabase.instance.client.rpc('map_paths');
+        final value = result is String ? jsonDecode(result) : result;
+        final paths = _parseMapPaths(value);
+        await _cacheJson(_mapPathsCacheKey, value);
+        return paths;
+      } catch (_) {
+        // Use the last downloaded paths below.
+      }
     }
+
+    final cached = await _loadCachedJson(_mapPathsCacheKey);
+    return _parseMapPaths(cached);
   }
 
   Future<void> updateCragApproachPath({
@@ -780,17 +802,19 @@ class DatabaseService {
   }
 
   Future<List<SkiRoute>> loadSkiRoutes() async {
-    if (!SupabaseConfig.isConfigured) return const [];
-
-    try {
-      final result = await Supabase.instance.client.rpc('ski_catalog');
-      final value = result is String ? jsonDecode(result) : result;
-      return _list(value)
-          .map((item) => _skiRouteFromJson(Map<String, Object?>.from(item)))
-          .toList(growable: false);
-    } catch (_) {
-      return const [];
+    if (SupabaseConfig.isConfigured) {
+      try {
+        final result = await Supabase.instance.client.rpc('ski_catalog');
+        final value = result is String ? jsonDecode(result) : result;
+        final routes = _parseSkiRoutes(value);
+        if (routes.isNotEmpty) await _cacheJson(_skiCatalogCacheKey, value);
+        return routes;
+      } catch (_) {
+        // Use the last downloaded ski catalogue below.
+      }
     }
+
+    return _parseSkiRoutes(await _loadCachedJson(_skiCatalogCacheKey));
   }
 
   Future<SkiRoute> adminSaveSkiRoute({
@@ -894,8 +918,48 @@ class DatabaseService {
   }
 
   Future<void> _cacheCatalog(Object? catalog) async {
+    await _cacheJson(_catalogCacheKey, catalog);
+  }
+
+  Future<void> _cacheJson(String key, Object? value) async {
     final preferences = await SharedPreferences.getInstance();
-    await preferences.setString(_catalogCacheKey, jsonEncode(catalog));
+    await preferences.setString(key, jsonEncode(value));
+  }
+
+  Future<Object?> _loadCachedJson(String key) async {
+    final preferences = await SharedPreferences.getInstance();
+    final raw = preferences.getString(key);
+    if (raw == null || raw.isEmpty) return null;
+    try {
+      return jsonDecode(raw);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  List<SkiRoute> _parseSkiRoutes(Object? value) {
+    return _list(value)
+        .map((item) => _skiRouteFromJson(Map<String, Object?>.from(item)))
+        .toList(growable: false);
+  }
+
+  MapPathCatalog _parseMapPaths(Object? value) {
+    if (value is! Map) return const MapPathCatalog();
+    final json = Map<String, Object?>.from(value);
+    return MapPathCatalog(
+      cragApproaches: _pathMap(json['crags'], keyName: 'id'),
+      skiAscents: _pathMap(
+        json['skiRoutes'],
+        keyName: 'name',
+        pointsName: 'ascentPoints',
+        legacyPointsName: 'points',
+      ),
+      skiDescents: _pathMap(
+        json['skiRoutes'],
+        keyName: 'name',
+        pointsName: 'descentPoints',
+      ),
+    );
   }
 
   Future<List<Crag>> _loadCachedCatalog() async {
@@ -985,6 +1049,10 @@ class DatabaseService {
       imageUrl: _string(
         json['imageUrl'],
         'https://images.squarespace-cdn.com/content/v1/53f4116fe4b0fc4173f54f3f/b372d92d-f15e-4605-8a1b-76629df27e73/Main-Wall-2.jpg',
+      ),
+      trailheadImageUrl: _string(
+        json['trailheadImageUrl'],
+        'https://images.unsplash.com/photo-1522163182402-834f871fd851',
       ),
       createdBy: _string(json['createdBy']),
     );

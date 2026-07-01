@@ -1,3 +1,4 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -54,94 +55,100 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
     return Scaffold(
       appBar: showTitleBar ? AppBar(title: const Text('Feed')) : null,
       body: SideBannerLayout(
-        child: ListView(
-          padding: const EdgeInsets.all(16),
-          children: [
-            TextField(
-              onChanged: (value) => setState(() => query = value),
-              decoration: const InputDecoration(
-                prefixIcon: Icon(Icons.search),
-                hintText: 'Search routes, grades, tours, or areas',
-              ),
-            ),
-            const SizedBox(height: 16),
-            if (mode == ActivityMode.ski) ...[
-              if (skiCatalog.isLoading)
-                const LinearProgressIndicator(minHeight: 3),
-              _SkiFeed(
-                query: query,
-                routes: skiResults,
-                onRouteTap: _openSkiDetails,
-              ),
-            ] else ...[
-              if (catalog.isLoading)
-                const LinearProgressIndicator(minHeight: 3),
-              if (catalog.hasError)
-                const Padding(
-                  padding: EdgeInsets.only(bottom: 12),
-                  child: Text(
-                    'Using saved route data while the cloud reconnects.',
-                  ),
+        child: RefreshIndicator(
+          onRefresh: social.refresh,
+          child: ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.all(16),
+            children: [
+              TextField(
+                onChanged: (value) => setState(() => query = value),
+                decoration: const InputDecoration(
+                  prefixIcon: Icon(Icons.search),
+                  hintText: 'Search routes, grades, tours, or areas',
                 ),
-              if (focusedRoute != null) ...[
-                _SectionHeader(
-                  title: 'Selected route',
-                  action: TextButton.icon(
-                    onPressed: () {
-                      ref.read(focusedRouteProvider.notifier).state = null;
-                    },
-                    icon: const Icon(Icons.close),
-                    label: const Text('Clear'),
-                  ),
+              ),
+              const SizedBox(height: 16),
+              if (mode == ActivityMode.ski) ...[
+                if (skiCatalog.isLoading)
+                  const LinearProgressIndicator(minHeight: 3),
+                _SkiFeed(
+                  query: query,
+                  routes: skiResults,
+                  onRouteTap: _openSkiDetails,
                 ),
-                RouteCard(route: focusedRoute, expanded: true),
-                const SizedBox(height: 24),
-              ],
-              if (query.trim().isNotEmpty) ...[
-                _SectionHeader(title: 'Search results (${results.length})'),
-                for (final route in results)
-                  _RouteListTile(
-                    route: route,
-                    subtitle: '${route.grade} - ${route.typeLabel}',
-                    onTap: () => _openRouteDetails(context, route),
-                  ),
-                const SizedBox(height: 24),
               ] else ...[
-                _FriendSendsSection(
-                  social: social,
-                  routes: allRoutes,
-                  onRouteTap: _openRouteDetails,
-                  onAddFriends: () => _showFriendsManager(social),
-                  onProfileTap: _showFriendProfile,
-                ),
-                _YourRecentSendsSection(
-                  sends: climbLog.sends,
-                  routes: allRoutes,
-                  onRouteTap: _openRouteDetails,
-                ),
-                _RouteSection(
-                  title: 'Routes near you',
-                  routes: allRoutes.take(4).toList(),
-                  subtitleFor: (route) => '${route.grade} - nearby Victoria',
-                  onRouteTap: _openRouteDetails,
-                ),
-                _RouteSection(
-                  title: 'New routes added nearby',
-                  routes: allRoutes.reversed.take(3).toList(),
-                  subtitleFor: (route) => '${route.grade} - added this month',
-                  onRouteTap: _openRouteDetails,
-                ),
-                _RouteSection(
-                  title: 'Popular climbs this week',
-                  routes: [...allRoutes]
-                    ..sort((a, b) => b.rating.compareTo(a.rating)),
-                  maxItems: 4,
-                  subtitleFor: (route) => '${route.rating}/5 community rating',
-                  onRouteTap: _openRouteDetails,
-                ),
+                if (catalog.isLoading)
+                  const LinearProgressIndicator(minHeight: 3),
+                if (catalog.hasError)
+                  const Padding(
+                    padding: EdgeInsets.only(bottom: 12),
+                    child: Text(
+                      'Using saved route data while the cloud reconnects.',
+                    ),
+                  ),
+                if (focusedRoute != null) ...[
+                  _SectionHeader(
+                    title: 'Selected route',
+                    action: TextButton.icon(
+                      onPressed: () {
+                        ref.read(focusedRouteProvider.notifier).state = null;
+                      },
+                      icon: const Icon(Icons.close),
+                      label: const Text('Clear'),
+                    ),
+                  ),
+                  RouteCard(route: focusedRoute, expanded: true),
+                  const SizedBox(height: 24),
+                ],
+                if (query.trim().isNotEmpty) ...[
+                  _SectionHeader(title: 'Search results (${results.length})'),
+                  for (final route in results)
+                    _RouteListTile(
+                      route: route,
+                      subtitle: '${route.grade} - ${route.typeLabel}',
+                      onTap: () => _openRouteDetails(context, route),
+                    ),
+                  const SizedBox(height: 24),
+                ] else ...[
+                  _FriendSendsSection(
+                    social: social,
+                    routes: allRoutes,
+                    onRouteTap: _openRouteDetails,
+                    onAddFriends: () => _showFriendsManager(social, allRoutes),
+                    onProfileTap: (profile) =>
+                        _showFriendProfile(profile, social, allRoutes),
+                  ),
+                  _YourRecentSendsSection(
+                    sends: climbLog.sends,
+                    routes: allRoutes,
+                    onRouteTap: _openRouteDetails,
+                  ),
+                  _RouteSection(
+                    title: 'Routes near you',
+                    routes: allRoutes.take(4).toList(),
+                    subtitleFor: (route) => '${route.grade} - nearby Victoria',
+                    onRouteTap: _openRouteDetails,
+                  ),
+                  _RouteSection(
+                    title: 'New routes added nearby',
+                    routes: allRoutes.reversed.take(3).toList(),
+                    subtitleFor: (route) => '${route.grade} - added this month',
+                    onRouteTap: _openRouteDetails,
+                  ),
+                  _RouteSection(
+                    title: 'Popular climbs this week',
+                    routes: [...allRoutes]
+                      ..sort((a, b) => b.rating.compareTo(a.rating)),
+                    maxItems: 4,
+                    subtitleFor: (route) =>
+                        '${route.rating}/5 community rating',
+                    onRouteTap: _openRouteDetails,
+                  ),
+                ],
               ],
             ],
-          ],
+          ),
         ),
       ),
     );
@@ -218,22 +225,38 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
     );
   }
 
-  void _showFriendsManager(SocialState social) {
+  void _showFriendsManager(SocialState social, List<ClimbRoute> routes) {
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
       showDragHandle: true,
-      builder: (context) =>
-          _FriendsManager(social: social, onProfileTap: _showFriendProfile),
+      builder: (context) => _FriendsManager(
+        social: social,
+        onProfileTap: (profile) => _showFriendProfile(profile, social, routes),
+      ),
     );
   }
 
-  void _showFriendProfile(FriendProfile profile) {
-    showModalBottomSheet<void>(
-      context: context,
-      showDragHandle: true,
-      builder: (context) => _FriendProfileSheet(profile: profile),
+  void _showFriendProfile(
+    FriendProfile profile,
+    SocialState social,
+    List<ClimbRoute> routes,
+  ) {
+    final routesById = {for (final route in routes) route.id: route};
+    final sends = social.friendSends
+        .where((send) => send.user.id == profile.id)
+        .where((send) => routesById.containsKey(send.routeId))
+        .toList(growable: false);
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (pageContext) => _FriendProfilePage(
+          profile: profile,
+          sends: sends,
+          routesById: routesById,
+          onRouteTap: (route) => _openRouteDetails(pageContext, route),
+        ),
+      ),
     );
   }
 
@@ -397,11 +420,12 @@ class _SkiTourCard extends ConsumerWidget {
           children: [
             ClipRRect(
               borderRadius: BorderRadius.circular(8),
-              child: Image.network(
-                route.imageUrl,
+              child: CachedNetworkImage(
+                imageUrl: route.imageUrl,
                 height: 220,
                 width: double.infinity,
                 fit: BoxFit.cover,
+                errorWidget: (_, _, _) => const Icon(Icons.broken_image),
               ),
             ),
             const SizedBox(height: 12),
@@ -481,10 +505,20 @@ class _FriendSendsSection extends StatelessWidget {
 
     return _Section(
       title: 'Friends\' sends',
-      action: TextButton.icon(
-        onPressed: onAddFriends,
-        icon: const Icon(Icons.person_add_alt_1),
-        label: const Text('Add friends'),
+      action: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          IconButton(
+            tooltip: 'Refresh friend sends',
+            onPressed: social.loading ? null : social.refresh,
+            icon: const Icon(Icons.refresh),
+          ),
+          TextButton.icon(
+            onPressed: onAddFriends,
+            icon: const Icon(Icons.person_add_alt_1),
+            label: const Text('Add friends'),
+          ),
+        ],
       ),
       child: !social.signedIn
           ? const _EmptyFeedState(
@@ -540,12 +574,12 @@ class _FriendSendTile extends StatelessWidget {
         onTap: onRouteTap,
         leading: ClipRRect(
           borderRadius: BorderRadius.circular(8),
-          child: Image.network(
-            route.imageUrl,
+          child: CachedNetworkImage(
+            imageUrl: route.imageUrl,
             width: 58,
             height: 58,
             fit: BoxFit.cover,
-            errorBuilder: (_, _, _) => const SizedBox.square(
+            errorWidget: (_, _, _) => const SizedBox.square(
               dimension: 58,
               child: Icon(Icons.terrain),
             ),
@@ -718,10 +752,10 @@ class _RouteListTile extends StatelessWidget {
           child: SizedBox(
             width: 64,
             height: 64,
-            child: Image.network(
-              route.imageUrl,
+            child: CachedNetworkImage(
+              imageUrl: route.imageUrl,
               fit: BoxFit.cover,
-              errorBuilder: (context, error, stackTrace) => ColoredBox(
+              errorWidget: (context, error, stackTrace) => ColoredBox(
                 color: Theme.of(context).colorScheme.surfaceContainerHighest,
                 child: const Icon(Icons.terrain_outlined),
               ),
@@ -939,47 +973,83 @@ class _FriendsManagerState extends State<_FriendsManager> {
   }
 }
 
-class _FriendProfileSheet extends StatelessWidget {
-  const _FriendProfileSheet({required this.profile});
+class _FriendProfilePage extends StatelessWidget {
+  const _FriendProfilePage({
+    required this.profile,
+    required this.sends,
+    required this.routesById,
+    required this.onRouteTap,
+  });
 
   final FriendProfile profile;
+  final List<FriendSendActivity> sends;
+  final Map<String, ClimbRoute> routesById;
+  final ValueChanged<ClimbRoute> onRouteTap;
 
   @override
   Widget build(BuildContext context) {
-    return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(24, 8, 24, 28),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
+    return Scaffold(
+      appBar: AppBar(title: const Text('Climber profile')),
+      body: SafeArea(
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(24, 20, 24, 32),
           children: [
-            CircleAvatar(
-              radius: 42,
-              backgroundImage: profile.avatarUrl.isEmpty
-                  ? null
-                  : NetworkImage(profile.avatarUrl),
-              child: profile.avatarUrl.isEmpty
-                  ? const Icon(Icons.person, size: 40)
-                  : null,
+            Center(
+              child: CircleAvatar(
+                radius: 48,
+                backgroundImage: profile.avatarUrl.isEmpty
+                    ? null
+                    : NetworkImage(profile.avatarUrl),
+                child: profile.avatarUrl.isEmpty
+                    ? const Icon(Icons.person, size: 44)
+                    : null,
+              ),
             ),
             const SizedBox(height: 12),
             Text(
               profile.username.isEmpty
                   ? profile.displayName
                   : '@${profile.username}',
+              textAlign: TextAlign.center,
+              style: Theme.of(
+                context,
+              ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w900),
+            ),
+            if (profile.username.isNotEmpty && profile.displayName.isNotEmpty)
+              Text(profile.displayName, textAlign: TextAlign.center),
+            if (profile.homeArea.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Text(
+                profile.homeArea,
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.titleSmall,
+              ),
+            ],
+            if (profile.bio.isNotEmpty) ...[
+              const SizedBox(height: 16),
+              Text(profile.bio, textAlign: TextAlign.center),
+            ],
+            const SizedBox(height: 28),
+            Text(
+              'Recent sends',
               style: Theme.of(
                 context,
               ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900),
             ),
-            if (profile.username.isNotEmpty && profile.displayName.isNotEmpty)
-              Text(profile.displayName),
-            if (profile.homeArea.isNotEmpty) ...[
-              const SizedBox(height: 8),
-              Text(profile.homeArea),
-            ],
-            if (profile.bio.isNotEmpty) ...[
-              const SizedBox(height: 12),
-              Text(profile.bio, textAlign: TextAlign.center),
-            ],
+            const SizedBox(height: 8),
+            if (sends.isEmpty)
+              const _EmptyFeedState(
+                icon: Icons.check_circle_outline,
+                text: 'No recent sends shared yet.',
+              )
+            else
+              for (final send in sends)
+                _RouteListTile(
+                  route: routesById[send.routeId]!,
+                  subtitle:
+                      '${send.grade} · ${send.style} · ${_socialTime(send.sentAt)}',
+                  onTap: () => onRouteTap(routesById[send.routeId]!),
+                ),
           ],
         ),
       ),

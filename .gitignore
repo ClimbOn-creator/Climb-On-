@@ -54,3 +54,8 @@ Build *
 build */
 build [0-9]*/
 Full Zipped */
+
+# Large generated map archives are deployed to object storage, never GitHub.
+map_archives/
+*.pmtiles
+*.mbtiles

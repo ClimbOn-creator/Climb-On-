@@ -12,12 +12,15 @@ import 'package:go_router/go_router.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:maplibre_gl/maplibre_gl.dart' as ml;
 import 'package:share_plus/share_plus.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../crag_sidebar.dart';
+import '../config/offline_map_config.dart';
 import '../models/climb_route.dart';
 import '../models/crag.dart';
 import '../models/map_path_catalog.dart';
+import '../models/offline_bc_region.dart';
 import '../models/ski_route.dart';
 import '../models/wall.dart';
 import '../services/database_service.dart';
@@ -38,6 +41,7 @@ class MapScreen extends ConsumerStatefulWidget {
 }
 
 class _MapScreenState extends ConsumerState<MapScreen> {
+  static const _recordingDraftKey = 'climb_on_recording_draft_v1';
   double currentZoom = 14;
   LatLng? userLocation;
   double? userLocationAccuracyMeters;
@@ -57,6 +61,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   double currentMapRotation = 0;
   final Set<_MapRouteFilter> activeFilters = {};
   final MapController mapController = MapController();
+  ml.MapLibreMapController? mapLibreController;
   StreamSubscription<Position>? positionSubscription;
   Timer? recordingTimer;
   bool gpsRecording = false;
@@ -64,6 +69,8 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   DateTime? recordingStartedAt;
   Duration recordingElapsed = Duration.zero;
   List<_RecordedTrackPoint> recordedTrack = [];
+  String? recordedCragId;
+  String? recordedSkiRouteName;
 
   List<LatLng> get recordedPath => [
     for (final point in recordedTrack) point.location,
@@ -96,6 +103,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   @override
   void initState() {
     super.initState();
+    unawaited(_restoreRecordedDraft());
     loadUserLocation();
   }
 
@@ -133,6 +141,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   void _setUserPosition(Position position) {
     if (!mounted) return;
     final point = LatLng(position.latitude, position.longitude);
+    var addedRecordingPoint = false;
     setState(() {
       userLocation = point;
       userLocationAccuracyMeters = position.accuracy;
@@ -149,6 +158,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                 ) >=
                 3;
         if (shouldAdd) {
+          addedRecordingPoint = true;
           recordedTrack.add(
             _RecordedTrackPoint(
               location: point,
@@ -161,6 +171,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         }
       }
     });
+    if (addedRecordingPoint) unawaited(_persistRecordedDraft());
   }
 
   List<_CragCluster> clusterCrags(List<Crag> cragsToCluster) {
@@ -262,6 +273,10 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         ref.watch(mapPathCatalogProvider).valueOrNull ?? const MapPathCatalog();
     final catalogCrags = catalog.valueOrNull ?? const <Crag>[];
     final mapCrags = visibleCrags(catalogCrags);
+    final mapLibreStyle = _mapLibreStyleFor(tileStyle);
+    final useMapLibre =
+        tileStyle == _MapTileStyle.terrain3d ||
+        (!kIsWeb && mapLibreStyle != null);
     final initialCenter =
         userLocation ??
         (mode == ActivityMode.ski
@@ -279,8 +294,10 @@ class _MapScreenState extends ConsumerState<MapScreen> {
           Expanded(
             child: Stack(
               children: [
-                if (tileStyle == _MapTileStyle.terrain3d && kIsWeb)
+                if (useMapLibre)
                   _Terrain3DMap(
+                    styleOverride: mapLibreStyle,
+                    enableTerrain: tileStyle == _MapTileStyle.terrain3d,
                     center: currentMapCenter ?? initialCenter,
                     zoom: currentZoom,
                     mode: mode,
@@ -292,6 +309,9 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                     userLocation: userLocation,
                     onCragTap: (crag) => _selectCrag(context, wide, crag),
                     onSkiRouteTap: (route) => _selectSkiRoute(context, route),
+                    onControllerReady: (controller) {
+                      mapLibreController = controller;
+                    },
                   )
                 else
                   FlutterMap(
@@ -299,6 +319,14 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                     options: MapOptions(
                       initialCenter: initialCenter,
                       initialZoom: currentZoom,
+                      minZoom: 5,
+                      maxZoom: 19,
+                      cameraConstraint: CameraConstraint.containCenter(
+                        bounds: LatLngBounds(
+                          LatLng(bcMapBounds.south, bcMapBounds.west),
+                          LatLng(bcMapBounds.north, bcMapBounds.east),
+                        ),
+                      ),
                       interactionOptions: const InteractionOptions(
                         flags: InteractiveFlag.all & ~InteractiveFlag.rotate,
                       ),
@@ -324,6 +352,8 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                         subdomains: tileStyle.subdomains,
                         userAgentPackageName: 'com.climbon.app',
                       ),
+                      if (currentZoom < 9)
+                        PolygonLayer(polygons: _offlineRegionPolygons()),
                       PolylineLayer(
                         polylines: [
                           ...(mode == ActivityMode.ski
@@ -368,6 +398,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                         ),
                       MarkerLayer(
                         markers: [
+                          if (currentZoom < 9) ..._offlineRegionMarkers(),
                           ...(mode == ActivityMode.ski
                               ? _skiMarkers(context, skiCatalog, activeSkiRoute)
                               : _markers(context, wide, mapCrags)),
@@ -382,14 +413,53 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                       ),
                     ],
                   ),
+                if (useMapLibre && OfflineMapConfig.mapsConfigured)
+                  Positioned(
+                    right: 8,
+                    bottom: 5,
+                    child: IgnorePointer(
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          color: Theme.of(
+                            context,
+                          ).colorScheme.surface.withValues(alpha: 0.84),
+                          borderRadius: BorderRadius.circular(5),
+                        ),
+                        child: const Padding(
+                          padding: EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 3,
+                          ),
+                          child: Text(
+                            OfflineMapConfig.openMapAttribution,
+                            style: TextStyle(fontSize: 9),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
                 _MapLayerSwitcher(
                   selected: tileStyle,
                   onChanged: (style) {
                     if (style == _MapTileStyle.terrain3d && pathEditMode) {
                       _cancelPathEditor();
                     }
-                    setState(() => tileStyle = style);
+                    setState(() {
+                      tileStyle = style;
+                      if (!_usesMapLibre(style)) mapLibreController = null;
+                    });
                   },
+                ),
+                Positioned(
+                  left: 12,
+                  top: 72,
+                  child: SafeArea(
+                    child: FilledButton.tonalIcon(
+                      onPressed: () => context.go('/offline'),
+                      icon: const Icon(Icons.download_for_offline_outlined),
+                      label: const Text('Offline'),
+                    ),
+                  ),
                 ),
                 if (userLocationAccuracyMeters != null)
                   _GpsAccuracyBadge(
@@ -609,6 +679,66 @@ class _MapScreenState extends ConsumerState<MapScreen> {
               ),
             ),
           ),
+    ];
+  }
+
+  List<Polygon> _offlineRegionPolygons() {
+    return [
+      for (final region in offlineBcRegions)
+        Polygon(
+          points: _regionBoundary(region),
+          color: const Color(0xFF42A5F5).withValues(alpha: 0.08),
+          borderColor: const Color(0xFF1976D2).withValues(alpha: 0.72),
+          borderStrokeWidth: 2,
+          isFilled: true,
+        ),
+    ];
+  }
+
+  List<Marker> _offlineRegionMarkers() {
+    return [
+      for (final region in offlineBcRegions)
+        Marker(
+          point: region.center,
+          width: 150,
+          height: 46,
+          child: GestureDetector(
+            onTap: () => mapController.move(region.center, 7.5),
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: const Color(0xE6215D89),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: Colors.white, width: 1.5),
+              ),
+              child: Center(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  child: Text(
+                    region.name,
+                    maxLines: 2,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+    ];
+  }
+
+  List<LatLng> _regionBoundary(OfflineBcRegion region) {
+    final bounds = region.bounds;
+    return [
+      LatLng(bounds.south, bounds.west),
+      LatLng(bounds.north, bounds.west),
+      LatLng(bounds.north, bounds.east),
+      LatLng(bounds.south, bounds.east),
+      LatLng(bounds.south, bounds.west),
     ];
   }
 
@@ -1127,10 +1257,6 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   }
 
   Future<void> _chooseAndStartRecording(ActivityMode mode) async {
-    if (const DatabaseService().currentUserId == null) {
-      _showMapMessage('Sign in from Profile before recording a trail');
-      return;
-    }
     if (userLocation == null) {
       _showMapMessage('Waiting for a GPS location');
       return;
@@ -1187,8 +1313,15 @@ class _MapScreenState extends ConsumerState<MapScreen> {
           recordedAt: now,
         ),
       ];
+      recordedCragId = kind == _PathDraftKind.cragApproach
+          ? selectedCrag?.id
+          : null;
+      recordedSkiRouteName = kind == _PathDraftKind.cragApproach
+          ? null
+          : selectedSkiRoute?.name;
       gpsRecording = true;
     });
+    unawaited(_persistRecordedDraft());
     recordingTimer?.cancel();
     recordingTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted || !gpsRecording || recordingStartedAt == null) return;
@@ -1202,6 +1335,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   void _stopGpsRecording() {
     recordingTimer?.cancel();
     setState(() => gpsRecording = false);
+    unawaited(_persistRecordedDraft());
     _showMapMessage('Recording stopped. Review the line, then submit it.');
   }
 
@@ -1213,7 +1347,10 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       recordingStartedAt = null;
       recordingElapsed = Duration.zero;
       recordedTrack = [];
+      recordedCragId = null;
+      recordedSkiRouteName = null;
     });
+    unawaited(_clearRecordedDraft());
   }
 
   Future<void> _submitGpsRecording() async {
@@ -1224,7 +1361,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     }
     final defaultName = kind == _PathDraftKind.cragApproach
         ? '${selectedCrag?.name ?? 'Crag'} approach'
-        : '${selectedSkiRoute?.name ?? 'Ski tour'} ${kind == _PathDraftKind.skiAscent ? 'ascent' : 'descent'}';
+        : '${recordedSkiRouteName ?? selectedSkiRoute?.name ?? 'Ski tour'} ${kind == _PathDraftKind.skiAscent ? 'ascent' : 'descent'}';
     final controller = TextEditingController(text: defaultName);
     final name = await showDialog<String>(
       context: context,
@@ -1260,16 +1397,93 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         },
         points: recordedPath,
         distanceMeters: _pathLength(recordedPath),
-        cragId: kind == _PathDraftKind.cragApproach ? selectedCrag?.id : null,
+        cragId: kind == _PathDraftKind.cragApproach
+            ? recordedCragId ?? selectedCrag?.id
+            : null,
         skiRouteName: kind == _PathDraftKind.cragApproach
             ? null
-            : selectedSkiRoute?.name,
+            : recordedSkiRouteName ?? selectedSkiRoute?.name,
       );
       _discardGpsRecording();
       _showMapMessage('GPS trail submitted for review');
     } catch (error) {
-      _showMapMessage('Could not submit recording: $error');
+      await _persistRecordedDraft();
+      _showMapMessage(
+        'Recording saved on this device. Submit it when you are back online.',
+      );
     }
+  }
+
+  Future<void> _restoreRecordedDraft() async {
+    final store = await SharedPreferences.getInstance();
+    final raw = store.getString(_recordingDraftKey);
+    if (raw == null || raw.isEmpty || !mounted) return;
+    try {
+      final json = Map<String, Object?>.from(jsonDecode(raw) as Map);
+      final points = (json['points'] as List? ?? const [])
+          .whereType<Map>()
+          .map((item) {
+            final point = Map<String, Object?>.from(item);
+            final time = DateTime.tryParse(
+              point['recordedAt']?.toString() ?? '',
+            );
+            if (time == null) return null;
+            return _RecordedTrackPoint(
+              location: LatLng(
+                (point['lat'] as num).toDouble(),
+                (point['lng'] as num).toDouble(),
+              ),
+              altitudeMeters: (point['altitude'] as num?)?.toDouble(),
+              recordedAt: time,
+            );
+          })
+          .whereType<_RecordedTrackPoint>()
+          .toList(growable: false);
+      final kindName = json['kind']?.toString();
+      final kind = _PathDraftKind.values.where((item) => item.name == kindName);
+      if (points.isEmpty || kind.isEmpty) return;
+      if (!mounted) return;
+      setState(() {
+        recordedTrack = points;
+        recordedPathKind = kind.first;
+        recordedCragId = json['cragId']?.toString();
+        recordedSkiRouteName = json['skiRouteName']?.toString();
+        recordingStartedAt = points.first.recordedAt;
+        recordingElapsed = points.last.recordedAt.difference(
+          points.first.recordedAt,
+        );
+        gpsRecording = false;
+      });
+    } catch (_) {
+      await store.remove(_recordingDraftKey);
+    }
+  }
+
+  Future<void> _persistRecordedDraft() async {
+    if (recordedTrack.isEmpty || recordedPathKind == null) return;
+    final store = await SharedPreferences.getInstance();
+    await store.setString(
+      _recordingDraftKey,
+      jsonEncode({
+        'kind': recordedPathKind!.name,
+        'cragId': recordedCragId,
+        'skiRouteName': recordedSkiRouteName,
+        'points': [
+          for (final point in recordedTrack)
+            {
+              'lat': point.location.latitude,
+              'lng': point.location.longitude,
+              'altitude': point.altitudeMeters,
+              'recordedAt': point.recordedAt.toIso8601String(),
+            },
+        ],
+      }),
+    );
+  }
+
+  Future<void> _clearRecordedDraft() async {
+    final store = await SharedPreferences.getInstance();
+    await store.remove(_recordingDraftKey);
   }
 
   void _showMapMessage(String message) {
@@ -1282,8 +1496,43 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   void _setMapHeading(double degrees) {
     final normalized = degrees % 360;
     final heading = normalized < 0 ? normalized + 360 : normalized;
-    mapController.rotate(heading);
+    if (_usesMapLibre(tileStyle)) {
+      final controller = mapLibreController;
+      final position = controller?.cameraPosition;
+      if (controller != null && position != null) {
+        unawaited(
+          controller.moveCamera(
+            ml.CameraUpdate.newCameraPosition(
+              ml.CameraPosition(
+                target: position.target,
+                zoom: position.zoom,
+                tilt: position.tilt,
+                bearing: heading,
+              ),
+            ),
+          ),
+        );
+      }
+    } else {
+      mapController.rotate(heading);
+    }
     setState(() => currentMapRotation = heading);
+  }
+
+  String? _mapLibreStyleFor(_MapTileStyle style) {
+    final value = switch (style) {
+      _MapTileStyle.clean => OfflineMapConfig.cleanStyleUrl,
+      _MapTileStyle.satellite => OfflineMapConfig.satelliteStyleUrl,
+      _MapTileStyle.topo => OfflineMapConfig.topoStyleUrl,
+      _MapTileStyle.terrain3d => OfflineMapConfig.terrain3dStyleUrl,
+      _MapTileStyle.osm => '',
+    };
+    return value.isEmpty ? null : value;
+  }
+
+  bool _usesMapLibre(_MapTileStyle style) {
+    return style == _MapTileStyle.terrain3d ||
+        (!kIsWeb && _mapLibreStyleFor(style) != null);
   }
 
   bool _shouldShowParking(Crag crag) {
@@ -1443,6 +1692,8 @@ class _MapScreenState extends ConsumerState<MapScreen> {
 
 class _Terrain3DMap extends StatefulWidget {
   const _Terrain3DMap({
+    required this.styleOverride,
+    required this.enableTerrain,
     required this.center,
     required this.zoom,
     required this.mode,
@@ -1454,8 +1705,11 @@ class _Terrain3DMap extends StatefulWidget {
     required this.userLocation,
     required this.onCragTap,
     required this.onSkiRouteTap,
+    required this.onControllerReady,
   });
 
+  final String? styleOverride;
+  final bool enableTerrain;
   final LatLng center;
   final double zoom;
   final ActivityMode mode;
@@ -1467,6 +1721,7 @@ class _Terrain3DMap extends StatefulWidget {
   final LatLng? userLocation;
   final ValueChanged<Crag> onCragTap;
   final ValueChanged<SkiRoute> onSkiRouteTap;
+  final ValueChanged<ml.MapLibreMapController> onControllerReady;
 
   @override
   State<_Terrain3DMap> createState() => _Terrain3DMapState();
@@ -1560,26 +1815,34 @@ class _Terrain3DMapState extends State<_Terrain3DMap> {
   @override
   Widget build(BuildContext context) {
     return ml.MapLibreMap(
-      styleString: style,
+      styleString: widget.styleOverride ?? style,
       initialCameraPosition: ml.CameraPosition(
         target: ml.LatLng(widget.center.latitude, widget.center.longitude),
         zoom: widget.zoom.clamp(8, 17),
-        tilt: 62,
-        bearing: 18,
+        tilt: widget.enableTerrain ? 62 : 0,
+        bearing: widget.enableTerrain ? 18 : 0,
       ),
-      minMaxZoomPreference: const ml.MinMaxZoomPreference(3, 19),
-      rotateGesturesEnabled: true,
-      tiltGesturesEnabled: true,
+      cameraTargetBounds: ml.CameraTargetBounds(
+        ml.LatLngBounds(
+          southwest: ml.LatLng(bcMapBounds.south, bcMapBounds.west),
+          northeast: ml.LatLng(bcMapBounds.north, bcMapBounds.east),
+        ),
+      ),
+      minMaxZoomPreference: const ml.MinMaxZoomPreference(5, 19),
+      rotateGesturesEnabled: widget.enableTerrain,
+      tiltGesturesEnabled: widget.enableTerrain,
       compassEnabled: true,
       scaleControlEnabled: true,
       onMapCreated: (value) {
         controller = value;
+        widget.onControllerReady(value);
         value.onSymbolTapped.add(_handleSymbolTap);
       },
       onStyleLoadedCallback: () {
         styleLoaded = true;
         unawaited(_drawAnnotations());
       },
+      onCameraIdle: () => unawaited(_drawAnnotations()),
     );
   }
 
@@ -1596,6 +1859,39 @@ class _Terrain3DMapState extends State<_Terrain3DMap> {
       final circles = <ml.CircleOptions>[];
       final symbols = <ml.SymbolOptions>[];
       final symbolData = <Map<String, dynamic>>[];
+      final zoom = map.cameraPosition?.zoom ?? widget.zoom;
+      if (zoom < 9) {
+        for (final region in offlineBcRegions) {
+          final bounds = region.bounds;
+          lines.add(
+            ml.LineOptions(
+              geometry: [
+                ml.LatLng(bounds.south, bounds.west),
+                ml.LatLng(bounds.north, bounds.west),
+                ml.LatLng(bounds.north, bounds.east),
+                ml.LatLng(bounds.south, bounds.east),
+                ml.LatLng(bounds.south, bounds.west),
+              ],
+              lineColor: '#42A5F5',
+              lineWidth: 2.5,
+              lineOpacity: 0.78,
+            ),
+          );
+          symbols.add(
+            ml.SymbolOptions(
+              geometry: _point(region.center),
+              textField: region.name,
+              textSize: 13,
+              textColor: '#FFFFFF',
+              textHaloColor: '#174A6A',
+              textHaloWidth: 3,
+              textAnchor: 'center',
+              textMaxWidth: 14,
+            ),
+          );
+          symbolData.add({'kind': 'offline-region', 'entityId': region.id});
+        }
+      }
       if (widget.mode == ActivityMode.ski) {
         for (final route in widget.skiRoutes) {
           final ascent = widget.paths.skiAscent(route.name);
@@ -1719,6 +2015,25 @@ class _Terrain3DMapState extends State<_Terrain3DMap> {
       for (final route in widget.skiRoutes) {
         if (route.id == id) {
           widget.onSkiRouteTap(route);
+          return;
+        }
+      }
+    }
+    if (kind == 'offline-region') {
+      for (final region in offlineBcRegions) {
+        if (region.id == id) {
+          unawaited(
+            controller?.animateCamera(
+              ml.CameraUpdate.newCameraPosition(
+                ml.CameraPosition(
+                  target: _point(region.center),
+                  zoom: 7.5,
+                  tilt: widget.enableTerrain ? 45 : 0,
+                ),
+              ),
+              duration: const Duration(milliseconds: 700),
+            ),
+          );
           return;
         }
       }
@@ -1923,16 +2238,15 @@ class _MapLayerSwitcher extends StatelessWidget {
               onSelected: onChanged,
               itemBuilder: (context) => [
                 for (final style in _MapTileStyle.values)
-                  if (kIsWeb || style != _MapTileStyle.terrain3d)
-                    PopupMenuItem(
-                      value: style,
-                      child: ListTile(
-                        dense: true,
-                        contentPadding: EdgeInsets.zero,
-                        leading: Icon(style.icon),
-                        title: Text(style.label),
-                      ),
+                  PopupMenuItem(
+                    value: style,
+                    child: ListTile(
+                      dense: true,
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(style.icon),
+                      title: Text(style.label),
                     ),
+                  ),
               ],
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
@@ -2247,7 +2561,7 @@ class _GpsRecorderTools extends StatelessWidget {
                           Text(
                             recording
                                 ? _formatRecordingDuration(elapsed)
-                                : '${_formatRecordingDuration(elapsed)} paused',
+                                : '${_formatRecordingDuration(elapsed)} · saved offline',
                             style: const TextStyle(fontWeight: FontWeight.w900),
                           ),
                         ],

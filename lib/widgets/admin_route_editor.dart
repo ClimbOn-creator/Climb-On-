@@ -28,6 +28,9 @@ class _AdminRouteEditorState extends State<AdminRouteEditor> {
   Uint8List? imageBytes;
   String imageName = '';
   String imageContentType = 'image/jpeg';
+  Uint8List? trailheadImageBytes;
+  String trailheadImageName = '';
+  String trailheadImageContentType = 'image/jpeg';
   bool saving = false;
 
   @override
@@ -79,6 +82,7 @@ class _AdminRouteEditorState extends State<AdminRouteEditor> {
   @override
   Widget build(BuildContext context) {
     final existingImage = widget.route?.imageUrl ?? '';
+    final existingTrailheadImage = widget.route?.trailheadImageUrl ?? '';
     return Scaffold(
       appBar: AppBar(
         title: Text(
@@ -182,6 +186,30 @@ class _AdminRouteEditorState extends State<AdminRouteEditor> {
               'More community pictures can be added from the route page.',
             ),
             const SizedBox(height: 18),
+            Text(
+              'Trailhead picture',
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+            const SizedBox(height: 8),
+            if (trailheadImageBytes != null)
+              Image.memory(trailheadImageBytes!, height: 210, fit: BoxFit.cover)
+            else if (existingTrailheadImage.isNotEmpty)
+              Image.network(
+                existingTrailheadImage,
+                height: 210,
+                fit: BoxFit.cover,
+              ),
+            const SizedBox(height: 8),
+            OutlinedButton.icon(
+              onPressed: saving ? null : _pickTrailheadImage,
+              icon: const Icon(Icons.add_location_alt_outlined),
+              label: Text(
+                existingTrailheadImage.isEmpty && trailheadImageBytes == null
+                    ? 'Upload trailhead picture'
+                    : 'Replace trailhead picture',
+              ),
+            ),
+            const SizedBox(height: 18),
             FilledButton.icon(
               onPressed: saving ? null : _save,
               icon: saving
@@ -266,6 +294,16 @@ class _AdminRouteEditorState extends State<AdminRouteEditor> {
     });
   }
 
+  Future<void> _pickTrailheadImage() async {
+    final image = await pickUploadImage();
+    if (image == null || !mounted) return;
+    setState(() {
+      trailheadImageBytes = image.bytes;
+      trailheadImageName = image.fileName;
+      trailheadImageContentType = image.contentType;
+    });
+  }
+
   Future<void> _save() async {
     if (!formKey.currentState!.validate()) return;
     if (widget.route == null && imageBytes == null) {
@@ -278,7 +316,7 @@ class _AdminRouteEditorState extends State<AdminRouteEditor> {
     }
     setState(() => saving = true);
     try {
-      await const DatabaseService().adminSaveCatalogRoute(
+      final routeId = await const DatabaseService().adminSaveCatalogRoute(
         routeId: widget.route?.id,
         wallId: widget.wall.id,
         values: {
@@ -308,6 +346,14 @@ class _AdminRouteEditorState extends State<AdminRouteEditor> {
         imageName: imageName,
         imageContentType: imageContentType,
       );
+      if (trailheadImageBytes != null) {
+        await const DatabaseService().adminReplaceRouteTrailheadImage(
+          routeId: routeId,
+          imageBytes: trailheadImageBytes!,
+          imageName: trailheadImageName,
+          imageContentType: trailheadImageContentType,
+        );
+      }
       if (mounted) Navigator.pop(context, true);
     } catch (error) {
       if (!mounted) return;

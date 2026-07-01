@@ -343,6 +343,7 @@ class ClimbLogState extends ChangeNotifier {
       final comments = await databaseService.loadComments(route.id);
       _comments.removeWhere((comment) => comment.routeId == route.id);
       _comments.addAll(comments);
+      await _persist();
       notifyListeners();
     } catch (_) {
       // Keep cached comments visible when the cloud is temporarily offline.
@@ -374,6 +375,7 @@ class ClimbLogState extends ChangeNotifier {
       _photos.removeWhere((photo) => photo.routeId == route.id);
       _photos.addAll(photos);
       _loadedPhotoRoutes.add(route.id);
+      await _persist();
       notifyListeners();
     } catch (_) {
       // Keep any cached pictures visible when the cloud is temporarily offline.

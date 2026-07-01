@@ -15,6 +15,7 @@ flutter build web --release \
   --pwa-strategy=none \
   --dart-define=SUPABASE_URL="${SUPABASE_URL:-}" \
   --dart-define=SUPABASE_PUBLISHABLE_KEY="${SUPABASE_PUBLISHABLE_KEY:-}" \
-  --dart-define=SUPABASE_AUTH_REDIRECT_URL="${SUPABASE_AUTH_REDIRECT_URL:-}"
+  --dart-define=SUPABASE_AUTH_REDIRECT_URL="${SUPABASE_AUTH_REDIRECT_URL:-}" \
+  --dart-define=OFFLINE_MAP_BASE_URL="${OFFLINE_MAP_BASE_URL:-}"
 
 cp web/cache_reset_service_worker.js build/web/flutter_service_worker.js

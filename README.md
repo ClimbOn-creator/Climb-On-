@@ -109,3 +109,9 @@ step-by-step shipping path.
 Start with [`docs/EMPLOYEE_HANDOFF.md`](docs/EMPLOYEE_HANDOFF.md). Database setup
 order is documented in [`supabase/README.md`](supabase/README.md); historical
 phase notes remain under [`docs/phases/`](docs/phases/).
+
+## Offline BC maps
+
+The app supports six downloadable BC sections using a self-hosted open-data map
+stack. See [`docs/offline_maps.md`](docs/offline_maps.md) for the Protomaps,
+terrain, Sentinel-2, and Cloudflare R2 setup.

@@ -29,6 +29,7 @@ Apple/Google credentials. Share those through a password manager.
 - `supabase/`: schema, feature migrations, policies, and seed data.
 - `test/`: automated tests.
 - `scripts/`: repeatable build/package commands.
+- `map_service/`: self-hosted Cloudflare service for legal offline map tiles.
 - `docs/`: handoff and historical implementation notes.
 
 The local `Full Zipped ` folder contains old build snapshots. It is intentionally
