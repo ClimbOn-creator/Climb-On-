@@ -9,6 +9,8 @@ class OfflineBcRegion {
     required this.description,
     required this.bounds,
     required this.center,
+    required this.polygons,
+    required this.colorValue,
   });
 
   final String id;
@@ -16,12 +18,28 @@ class OfflineBcRegion {
   final String description;
   final GeoBounds bounds;
   final LatLng center;
+  final List<List<LatLng>> polygons;
+  final int colorValue;
 
   bool contains(LatLng point) {
-    return point.latitude >= bounds.south &&
-        point.latitude <= bounds.north &&
-        point.longitude >= bounds.west &&
-        point.longitude <= bounds.east;
+    return polygons.any((polygon) => _containsPoint(polygon, point));
+  }
+
+  static bool _containsPoint(List<LatLng> polygon, LatLng point) {
+    var inside = false;
+    for (var i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+      final a = polygon[i];
+      final b = polygon[j];
+      final crosses =
+          (a.latitude > point.latitude) != (b.latitude > point.latitude) &&
+          point.longitude <
+              (b.longitude - a.longitude) *
+                      (point.latitude - a.latitude) /
+                      (b.latitude - a.latitude) +
+                  a.longitude;
+      if (crosses) inside = !inside;
+    }
+    return inside;
   }
 }
 
@@ -34,48 +52,142 @@ const bcMapBounds = GeoBounds(
 
 const offlineBcRegions = <OfflineBcRegion>[
   OfflineBcRegion(
-    id: 'vancouver-island',
-    name: '1 · Vancouver Island',
-    description:
-        'Victoria, Island crags, Strathcona, Mount Cain, and west coast.',
-    bounds: GeoBounds(south: 48.20, west: -128.90, north: 51.05, east: -123.05),
-    center: LatLng(49.65, -125.55),
+    id: 'the-islands',
+    name: 'The Islands',
+    description: 'Vancouver Island, the Gulf Islands, and nearby islands.',
+    bounds: GeoBounds(south: 48.20, west: -128.90, north: 51.10, east: -123.05),
+    center: LatLng(49.55, -125.55),
+    colorValue: 0xFF337EAA,
+    polygons: [
+      [
+        LatLng(50.90, -128.55),
+        LatLng(50.62, -127.05),
+        LatLng(50.05, -126.00),
+        LatLng(49.30, -124.85),
+        LatLng(48.65, -123.10),
+        LatLng(48.25, -123.25),
+        LatLng(48.20, -124.05),
+        LatLng(48.72, -125.55),
+        LatLng(49.55, -127.05),
+        LatLng(50.35, -128.55),
+      ],
+    ],
   ),
   OfflineBcRegion(
-    id: 'vancouver-sea-to-sky',
-    name: '2 · Vancouver & Sea to Sky',
-    description: 'Metro Vancouver, Squamish, Whistler, and Pemberton.',
-    bounds: GeoBounds(south: 48.80, west: -124.20, north: 50.65, east: -121.90),
-    center: LatLng(49.75, -123.05),
-  ),
-  OfflineBcRegion(
-    id: 'coast-chilcotin',
-    name: '3 · Coast Mountains & Chilcotin',
-    description:
-        'Duffey, South Chilcotin, Bella Coola, and central Coast Range.',
-    bounds: GeoBounds(south: 50.00, west: -128.80, north: 54.20, east: -121.00),
-    center: LatLng(52.10, -124.85),
+    id: 'vancouver-coast-mountains',
+    name: 'Vancouver Coast & Mountains',
+    description: 'Vancouver, the Fraser Valley, Sea to Sky, and south coast.',
+    bounds: GeoBounds(south: 48.80, west: -128.50, north: 52.10, east: -121.00),
+    center: LatLng(50.15, -123.40),
+    colorValue: 0xFF138A92,
+    polygons: [
+      [
+        LatLng(49.00, -123.35),
+        LatLng(49.00, -121.55),
+        LatLng(50.45, -121.45),
+        LatLng(50.35, -123.00),
+        LatLng(50.85, -125.00),
+        LatLng(52.00, -128.00),
+        LatLng(51.00, -127.00),
+        LatLng(50.05, -125.10),
+        LatLng(49.35, -124.15),
+      ],
+    ],
   ),
   OfflineBcRegion(
     id: 'thompson-okanagan',
-    name: '4 · Thompson & Okanagan',
-    description: 'Kamloops, Coquihalla, Okanagan, Monashees, and Revelstoke.',
-    bounds: GeoBounds(south: 48.80, west: -122.20, north: 52.80, east: -117.50),
-    center: LatLng(50.75, -119.80),
+    name: 'Thompson Okanagan',
+    description: 'Kamloops, the Thompson valleys, Okanagan, and Shuswap.',
+    bounds: GeoBounds(south: 48.80, west: -122.00, north: 53.20, east: -117.00),
+    center: LatLng(50.45, -119.60),
+    colorValue: 0xFF2F8292,
+    polygons: [
+      [
+        LatLng(49.00, -121.55),
+        LatLng(49.00, -118.70),
+        LatLng(50.45, -118.00),
+        LatLng(51.45, -118.30),
+        LatLng(52.00, -118.20),
+        LatLng(51.50, -119.00),
+        LatLng(51.00, -120.00),
+        LatLng(50.45, -121.45),
+      ],
+    ],
   ),
   OfflineBcRegion(
-    id: 'kootenays',
-    name: '5 · Kootenays',
-    description: 'Selkirks, Purcells, Rockies, Nelson, Golden, and Fernie.',
-    bounds: GeoBounds(south: 48.80, west: -118.60, north: 53.00, east: -113.80),
-    center: LatLng(50.85, -116.40),
+    id: 'bc-rockies',
+    name: 'BC Rockies',
+    description: 'The Kootenays, Columbia Mountains, and Canadian Rockies.',
+    bounds: GeoBounds(south: 48.80, west: -119.00, north: 54.30, east: -113.80),
+    center: LatLng(50.55, -116.20),
+    colorValue: 0xFFAF83A9,
+    polygons: [
+      [
+        LatLng(49.00, -118.70),
+        LatLng(49.00, -114.00),
+        LatLng(50.20, -114.55),
+        LatLng(51.70, -116.00),
+        LatLng(53.15, -117.00),
+        LatLng(52.00, -118.20),
+        LatLng(51.45, -118.30),
+        LatLng(50.45, -118.00),
+      ],
+    ],
+  ),
+  OfflineBcRegion(
+    id: 'cariboo-chilcotin-coast',
+    name: 'Cariboo, Chilcotin Coast',
+    description: 'The central coast, Chilcotin, Cariboo, and Fraser interior.',
+    bounds: GeoBounds(south: 50.00, west: -131.00, north: 54.70, east: -116.50),
+    center: LatLng(52.10, -122.90),
+    colorValue: 0xFFD3BD79,
+    polygons: [
+      [
+        LatLng(52.00, -128.00),
+        LatLng(50.85, -125.00),
+        LatLng(50.35, -123.00),
+        LatLng(50.45, -121.45),
+        LatLng(51.00, -120.00),
+        LatLng(51.50, -119.00),
+        LatLng(52.00, -118.20),
+        LatLng(53.15, -117.00),
+        LatLng(52.55, -120.20),
+        LatLng(52.25, -122.20),
+        LatLng(52.70, -126.00),
+        LatLng(54.00, -130.50),
+      ],
+    ],
   ),
   OfflineBcRegion(
     id: 'northern-bc',
-    name: '6 · Northern BC',
+    name: 'Northern BC',
     description:
-        'Cariboo north through the Skeena, Cassiar, and northern Rockies.',
+        'Haida Gwaii, the north coast, Cassiar, Peace, and north Rockies.',
     bounds: GeoBounds(south: 52.00, west: -139.10, north: 60.05, east: -113.80),
-    center: LatLng(56.00, -126.50),
+    center: LatLng(56.15, -126.25),
+    colorValue: 0xFFB6003D,
+    polygons: [
+      [
+        LatLng(60.00, -139.10),
+        LatLng(60.00, -120.00),
+        LatLng(56.90, -120.00),
+        LatLng(54.70, -120.00),
+        LatLng(54.20, -116.50),
+        LatLng(53.15, -117.00),
+        LatLng(52.55, -120.20),
+        LatLng(52.25, -122.20),
+        LatLng(52.70, -126.00),
+        LatLng(54.00, -130.50),
+        LatLng(56.00, -134.00),
+        LatLng(58.10, -136.60),
+      ],
+      [
+        LatLng(54.20, -133.20),
+        LatLng(52.80, -131.60),
+        LatLng(52.00, -131.90),
+        LatLng(52.50, -133.30),
+        LatLng(53.50, -133.90),
+      ],
+    ],
   ),
 ];

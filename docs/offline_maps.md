@@ -4,7 +4,7 @@ Climb On divides British Columbia into six downloadable regions. Route, crag,
 tour, path, comment, and picture data can be cached without a map-provider key.
 GPS uses the phone's receiver and remains available without cell service.
 
-Production satellite, topo, and 3D downloads must use map data that permits
+Production 2D, satellite, and 3D downloads must use map data that permits
 bulk offline storage. Do not point downloads at the public OpenStreetMap,
 OpenTopoMap, or standard Esri World Imagery endpoints.
 
@@ -19,12 +19,12 @@ After deploying the Worker, set one build value:
 --dart-define=OFFLINE_MAP_BASE_URL=https://maps.your-domain.ca
 ```
 
-The app derives Clean, Satellite, Topo, and 3D style URLs from that address.
+The app derives Clean 2D, Satellite, and Satellite 3D style URLs from that
+address. The 3D choice uses the same satellite imagery with terrain enabled.
 Individual style overrides remain available if the service is split later:
 
 ```text
 --dart-define=OFFLINE_SATELLITE_STYLE_URL=https://maps.example.com/satellite/style.json
---dart-define=OFFLINE_TOPO_STYLE_URL=https://maps.example.com/topo/style.json
 --dart-define=OFFLINE_3D_STYLE_URL=https://maps.example.com/terrain/style.json
 --dart-define=OFFLINE_CLEAN_STYLE_URL=https://maps.example.com/clean/style.json
 ```
@@ -36,15 +36,15 @@ database when the device loses connectivity.
 
 ## Build and deployment
 
-1. Install the `pmtiles` command-line tool.
-2. Pick a current Protomaps v4 daily build URL and run:
+1. Run the archive preparation script. It installs the small `pmtiles` tool
+   locally and selects the latest Protomaps v4 build automatically:
 
    ```sh
-   PROTOMAPS_SOURCE_URL=https://build.protomaps.com/YYYYMMDD.pmtiles \
-     ./scripts/prepare_open_map_archives.sh
+   ./scripts/prepare_open_map_archives.sh
+   ./scripts/build_canadian_terrain_archive.sh
    ```
 
-3. Create a cloud-minimized, true-colour Copernicus Sentinel-2 mosaic for BC as
+2. Create a cloud-minimized, true-colour Copernicus Sentinel-2 mosaic for BC as
    an RGB GeoTIFF. Keep its acquisition dates and processing notes for the app's
    store/licensing records, then run:
 
@@ -52,17 +52,21 @@ database when the device loses connectivity.
    ./scripts/build_sentinel_archive.sh /path/to/bc-sentinel-rgb-mosaic.tif
    ```
 
-4. Create the `climb-on-maps` R2 bucket. Configure an `rclone` R2 remote, then:
+3. Create the `climb-on-maps` R2 bucket. Configure an `rclone` R2 remote, then:
 
    ```sh
    R2_REMOTE=r2:climb-on-maps ./scripts/deploy_open_map_service.sh
    ```
 
-5. Give the Worker a custom HTTPS domain and set `OFFLINE_MAP_BASE_URL` in the
+4. Give the Worker a custom HTTPS domain and set `OFFLINE_MAP_BASE_URL` in the
    app's Cloudflare/mobile build environment.
 
 When the Sentinel mosaic is refreshed, update `SENTINEL_DATA_YEAR` in
 `map_service/wrangler.toml` so its legal source notice matches the imagery.
+
+The terrain archive is capped at zoom 11 and overzooms on the device. This keeps
+optional 3D practical while preserving mountain-scale terrain. The Sentinel
+mosaic is resampled to 20 m before tiling for the same reason.
 
 The generated archives are deliberately ignored by Git; they can be many
 gigabytes and belong in R2 rather than GitHub.
@@ -71,7 +75,10 @@ gigabytes and belong in R2 rather than GitHub.
 
 - Basemap: Protomaps v4, derived from OpenStreetMap, distributed as an ODbL
   Produced Work. OpenStreetMap attribution is retained in the app and styles.
-- Terrain: Mapterhorn Terrarium PMTiles. Retain Mapterhorn/source attribution.
+- Terrain: Natural Resources Canada Canadian Digital Elevation Model (CDEM),
+  converted into Terrarium PMTiles. Retain the Open Government Licence –
+  Canada and NRCan attribution included by the build script. The source COG is
+  read directly from NRCan's public Canadian elevation data store.
 - Satellite: modified Copernicus Sentinel-2 imagery. Retain the source dates,
   processing record, and the required Copernicus notice.
 

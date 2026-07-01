@@ -5,12 +5,15 @@ import '../config/offline_map_config.dart';
 import '../models/offline_bc_region.dart';
 import '../state/offline_download_state.dart';
 
+final _include3dProvider = StateProvider<bool>((ref) => false);
+
 class OfflineDownloadsScreen extends ConsumerWidget {
   const OfflineDownloadsScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final downloads = ref.watch(offlineDownloadProvider);
+    final include3d = ref.watch(_include3dProvider);
     return Scaffold(
       appBar: AppBar(title: const Text('Offline BC downloads')),
       body: ListView(
@@ -29,31 +32,48 @@ class OfflineDownloadsScreen extends ConsumerWidget {
                   ),
                   SizedBox(height: 6),
                   Text(
-                    'Each section saves climbing and ski information, routes, comments, pictures, and supported map layers. GPS location and saved recordings work without cell service.',
+                    'Each section saves climbing and ski information, pictures, the clean 2D map, and satellite imagery. 3D terrain is optional when viewing satellite. GPS and recordings work without service.',
                   ),
                 ],
               ),
             ),
           ),
-          if (!OfflineMapConfig.allCoreMapsConfigured)
+          if (!OfflineMapConfig.mapsConfigured)
             Card(
               color: Theme.of(context).colorScheme.tertiaryContainer,
               child: const ListTile(
                 leading: Icon(Icons.map_outlined),
                 title: Text('Offline map provider setup required'),
                 subtitle: Text(
-                  'Data and pictures can download now. The self-hosted open map service must be connected to activate satellite, topo, and 3D packs.',
+                  'Data and pictures can download now. The self-hosted open map service must be connected to activate clean 2D, satellite, and optional 3D terrain.',
                 ),
               ),
             ),
-          if (OfflineMapConfig.allCoreMapsConfigured)
+          if (OfflineMapConfig.mapsConfigured)
             Card(
               color: Theme.of(context).colorScheme.secondaryContainer,
               child: const ListTile(
                 leading: Icon(Icons.verified_outlined),
                 title: Text('Open-data maps connected'),
                 subtitle: Text(
-                  'Street and topo maps use OpenStreetMap/Protomaps, terrain uses Mapterhorn, and satellite uses Copernicus Sentinel-2.',
+                  'Clean 2D uses OpenStreetMap/Protomaps, satellite uses Copernicus Sentinel-2, and optional 3D uses Natural Resources Canada elevation data.',
+                ),
+              ),
+            ),
+          if (OfflineMapConfig.mapsConfigured)
+            Card(
+              child: SwitchListTile.adaptive(
+                value: include3d,
+                onChanged: OfflineMapConfig.terrainConfigured
+                    ? (value) =>
+                          ref.read(_include3dProvider.notifier).state = value
+                    : null,
+                secondary: const Icon(Icons.view_in_ar_outlined),
+                title: const Text('Include 3D terrain'),
+                subtitle: Text(
+                  OfflineMapConfig.terrainConfigured
+                      ? 'Optional larger download. Satellite stays available as a normal flat map too.'
+                      : '3D activates when the terrain archive is connected.',
                 ),
               ),
             ),
@@ -62,7 +82,8 @@ class OfflineDownloadsScreen extends ConsumerWidget {
             _RegionDownloadCard(
               region: region,
               status: downloads.statusFor(region.id),
-              onDownload: () => downloads.download(region),
+              onDownload: () =>
+                  downloads.download(region, includeTerrain3d: include3d),
               onRemove: () => _confirmRemove(context, downloads, region),
             ),
         ],
@@ -131,9 +152,13 @@ class _RegionDownloadCard extends StatelessWidget {
                   ),
                 ),
                 if (status.ready)
-                  const Chip(
-                    avatar: Icon(Icons.offline_pin, size: 17),
-                    label: Text('Offline ready'),
+                  Chip(
+                    avatar: const Icon(Icons.offline_pin, size: 17),
+                    label: Text(
+                      status.terrainReady
+                          ? '2D · Satellite · 3D'
+                          : '2D · Satellite',
+                    ),
                   )
                 else if (status.dataReady)
                   const Chip(

@@ -398,7 +398,8 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                         ),
                       MarkerLayer(
                         markers: [
-                          if (currentZoom < 9) ..._offlineRegionMarkers(),
+                          if (currentZoom >= 6.5 && currentZoom < 9)
+                            ..._offlineRegionMarkers(),
                           ...(mode == ActivityMode.ski
                               ? _skiMarkers(context, skiCatalog, activeSkiRoute)
                               : _markers(context, wide, mapCrags)),
@@ -412,6 +413,12 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                         ).colorScheme.surface.withValues(alpha: 0.82),
                       ),
                     ],
+                  ),
+                if (!useMapLibre && currentZoom < 6.5)
+                  const Positioned(
+                    left: 12,
+                    top: 170,
+                    child: _BcRegionLegend(),
                   ),
                 if (useMapLibre && OfflineMapConfig.mapsConfigured)
                   Positioned(
@@ -582,7 +589,11 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       if (showClusters)
         ...clusterCrags(mapCrags).map((cluster) {
           final count = cluster.crags.length;
-          final markerSize = count > 9 ? 58.0 : 50.0;
+          final markerSize = currentZoom < 8
+              ? (count > 9 ? 38.0 : 34.0)
+              : currentZoom < 10
+              ? (count > 9 ? 46.0 : 40.0)
+              : (count > 9 ? 54.0 : 48.0);
 
           return Marker(
             point: cluster.point,
@@ -613,7 +624,10 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                   decoration: BoxDecoration(
                     color: Theme.of(context).colorScheme.primary,
                     shape: BoxShape.circle,
-                    border: Border.all(color: Colors.white, width: 3),
+                    border: Border.all(
+                      color: Colors.white,
+                      width: currentZoom < 8 ? 2 : 3,
+                    ),
                     boxShadow: const [
                       BoxShadow(
                         blurRadius: 5,
@@ -627,6 +641,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                       '$count',
                       style: const TextStyle(
                         color: Colors.white,
+                        fontSize: 12,
                         fontWeight: FontWeight.w900,
                       ),
                     ),
@@ -685,13 +700,14 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   List<Polygon> _offlineRegionPolygons() {
     return [
       for (final region in offlineBcRegions)
-        Polygon(
-          points: _regionBoundary(region),
-          color: const Color(0xFF42A5F5).withValues(alpha: 0.08),
-          borderColor: const Color(0xFF1976D2).withValues(alpha: 0.72),
-          borderStrokeWidth: 2,
-          isFilled: true,
-        ),
+        for (final boundary in region.polygons)
+          Polygon(
+            points: boundary,
+            color: Color(region.colorValue).withValues(alpha: 0.18),
+            borderColor: Color(region.colorValue).withValues(alpha: 0.92),
+            borderStrokeWidth: 2,
+            isFilled: true,
+          ),
     ];
   }
 
@@ -700,13 +716,13 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       for (final region in offlineBcRegions)
         Marker(
           point: region.center,
-          width: 150,
-          height: 46,
+          width: 128,
+          height: 42,
           child: GestureDetector(
             onTap: () => mapController.move(region.center, 7.5),
             child: DecoratedBox(
               decoration: BoxDecoration(
-                color: const Color(0xE6215D89),
+                color: Color(region.colorValue).withValues(alpha: 0.92),
                 borderRadius: BorderRadius.circular(10),
                 border: Border.all(color: Colors.white, width: 1.5),
               ),
@@ -719,7 +735,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                     textAlign: TextAlign.center,
                     style: const TextStyle(
                       color: Colors.white,
-                      fontSize: 11,
+                      fontSize: 10,
                       fontWeight: FontWeight.w900,
                     ),
                   ),
@@ -728,17 +744,6 @@ class _MapScreenState extends ConsumerState<MapScreen> {
             ),
           ),
         ),
-    ];
-  }
-
-  List<LatLng> _regionBoundary(OfflineBcRegion region) {
-    final bounds = region.bounds;
-    return [
-      LatLng(bounds.south, bounds.west),
-      LatLng(bounds.north, bounds.west),
-      LatLng(bounds.north, bounds.east),
-      LatLng(bounds.south, bounds.east),
-      LatLng(bounds.south, bounds.west),
     ];
   }
 
@@ -1523,9 +1528,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     final value = switch (style) {
       _MapTileStyle.clean => OfflineMapConfig.cleanStyleUrl,
       _MapTileStyle.satellite => OfflineMapConfig.satelliteStyleUrl,
-      _MapTileStyle.topo => OfflineMapConfig.topoStyleUrl,
       _MapTileStyle.terrain3d => OfflineMapConfig.terrain3dStyleUrl,
-      _MapTileStyle.osm => '',
     };
     return value.isEmpty ? null : value;
   }
@@ -1744,31 +1747,13 @@ class _Terrain3DMapState extends State<_Terrain3DMap> {
         'maxzoom': 19,
         'attribution': 'Imagery © Esri and data providers',
       },
-      'terrain': {
-        'type': 'raster-dem',
-        'url': 'https://tiles.mapterhorn.com/tilejson.json',
-        'tileSize': 512,
-        'encoding': 'terrarium',
-        'attribution': 'Terrain © Mapterhorn contributors',
-      },
     },
-    'terrain': {'source': 'terrain', 'exaggeration': 1.15},
     'layers': [
       {
         'id': 'satellite',
         'type': 'raster',
         'source': 'satellite',
         'paint': {'raster-saturation': -0.05, 'raster-contrast': 0.08},
-      },
-      {
-        'id': 'terrain-shade',
-        'type': 'hillshade',
-        'source': 'terrain',
-        'paint': {
-          'hillshade-exaggeration': 0.35,
-          'hillshade-shadow-color': '#25332d',
-          'hillshade-highlight-color': '#ffffff',
-        },
       },
     ],
   });
@@ -1853,30 +1838,38 @@ class _Terrain3DMapState extends State<_Terrain3DMap> {
     try {
       await map.clearLines();
       await map.clearCircles();
+      await map.clearFills();
       await map.clearSymbols();
 
       final lines = <ml.LineOptions>[];
       final circles = <ml.CircleOptions>[];
+      final fills = <ml.FillOptions>[];
       final symbols = <ml.SymbolOptions>[];
       final symbolData = <Map<String, dynamic>>[];
       final zoom = map.cameraPosition?.zoom ?? widget.zoom;
       if (zoom < 9) {
         for (final region in offlineBcRegions) {
-          final bounds = region.bounds;
-          lines.add(
-            ml.LineOptions(
-              geometry: [
-                ml.LatLng(bounds.south, bounds.west),
-                ml.LatLng(bounds.north, bounds.west),
-                ml.LatLng(bounds.north, bounds.east),
-                ml.LatLng(bounds.south, bounds.east),
-                ml.LatLng(bounds.south, bounds.west),
-              ],
-              lineColor: '#42A5F5',
-              lineWidth: 2.5,
-              lineOpacity: 0.78,
-            ),
-          );
+          final color =
+              '#${(region.colorValue & 0xFFFFFF).toRadixString(16).padLeft(6, '0')}';
+          for (final boundary in region.polygons) {
+            final geometry = boundary.map(_point).toList(growable: false);
+            fills.add(
+              ml.FillOptions(
+                geometry: [geometry],
+                fillColor: color,
+                fillOpacity: 0.18,
+                fillOutlineColor: color,
+              ),
+            );
+            lines.add(
+              ml.LineOptions(
+                geometry: geometry,
+                lineColor: color,
+                lineWidth: 2.5,
+                lineOpacity: 0.9,
+              ),
+            );
+          }
           symbols.add(
             ml.SymbolOptions(
               geometry: _point(region.center),
@@ -1969,6 +1962,7 @@ class _Terrain3DMapState extends State<_Terrain3DMap> {
         );
       }
 
+      if (fills.isNotEmpty) await map.addFills(fills);
       if (lines.isNotEmpty) await map.addLines(lines);
       if (circles.isNotEmpty) await map.addCircles(circles);
       if (symbols.isNotEmpty) await map.addSymbols(symbols, symbolData);
@@ -2109,19 +2103,12 @@ class _SkiRouteCluster {
 
 enum _MapTileStyle {
   clean(
-    label: 'Clean',
+    label: 'Clean 2D',
     icon: Icons.map,
     urlTemplate:
         'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
     subdomains: ['a', 'b', 'c', 'd'],
     attribution: '© OpenStreetMap contributors © CARTO',
-  ),
-  osm(
-    label: 'OSM',
-    icon: Icons.signpost,
-    urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-    subdomains: [],
-    attribution: '© OpenStreetMap contributors',
   ),
   satellite(
     label: 'Satellite',
@@ -2132,18 +2119,11 @@ enum _MapTileStyle {
     attribution: 'Tiles © Esri and data providers',
   ),
   terrain3d(
-    label: '3D',
+    label: 'Satellite 3D',
     icon: Icons.view_in_ar,
     urlTemplate: '',
     subdomains: [],
-    attribution: 'Imagery © Esri; terrain © Mapterhorn contributors',
-  ),
-  topo(
-    label: 'Topo',
-    icon: Icons.landscape,
-    urlTemplate: 'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',
-    subdomains: ['a', 'b', 'c'],
-    attribution: '© OpenTopoMap © OpenStreetMap contributors',
+    attribution: 'Imagery © Esri and data providers',
   );
 
   const _MapTileStyle({
@@ -2159,6 +2139,74 @@ enum _MapTileStyle {
   final String urlTemplate;
   final List<String> subdomains;
   final String attribution;
+}
+
+class _BcRegionLegend extends StatelessWidget {
+  const _BcRegionLegend();
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface.withValues(alpha: 0.94),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
+        boxShadow: const [
+          BoxShadow(
+            blurRadius: 5,
+            color: Color(0x33000000),
+            offset: Offset(0, 2),
+          ),
+        ],
+      ),
+      child: SizedBox(
+        width: 164,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(10, 8, 8, 8),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'BC regions',
+                style: Theme.of(
+                  context,
+                ).textTheme.labelMedium?.copyWith(fontWeight: FontWeight.w900),
+              ),
+              const SizedBox(height: 5),
+              for (final region in offlineBcRegions)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 2),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                        width: 11,
+                        height: 11,
+                        margin: const EdgeInsets.only(top: 1, right: 6),
+                        decoration: BoxDecoration(
+                          color: Color(region.colorValue),
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                      Expanded(
+                        child: Text(
+                          region.name,
+                          style: const TextStyle(
+                            fontSize: 9.5,
+                            height: 1.12,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class _MapFilters extends StatelessWidget {
@@ -2237,7 +2285,11 @@ class _MapLayerSwitcher extends StatelessWidget {
               initialValue: selected,
               onSelected: onChanged,
               itemBuilder: (context) => [
-                for (final style in _MapTileStyle.values)
+                for (final style in _MapTileStyle.values.where(
+                  (style) =>
+                      style != _MapTileStyle.terrain3d ||
+                      OfflineMapConfig.terrainConfigured,
+                ))
                   PopupMenuItem(
                     value: style,
                     child: ListTile(

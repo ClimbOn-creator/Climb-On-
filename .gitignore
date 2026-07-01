@@ -59,3 +59,4 @@ Full Zipped */
 map_archives/
 *.pmtiles
 *.mbtiles
+.tools/

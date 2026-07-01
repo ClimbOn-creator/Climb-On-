@@ -27,6 +27,7 @@ class OfflineRegionStatus {
     this.downloading = false,
     this.dataReady = false,
     this.mapsReady = false,
+    this.terrainReady = false,
     this.progress = 0,
     this.downloadedAt,
     this.message = '',
@@ -35,6 +36,7 @@ class OfflineRegionStatus {
   final bool downloading;
   final bool dataReady;
   final bool mapsReady;
+  final bool terrainReady;
   final double progress;
   final DateTime? downloadedAt;
   final String message;
@@ -44,6 +46,7 @@ class OfflineRegionStatus {
   Map<String, Object?> toJson() => {
     'dataReady': dataReady,
     'mapsReady': mapsReady,
+    'terrainReady': terrainReady,
     'progress': progress,
     'downloadedAt': downloadedAt?.toIso8601String(),
     'message': message,
@@ -53,6 +56,7 @@ class OfflineRegionStatus {
     return OfflineRegionStatus(
       dataReady: json['dataReady'] == true,
       mapsReady: json['mapsReady'] == true,
+      terrainReady: json['terrainReady'] == true,
       progress: (json['progress'] as num?)?.toDouble() ?? 0,
       downloadedAt: DateTime.tryParse(json['downloadedAt']?.toString() ?? ''),
       message: json['message']?.toString() ?? '',
@@ -88,12 +92,19 @@ class OfflineDownloadState extends ChangeNotifier {
     _notify();
   }
 
-  Future<void> download(OfflineBcRegion region) async {
-    if (statusFor(region.id).downloading) return;
+  Future<void> download(
+    OfflineBcRegion region, {
+    required bool includeTerrain3d,
+  }) async {
+    final previous = statusFor(region.id);
+    if (previous.downloading) return;
     _set(
       region.id,
-      const OfflineRegionStatus(
+      OfflineRegionStatus(
         downloading: true,
+        dataReady: previous.dataReady,
+        mapsReady: previous.mapsReady,
+        terrainReady: previous.terrainReady,
         progress: 0.01,
         message: 'Preparing route and tour information…',
       ),
@@ -173,17 +184,26 @@ class OfflineDownloadState extends ChangeNotifier {
         for (final crag in regionCrags) crag.location,
         for (final tour in regionTours) tour.location,
       ];
-      final mapsReady = await _downloadMapPacks(region, points);
+      final mapResult = await _downloadMapPacks(
+        region,
+        points,
+        includeTerrain3d: includeTerrain3d,
+      );
+      final mapsReady = mapResult.mapsReady;
+      final terrainReady = mapResult.terrainReady || previous.terrainReady;
       final now = DateTime.now();
       _set(
         region.id,
         OfflineRegionStatus(
           dataReady: true,
           mapsReady: mapsReady,
+          terrainReady: terrainReady,
           progress: mapsReady ? 1 : 0.5,
           downloadedAt: now,
           message: mapsReady
-              ? 'Everything is ready offline.'
+              ? terrainReady
+                    ? '2D, satellite, and 3D terrain are ready offline.'
+                    : 'Clean 2D and satellite are ready offline.'
               : kIsWeb
               ? 'Route data and pictures are ready. Native map packs are available in the iPhone/Android app.'
               : 'Route data and pictures are ready. Add licensed offline map style URLs to enable map packs.',
@@ -196,6 +216,7 @@ class OfflineDownloadState extends ChangeNotifier {
         OfflineRegionStatus(
           dataReady: statusFor(region.id).dataReady,
           mapsReady: statusFor(region.id).mapsReady,
+          terrainReady: statusFor(region.id).terrainReady,
           progress: statusFor(region.id).progress,
           message: 'Download paused: $error',
         ),
@@ -204,15 +225,16 @@ class OfflineDownloadState extends ChangeNotifier {
     }
   }
 
-  Future<bool> _downloadMapPacks(
+  Future<({bool mapsReady, bool terrainReady})> _downloadMapPacks(
     OfflineBcRegion region,
-    List<geo.LatLng> points,
-  ) async {
+    List<geo.LatLng> points, {
+    required bool includeTerrain3d,
+  }) async {
     if (kIsWeb ||
         (defaultTargetPlatform != TargetPlatform.iOS &&
             defaultTargetPlatform != TargetPlatform.android) ||
-        !OfflineMapConfig.allCoreMapsConfigured) {
-      return false;
+        !OfflineMapConfig.mapsConfigured) {
+      return (mapsReady: false, terrainReady: false);
     }
 
     await ml.setOfflineTileCountLimit(2000000);
@@ -220,7 +242,9 @@ class OfflineDownloadState extends ChangeNotifier {
       maxRequests: 4,
       maxRequestsPerHost: 2,
     );
-    final styles = OfflineMapConfig.downloadableStyles.entries.toList();
+    final styles = OfflineMapConfig.downloadableStyles(
+      includeTerrain3d: includeTerrain3d,
+    ).entries.toList();
     var finished = 0;
     final total = styles.length * (1 + points.length);
 
@@ -264,7 +288,10 @@ class OfflineDownloadState extends ChangeNotifier {
         _mapProgress(region.id, finished, total, style.key);
       }
     }
-    return true;
+    return (
+      mapsReady: true,
+      terrainReady: includeTerrain3d && OfflineMapConfig.terrainConfigured,
+    );
   }
 
   Future<void> _downloadPack({

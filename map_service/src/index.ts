@@ -100,7 +100,14 @@ function style(
     url: `${origin}/bc-terrain.json`,
     tileSize: 512,
     encoding: "terrarium",
-    attribution: "Terrain © Mapterhorn and source-data contributors",
+    attribution:
+      "Terrain © Natural Resources Canada CDEM; Contains information licensed under the <a href='https://open.canada.ca/en/open-government-licence-canada'>Open Government Licence – Canada</a>",
+  };
+  const satelliteSource = {
+    type: "raster",
+    url: `${origin}/bc-satellite.json`,
+    tileSize: 256,
+    attribution: `Contains modified Copernicus Sentinel-2 data (${sentinelDataYear})`,
   };
   const glyphs =
     "https://protomaps.github.io/basemaps-assets/fonts/{fontstack}/{range}.pbf";
@@ -142,12 +149,7 @@ function style(
       sprite,
       sources: {
         basemap: basemapSource,
-        satellite: {
-          type: "raster",
-          url: `${origin}/bc-satellite.json`,
-          tileSize: 256,
-          attribution: `Contains modified Copernicus Sentinel-2 data (${sentinelDataYear})`,
-        },
+        satellite: satelliteSource,
       },
       layers: [
         { id: "satellite", type: "raster", source: "satellite" },
@@ -156,20 +158,23 @@ function style(
     };
   }
 
-  if (kind === "topo" || kind === "3d") {
-    const firstLabel = baseLayers.findIndex((layer) => layer.type === "symbol");
-    const topoLayers = [...baseLayers];
-    topoLayers.splice(firstLabel < 0 ? topoLayers.length : firstLabel, 0, hillshade as never);
+  if (kind === "3d") {
     return {
       version: 8,
-      name: kind === "3d" ? "Climb On 3D Terrain" : "Climb On Topo",
+      name: "Climb On Satellite 3D",
       glyphs,
       sprite,
-      sources: { basemap: basemapSource, terrain: terrainSource },
-      ...(kind === "3d"
-        ? { terrain: { source: "terrain", exaggeration: 1.12 } }
-        : {}),
-      layers: topoLayers,
+      sources: {
+        basemap: basemapSource,
+        satellite: satelliteSource,
+        terrain: terrainSource,
+      },
+      terrain: { source: "terrain", exaggeration: 1.12 },
+      layers: [
+        { id: "satellite", type: "raster", source: "satellite" },
+        hillshade,
+        ...labelLayers,
+      ],
     };
   }
   return null;
@@ -254,7 +259,7 @@ export default {
     if (url.pathname === "/health") {
       return Response.json({ ok: true, service: "climb-on-open-maps" });
     }
-    const styleMatch = url.pathname.match(/^\/styles\/(clean|satellite|topo|3d)\.json$/);
+    const styleMatch = url.pathname.match(/^\/styles\/(clean|satellite|3d)\.json$/);
     if (styleMatch) {
       const value = style(
         url.origin,

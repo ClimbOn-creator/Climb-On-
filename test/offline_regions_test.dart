@@ -8,6 +8,17 @@ void main() {
     expect(offlineBcRegions.map((region) => region.id).toSet(), hasLength(6));
   });
 
+  test('offline sections use the requested BC region names', () {
+    expect(offlineBcRegions.map((region) => region.name), [
+      'The Islands',
+      'Vancouver Coast & Mountains',
+      'Thompson Okanagan',
+      'BC Rockies',
+      'Cariboo, Chilcotin Coast',
+      'Northern BC',
+    ]);
+  });
+
   test('key BC destinations belong to an offline section', () {
     const destinations = [
       LatLng(48.4284, -123.3656), // Victoria
@@ -21,9 +32,12 @@ void main() {
     ];
 
     for (final destination in destinations) {
+      final matchingRegions = offlineBcRegions
+          .where((region) => region.contains(destination))
+          .toList();
       expect(
-        offlineBcRegions.any((region) => region.contains(destination)),
-        isTrue,
+        matchingRegions,
+        hasLength(1),
         reason: '$destination is not covered',
       );
     }
