@@ -34,45 +34,6 @@ import '../state/ski_route_state.dart';
 import '../utils/number_parser.dart';
 import '../widgets/pulsing_user_marker.dart';
 
-class _RegionBoundaryLod {
-  _RegionBoundaryLod(this.source) {
-    if (source.isEmpty) {
-      maximumSpan = 0;
-      return;
-    }
-    var south = source.first.latitude;
-    var north = south;
-    var west = source.first.longitude;
-    var east = west;
-    for (final point in source.skip(1)) {
-      south = math.min(south, point.latitude);
-      north = math.max(north, point.latitude);
-      west = math.min(west, point.longitude);
-      east = math.max(east, point.longitude);
-    }
-    maximumSpan = math.max(north - south, east - west);
-  }
-
-  final List<LatLng> source;
-  final Map<int, List<LatLng>> cache = {};
-  late final double maximumSpan;
-
-  bool isVisibleAt(double minimumSpan) => maximumSpan >= minimumSpan;
-
-  List<LatLng> pointsFor(int targetPoints) {
-    if (source.length <= targetPoints) return source;
-    return cache.putIfAbsent(targetPoints, () {
-      final stride = (source.length / targetPoints).ceil();
-      final result = <LatLng>[
-        for (var index = 0; index < source.length; index += stride)
-          source[index],
-      ];
-      if (result.last != source.last) result.add(source.last);
-      return result;
-    });
-  }
-}
-
 class MapScreen extends ConsumerStatefulWidget {
   const MapScreen({super.key});
 
@@ -82,6 +43,7 @@ class MapScreen extends ConsumerStatefulWidget {
 
 class _MapScreenState extends ConsumerState<MapScreen> {
   static const _recordingDraftKey = 'climb_on_recording_draft_v1';
+  static const _minimumDataZoom = 6.5;
   double currentZoom = 14;
   LatLng? userLocation;
   double? userLocationAccuracyMeters;
@@ -101,8 +63,6 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   LatLng? currentMapCenter;
   double currentMapRotation = 0;
   final Set<_MapRouteFilter> activeFilters = {};
-  final Map<List<LatLng>, _RegionBoundaryLod> regionBoundaryLod =
-      Map.identity();
   final MapController mapController = MapController();
   ml.MapLibreMapController? mapLibreController;
   StreamSubscription<Position>? positionSubscription;
@@ -382,10 +342,15 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                           final nextZoom = position.zoom!;
                           final clusterStateChanged =
                               (nextZoom < 13) != showClusters;
+                          final dataVisibilityChanged =
+                              (nextZoom < _minimumDataZoom) !=
+                              (currentZoom < _minimumDataZoom);
                           final meaningfulZoomChange =
                               (nextZoom - currentZoom).abs() >= 0.5;
 
-                          if (clusterStateChanged || meaningfulZoomChange) {
+                          if (clusterStateChanged ||
+                              dataVisibilityChanged ||
+                              meaningfulZoomChange) {
                             setState(() => currentZoom = nextZoom);
                           }
                         }
@@ -400,10 +365,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                       ),
                       if (currentZoom < 9)
                         PolygonLayer(
-                          polygons: _offlineRegionPolygons(
-                            mapRegions,
-                            currentZoom,
-                          ),
+                          polygons: _offlineRegionPolygons(mapRegions),
                         ),
                       if (tileStyle == _MapTileStyle.satellite)
                         TileLayer(
@@ -416,7 +378,9 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                       PolylineLayer(
                         polylines: [
                           ...(mode == ActivityMode.ski
-                              ? _skiLines(mapPaths, skiCatalog)
+                              ? currentZoom >= _minimumDataZoom
+                                    ? _skiLines(mapPaths, skiCatalog)
+                                    : const <Polyline>[]
                               : _approachLines(mapPaths)),
                           if (pathEditMode && pathDraft.length >= 2)
                             Polyline(
@@ -667,7 +631,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
           height: 56,
           child: const PulsingUserMarker(),
         ),
-      if (showClusters)
+      if (currentZoom >= _minimumDataZoom && showClusters)
         ...clusterCrags(mapCrags).map((cluster) {
           final count = cluster.crags.length;
           final markerSize = currentZoom < 8
@@ -732,7 +696,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
             ),
           );
         })
-      else
+      else if (currentZoom >= _minimumDataZoom)
         ...mapCrags.map(
           (crag) => Marker(
             point: crag.location,
@@ -751,56 +715,45 @@ class _MapScreenState extends ConsumerState<MapScreen> {
             ),
           ),
         ),
-      ...mapCrags
-          .where(_shouldShowParking)
-          .map(
-            (crag) => Marker(
-              point: crag.parking,
-              width: 30,
-              height: 30,
-              child: Tooltip(
-                message: '${crag.name} parking',
-                child: GestureDetector(
-                  onTap: () {
-                    setState(() {
-                      selectedCrag = crag;
-                      selectedWall = crag.walls.isEmpty
-                          ? null
-                          : crag.walls.first;
-                      selectedParkingCrag = crag;
-                    });
-                  },
-                  child: const _ParkingMarkerIcon(),
+      if (currentZoom >= _minimumDataZoom)
+        ...mapCrags
+            .where(_shouldShowParking)
+            .map(
+              (crag) => Marker(
+                point: crag.parking,
+                width: 30,
+                height: 30,
+                child: Tooltip(
+                  message: '${crag.name} parking',
+                  child: GestureDetector(
+                    onTap: () {
+                      setState(() {
+                        selectedCrag = crag;
+                        selectedWall = crag.walls.isEmpty
+                            ? null
+                            : crag.walls.first;
+                        selectedParkingCrag = crag;
+                      });
+                    },
+                    child: const _ParkingMarkerIcon(),
+                  ),
                 ),
               ),
             ),
-          ),
     ];
   }
 
-  List<Polygon> _offlineRegionPolygons(
-    List<OfflineBcRegion> regions,
-    double zoom,
-  ) {
-    final (targetPoints, minimumSpan) = switch (zoom) {
-      < 6.2 => (160, 0.12),
-      < 7.2 => (400, 0.04),
-      < 8.2 => (900, 0.012),
-      _ => (2000, 0.003),
-    };
+  List<Polygon> _offlineRegionPolygons(List<OfflineBcRegion> regions) {
     return [
       for (final region in regions)
         for (final boundary in region.polygons)
-          if (regionBoundaryLod
-              .putIfAbsent(boundary, () => _RegionBoundaryLod(boundary))
-              .isVisibleAt(minimumSpan))
-            Polygon(
-              points: regionBoundaryLod[boundary]!.pointsFor(targetPoints),
-              color: Color(region.colorValue).withValues(alpha: 0.18),
-              borderColor: Color(region.colorValue).withValues(alpha: 0.92),
-              borderStrokeWidth: 2,
-              isFilled: true,
-            ),
+          Polygon(
+            points: boundary,
+            color: Color(region.colorValue).withValues(alpha: 0.18),
+            borderColor: Color(region.colorValue).withValues(alpha: 0.92),
+            borderStrokeWidth: 2,
+            isFilled: true,
+          ),
     ];
   }
 
@@ -854,14 +807,16 @@ class _MapScreenState extends ConsumerState<MapScreen> {
           height: 56,
           child: const PulsingUserMarker(),
         ),
-      if (showSkiAllCluster && allCluster != null)
+      if (currentZoom >= _minimumDataZoom &&
+          showSkiAllCluster &&
+          allCluster != null)
         _skiClusterMarker(
           context,
           cluster: allCluster,
           label: 'All ski tours',
           zoomTarget: 8.5,
         )
-      else if (showSkiRegionClusters)
+      else if (currentZoom >= _minimumDataZoom && showSkiRegionClusters)
         for (final cluster in clusterSkiRoutesByRegion(routes))
           _skiClusterMarker(
             context,
@@ -869,7 +824,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
             label: cluster.label,
             zoomTarget: 10.5,
           )
-      else if (showSkiAreaClusters)
+      else if (currentZoom >= _minimumDataZoom && showSkiAreaClusters)
         for (final cluster in clusterSkiRoutesByArea(routes))
           _skiClusterMarker(
             context,
@@ -877,7 +832,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
             label: cluster.label,
             zoomTarget: 12.8,
           )
-      else
+      else if (currentZoom >= _minimumDataZoom)
         ...routes.map(
           (route) => Marker(
             point: route.location,
@@ -1999,6 +1954,7 @@ class _Terrain3DMapState extends State<_Terrain3DMap> {
       final symbols = <ml.SymbolOptions>[];
       final symbolData = <Map<String, dynamic>>[];
       final zoom = map.cameraPosition?.zoom ?? widget.zoom;
+      final showMapData = zoom >= _MapScreenState._minimumDataZoom;
       if (zoom < 9) {
         for (final region in widget.regions) {
           final color =
@@ -2037,7 +1993,7 @@ class _Terrain3DMapState extends State<_Terrain3DMap> {
           symbolData.add({'kind': 'offline-region', 'entityId': region.id});
         }
       }
-      if (widget.mode == ActivityMode.ski) {
+      if (showMapData && widget.mode == ActivityMode.ski) {
         for (final route in widget.skiRoutes) {
           final ascent = widget.paths.skiAscent(route.name);
           final ascentPoints = ascent.length >= 2
@@ -2072,7 +2028,7 @@ class _Terrain3DMapState extends State<_Terrain3DMap> {
           );
           symbolData.add({'kind': 'ski', 'entityId': route.id});
         }
-      } else {
+      } else if (showMapData) {
         for (final crag in widget.crags) {
           symbols.add(
             _labelSymbol(

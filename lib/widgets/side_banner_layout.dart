@@ -125,7 +125,7 @@ class _VerticalMountainBanner extends StatelessWidget {
           16,
         ),
         child: ClipRRect(
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(14),
           child: Stack(
             fit: StackFit.expand,
             children: [
@@ -157,10 +157,12 @@ class _VerticalMountainBanner extends StatelessWidget {
                         vertical: 5,
                       ),
                       child: Text(
-                        'Ad',
+                        'SPONSORED',
                         style: Theme.of(context).textTheme.labelSmall?.copyWith(
                           color: Colors.white,
                           fontWeight: FontWeight.w800,
+                          fontSize: 9,
+                          letterSpacing: 1,
                         ),
                       ),
                     ),

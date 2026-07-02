@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../theme/climb_on_theme.dart';
+
 class ClimbOnLogo extends StatelessWidget {
   const ClimbOnLogo({super.key, this.size = 40});
 
@@ -15,13 +17,13 @@ class ClimbOnLogo extends StatelessWidget {
         width: size,
         height: size,
         decoration: BoxDecoration(
-          color: const Color(0xFFBFE8F7),
-          borderRadius: BorderRadius.circular(size * 0.22),
+          color: PacificTerrainColors.navy,
+          borderRadius: BorderRadius.circular(size * 0.16),
         ),
         child: Icon(
-          Icons.terrain,
-          color: const Color(0xFFFF5C9A),
-          size: size * 0.62,
+          Icons.landscape_outlined,
+          color: PacificTerrainColors.cloud,
+          size: size * 0.66,
         ),
       ),
     );
@@ -45,17 +47,21 @@ class ClimbOnBrand extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Climb On',
-              style: GoogleFonts.bungee(
-                fontSize: 22,
-                fontWeight: FontWeight.w400,
-                letterSpacing: 0,
+              'CLIMB ON',
+              style: GoogleFonts.manrope(
+                color: PacificTerrainColors.navy,
+                fontSize: 19,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 2.4,
               ),
             ),
             if (showTagline)
               Text(
                 'Built by Canadians for Canadians.',
-                style: Theme.of(context).textTheme.labelSmall,
+                style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  letterSpacing: 0.2,
+                ),
               ),
           ],
         ),

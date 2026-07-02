@@ -17,6 +17,8 @@ import '../state/profile_state.dart';
 import '../state/ski_log_state.dart';
 import '../state/ski_route_state.dart';
 import '../state/social_state.dart';
+import '../theme/climb_on_theme.dart';
+import '../widgets/native_ad_card.dart';
 import '../widgets/side_banner_layout.dart';
 
 class ProfileScreen extends ConsumerStatefulWidget {
@@ -55,11 +57,12 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     final profile = ref.watch(currentProfileProvider).valueOrNull;
     final user = authService.currentUser;
     final signedIn = user != null;
-    final showTitleBar = MediaQuery.sizeOf(context).width >= 1024;
+    final desktop = MediaQuery.sizeOf(context).width >= 900;
 
     return Scaffold(
-      appBar: showTitleBar ? AppBar(title: const Text('Profile')) : null,
+      backgroundColor: Colors.transparent,
       body: SideBannerLayout(
+        maxContentWidth: 980,
         child: mode == ActivityMode.ski
             ? _SkiProfileBody(
                 authService: authService,
@@ -94,7 +97,12 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                     profile: profile,
                     user: user,
                     child: ListView(
-                      padding: const EdgeInsets.all(16),
+                      padding: EdgeInsets.fromLTRB(
+                        desktop ? 28 : 16,
+                        desktop ? 30 : 22,
+                        desktop ? 28 : 16,
+                        40,
+                      ),
                       children: [
                         if (!signedIn) ...[
                           _AccountCard(
@@ -118,6 +126,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                           ),
                         const _ProfileHeader(),
                         const SizedBox(height: 16),
+                        NativeAdCard(mode: mode, compact: !desktop),
                         _SectionCard(
                           title: 'Best sends',
                           child: Column(
@@ -730,9 +739,24 @@ class _ProfileHeader extends StatelessWidget {
       if (profile?.bio.isNotEmpty == true) profile!.bio,
     ].join(' - ');
 
-    return Card(
+    return Container(
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [PacificTerrainColors.navy, PacificTerrainColors.navySoft],
+        ),
+        borderRadius: BorderRadius.circular(18),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x24112D3B),
+            blurRadius: 24,
+            offset: Offset(0, 10),
+          ),
+        ],
+      ),
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(24),
         child: Column(
           children: [
             Stack(
@@ -740,6 +764,7 @@ class _ProfileHeader extends StatelessWidget {
               children: [
                 CircleAvatar(
                   radius: 44,
+                  backgroundColor: PacificTerrainColors.seaGlass,
                   backgroundImage: avatarUrl == null || avatarUrl.isEmpty
                       ? null
                       : NetworkImage(avatarUrl),
@@ -764,16 +789,20 @@ class _ProfileHeader extends StatelessWidget {
               displayName,
               style: Theme.of(
                 context,
-              ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w900),
+              ).textTheme.headlineSmall?.copyWith(color: Colors.white),
             ),
             const SizedBox(height: 4),
             Text(
               subtitle.isEmpty ? 'Your outdoor logbook' : subtitle,
               textAlign: TextAlign.center,
+              style: const TextStyle(color: Colors.white70),
             ),
             if (user != null) ...[
               const SizedBox(height: 6),
               TextButton.icon(
+                style: TextButton.styleFrom(
+                  foregroundColor: PacificTerrainColors.seaGlass,
+                ),
                 onPressed: () => context.go('/profile/setup'),
                 icon: const Icon(Icons.edit_outlined),
                 label: const Text('Edit username and profile'),
@@ -804,9 +833,9 @@ class _BestSendTile extends StatelessWidget {
       constraints: const BoxConstraints(minHeight: 126),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: const Color(0xFFFFF0C2),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: const Color(0xFFE4C968)),
+        color: PacificTerrainColors.seaGlass.withValues(alpha: 0.65),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: PacificTerrainColors.line),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -965,12 +994,7 @@ class _SectionCard extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                title,
-                style: Theme.of(
-                  context,
-                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900),
-              ),
+              Text(title, style: Theme.of(context).textTheme.titleLarge),
               const SizedBox(height: 12),
               child,
             ],
@@ -991,8 +1015,8 @@ class _StatTile extends StatelessWidget {
   Widget build(BuildContext context) {
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: const Color(0xFFFFF0C2),
-        borderRadius: BorderRadius.circular(8),
+        color: PacificTerrainColors.sand.withValues(alpha: 0.62),
+        borderRadius: BorderRadius.circular(12),
       ),
       child: SizedBox(
         width: 104,

@@ -12,6 +12,8 @@ import '../state/climb_log_state.dart';
 import '../state/ski_log_state.dart';
 import '../state/ski_route_state.dart';
 import '../state/social_state.dart';
+import '../theme/climb_on_theme.dart';
+import '../widgets/native_ad_card.dart';
 import '../widgets/route_card.dart';
 import '../widgets/side_banner_layout.dart';
 
@@ -42,7 +44,7 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
     final focusedRoute = ref.watch(focusedRouteProvider);
     final skiCatalog = ref.watch(skiRouteCatalogProvider);
     final skiRoutes = skiCatalog.valueOrNull ?? const <SkiRoute>[];
-    final showTitleBar = MediaQuery.sizeOf(context).width >= 1024;
+    final desktop = MediaQuery.sizeOf(context).width >= 900;
 
     final catalogCrags = catalog.valueOrNull ?? const <Crag>[];
     final allRoutes = [
@@ -53,14 +55,45 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
     final skiResults = _skiSearchResults(skiRoutes);
 
     return Scaffold(
-      appBar: showTitleBar ? AppBar(title: const Text('Feed')) : null,
+      backgroundColor: Colors.transparent,
       body: SideBannerLayout(
+        maxContentWidth: 980,
         child: RefreshIndicator(
           onRefresh: social.refresh,
           child: ListView(
             physics: const AlwaysScrollableScrollPhysics(),
-            padding: const EdgeInsets.all(16),
+            padding: EdgeInsets.fromLTRB(
+              desktop ? 28 : 16,
+              desktop ? 30 : 22,
+              desktop ? 28 : 16,
+              40,
+            ),
             children: [
+              Text(
+                mode == ActivityMode.ski
+                    ? 'WINTER FIELD NOTES'
+                    : 'FROM THE COMMUNITY',
+                style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                  color: PacificTerrainColors.cedar,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 1.7,
+                ),
+              ),
+              const SizedBox(height: 5),
+              Text(
+                mode == ActivityMode.ski ? 'Touring feed' : 'The climbing feed',
+                style: Theme.of(context).textTheme.headlineLarge,
+              ),
+              const SizedBox(height: 7),
+              Text(
+                mode == ActivityMode.ski
+                    ? 'Recent objectives, conditions, and routes from your touring circle.'
+                    : 'Fresh sends, new lines, and crag notes from climbers near you.',
+                style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(height: 22),
               TextField(
                 onChanged: (value) => setState(() => query = value),
                 decoration: const InputDecoration(
@@ -69,6 +102,7 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
                 ),
               ),
               const SizedBox(height: 16),
+              NativeAdCard(mode: mode, compact: !desktop),
               if (mode == ActivityMode.ski) ...[
                 if (skiCatalog.isLoading)
                   const LinearProgressIndicator(minHeight: 3),
@@ -718,12 +752,7 @@ class _SectionHeader extends StatelessWidget {
     return Row(
       children: [
         Expanded(
-          child: Text(
-            title,
-            style: Theme.of(
-              context,
-            ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900),
-          ),
+          child: Text(title, style: Theme.of(context).textTheme.titleLarge),
         ),
         ?action,
       ],
@@ -747,11 +776,12 @@ class _RouteListTile extends StatelessWidget {
     return Card(
       margin: const EdgeInsets.only(bottom: 10),
       child: ListTile(
+        contentPadding: const EdgeInsets.all(10),
         leading: ClipRRect(
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(10),
           child: SizedBox(
-            width: 64,
-            height: 64,
+            width: 78,
+            height: 72,
             child: CachedNetworkImage(
               imageUrl: route.imageUrl,
               fit: BoxFit.cover,
@@ -762,7 +792,7 @@ class _RouteListTile extends StatelessWidget {
             ),
           ),
         ),
-        title: Text(route.name),
+        title: Text(route.name, style: Theme.of(context).textTheme.titleMedium),
         subtitle: Text(subtitle),
         trailing: const Icon(Icons.chevron_right),
         onTap: onTap,

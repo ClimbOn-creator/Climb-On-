@@ -199,8 +199,11 @@ List<LatLng> _albertaSideOfRockies(List<LatLng> rockies) {
       : second;
   return [
     ...border,
-    LatLng(border.last.latitude, -109.80),
-    const LatLng(49.00, -109.80),
+    const LatLng(53.25, -118.90),
+    const LatLng(54.25, -119.75),
+    const LatLng(55.00, -120.00),
+    const LatLng(55.00, -113.75),
+    const LatLng(49.00, -113.75),
     const LatLng(49.00, -114.05),
   ];
 }

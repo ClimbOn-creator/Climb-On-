@@ -29,17 +29,25 @@ void main() {
     );
   });
 
-  test('detailed Coast and Haida Gwaii shorelines are packaged', () async {
+  test('detailed coastal region shorelines are packaged', () async {
     final source = await rootBundle.loadString(
       'assets/data/bc_coastline_regions.geojson',
     );
     final regions = parseDetailedCoastlineRegions(source);
 
     expect(regions['the-coast'], hasLength(greaterThan(100)));
+    expect(regions['cariboo-chilcotin-coast'], hasLength(greaterThan(50)));
     expect(regions['northern-bc'], hasLength(greaterThan(100)));
     expect(
       regions['the-coast']!.fold<int>(0, (sum, ring) => sum + ring.length),
       greaterThan(6000),
+    );
+    expect(
+      regions['cariboo-chilcotin-coast']!.fold<int>(
+        0,
+        (sum, ring) => sum + ring.length,
+      ),
+      greaterThan(4000),
     );
     expect(
       regions['northern-bc']!.fold<int>(0, (sum, ring) => sum + ring.length),
@@ -55,6 +63,27 @@ void main() {
       hasLength(1),
     );
   });
+
+  test(
+    'Alberta Rockies preview reaches north and stops east of Calgary',
+    () async {
+      final source = await rootBundle.loadString(
+        'assets/data/bc_tourism_regions.geojson',
+      );
+      final preview = parseOfficialTourismRegions(
+        source,
+      )['alberta-rockies-coming-soon']!.single;
+
+      expect(
+        preview.map((point) => point.latitude).reduce((a, b) => a > b ? a : b),
+        greaterThanOrEqualTo(55),
+      );
+      expect(
+        preview.map((point) => point.longitude).reduce((a, b) => a > b ? a : b),
+        lessThanOrEqualTo(-113.75),
+      );
+    },
+  );
 
   test('offline sections use the requested BC region names', () {
     expect(offlineBcRegions.map((region) => region.name), [

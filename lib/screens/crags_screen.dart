@@ -1,122 +1,65 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../models/crag.dart';
 import '../models/climb_route.dart';
+import '../models/ski_route.dart';
 import '../services/database_service.dart';
 import '../state/activity_mode_state.dart';
 import '../state/admin_state.dart';
 import '../state/catalog_state.dart';
 import '../state/climb_log_state.dart';
 import '../state/ski_route_state.dart';
+import '../theme/climb_on_theme.dart';
 import '../models/wall.dart';
+import '../widgets/native_ad_card.dart';
 import '../widgets/side_banner_layout.dart';
 import '../widgets/admin_route_editor.dart';
 
-class CragsScreen extends ConsumerWidget {
+class CragsScreen extends ConsumerStatefulWidget {
   const CragsScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final showTitleBar = MediaQuery.sizeOf(context).width >= 1024;
+  ConsumerState<CragsScreen> createState() => _CragsScreenState();
+}
+
+class _CragsScreenState extends ConsumerState<CragsScreen> {
+  String? selectedRangeId;
+
+  @override
+  Widget build(BuildContext context) {
     final mode = ref.watch(activityModeProvider);
     final catalog = ref.watch(catalogProvider);
     final skiCatalog = ref.watch(skiRouteCatalogProvider);
     final skiRoutes = skiCatalog.valueOrNull ?? const [];
     final catalogCrags = catalog.valueOrNull ?? const <Crag>[];
+    final width = MediaQuery.sizeOf(context).width;
+    final desktop = width >= 900;
+    final initialRange = _mountainRanges.firstWhere(
+      (range) => catalogCrags.any(range.matches),
+      orElse: () => _mountainRanges.first,
+    );
 
     return Scaffold(
-      appBar: showTitleBar
-          ? AppBar(
-              title: Text(mode == ActivityMode.ski ? 'Ski Tours' : 'Crags'),
-            )
-          : null,
+      backgroundColor: Colors.transparent,
       body: SideBannerLayout(
+        maxContentWidth: 1180,
         child: mode == ActivityMode.ski
             ? skiRoutes.isEmpty && skiCatalog.isLoading
                   ? const Center(child: CircularProgressIndicator())
-                  : ListView.separated(
-                      padding: const EdgeInsets.all(16),
-                      itemCount: skiRoutes.length,
-                      separatorBuilder: (_, _) => const SizedBox(height: 12),
-                      itemBuilder: (context, index) {
-                        final route = skiRoutes[index];
-                        return Card(
-                          child: ListTile(
-                            leading: const Icon(Icons.downhill_skiing),
-                            title: Text(route.name),
-                            subtitle: Text(
-                              '${route.area} - ${route.distanceKm} km - ${route.elevationGainMeters} m',
-                            ),
-                            trailing: Chip(label: Text(route.difficulty)),
-                          ),
-                        );
-                      },
-                    )
+                  : _SkiCatalog(routes: skiRoutes, mode: mode, desktop: desktop)
             : catalogCrags.isEmpty && catalog.isLoading
             ? const Center(child: CircularProgressIndicator())
-            : ListView.separated(
-                padding: const EdgeInsets.all(16),
-                itemCount: catalogCrags.length,
-                separatorBuilder: (_, _) => const SizedBox(height: 12),
-                itemBuilder: (context, index) {
-                  final crag = catalogCrags[index];
-                  final routeCount = crag.walls.fold<int>(
-                    0,
-                    (count, wall) => count + wall.routes.length,
-                  );
-
-                  return Card(
-                    child: InkWell(
-                      borderRadius: BorderRadius.circular(8),
-                      onTap: () => _openCrag(context, ref, crag),
-                      child: Padding(
-                        padding: const EdgeInsets.all(14),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                Icon(
-                                  Icons.terrain,
-                                  color: Theme.of(context).colorScheme.primary,
-                                ),
-                                const SizedBox(width: 10),
-                                Expanded(
-                                  child: Text(
-                                    crag.name,
-                                    style: Theme.of(context)
-                                        .textTheme
-                                        .titleMedium
-                                        ?.copyWith(fontWeight: FontWeight.w900),
-                                  ),
-                                ),
-                                const Icon(Icons.chevron_right),
-                              ],
-                            ),
-                            const SizedBox(height: 10),
-                            Wrap(
-                              spacing: 8,
-                              runSpacing: 8,
-                              children: [
-                                Chip(
-                                  label: Text(
-                                    '${crag.region}, ${crag.province}',
-                                  ),
-                                ),
-                                Chip(label: Text(crag.season)),
-                                Chip(label: Text('$routeCount routes')),
-                              ],
-                            ),
-                            const SizedBox(height: 10),
-                            Text(crag.accessNotes),
-                          ],
-                        ),
-                      ),
-                    ),
-                  );
+            : _RangeCatalog(
+                crags: catalogCrags,
+                selectedRangeId: selectedRangeId ?? initialRange.id,
+                desktop: desktop,
+                onRangeSelected: (range) {
+                  setState(() => selectedRangeId = range.id);
                 },
+                onCragSelected: (crag) => _openCrag(context, ref, crag),
               ),
       ),
     );
@@ -141,6 +84,626 @@ class CragsScreen extends ConsumerWidget {
   }
 }
 
+class _RangeCatalog extends StatelessWidget {
+  const _RangeCatalog({
+    required this.crags,
+    required this.selectedRangeId,
+    required this.desktop,
+    required this.onRangeSelected,
+    required this.onCragSelected,
+  });
+
+  final List<Crag> crags;
+  final String selectedRangeId;
+  final bool desktop;
+  final ValueChanged<_MountainRange> onRangeSelected;
+  final ValueChanged<Crag> onCragSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    final selected = _mountainRanges.firstWhere(
+      (range) => range.id == selectedRangeId,
+      orElse: () => _mountainRanges.first,
+    );
+    final visibleCrags = crags
+        .where((crag) => selected.matches(crag))
+        .toList(growable: false);
+
+    final content = ListView(
+      padding: EdgeInsets.fromLTRB(
+        desktop ? 28 : 16,
+        desktop ? 30 : 22,
+        desktop ? 28 : 16,
+        40,
+      ),
+      children: [
+        const _CatalogHeader(
+          eyebrow: 'EXPLORE BRITISH COLUMBIA',
+          title: 'Find your next crag',
+          subtitle:
+              'Choose a mountain range, then open a crag for walls, routes, access, and current conditions.',
+        ),
+        const SizedBox(height: 24),
+        if (!desktop)
+          SizedBox(
+            height: 158,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              itemCount: _mountainRanges.length,
+              separatorBuilder: (_, _) => const SizedBox(width: 12),
+              itemBuilder: (context, index) {
+                final range = _mountainRanges[index];
+                return SizedBox(
+                  width: 220,
+                  child: _RangeCard(
+                    range: range,
+                    count: crags.where(range.matches).length,
+                    selected: selected.id == range.id,
+                    onTap: () => onRangeSelected(range),
+                  ),
+                );
+              },
+            ),
+          ),
+        if (!desktop) const SizedBox(height: 20),
+        NativeAdCard(mode: ActivityMode.climb, compact: !desktop),
+        _SelectedRangeHeader(range: selected, count: visibleCrags.length),
+        const SizedBox(height: 14),
+        if (visibleCrags.isEmpty)
+          _EmptyRange(range: selected)
+        else
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final columns = constraints.maxWidth >= 700 ? 2 : 1;
+              final cardWidth = columns == 1
+                  ? constraints.maxWidth
+                  : (constraints.maxWidth - 14) / 2;
+              return Wrap(
+                spacing: 14,
+                runSpacing: 14,
+                children: [
+                  for (final crag in visibleCrags)
+                    SizedBox(
+                      width: cardWidth,
+                      child: _CragCard(
+                        crag: crag,
+                        range: selected,
+                        onTap: () => onCragSelected(crag),
+                      ),
+                    ),
+                ],
+              );
+            },
+          ),
+      ],
+    );
+
+    if (!desktop) return content;
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        SizedBox(
+          width: 282,
+          child: DecoratedBox(
+            decoration: const BoxDecoration(
+              color: PacificTerrainColors.mist,
+              border: Border(
+                right: BorderSide(color: PacificTerrainColors.line),
+              ),
+            ),
+            child: ListView(
+              padding: const EdgeInsets.all(20),
+              children: [
+                Text(
+                  'MOUNTAIN RANGES',
+                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                    color: PacificTerrainColors.cedar,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 1.5,
+                  ),
+                ),
+                const SizedBox(height: 14),
+                for (final range in _mountainRanges)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: _RangeCard(
+                      range: range,
+                      count: crags.where(range.matches).length,
+                      selected: selected.id == range.id,
+                      onTap: () => onRangeSelected(range),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
+        Expanded(child: content),
+      ],
+    );
+  }
+}
+
+class _CatalogHeader extends StatelessWidget {
+  const _CatalogHeader({
+    required this.eyebrow,
+    required this.title,
+    required this.subtitle,
+  });
+
+  final String eyebrow;
+  final String title;
+  final String subtitle;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          eyebrow,
+          style: Theme.of(context).textTheme.labelSmall?.copyWith(
+            color: PacificTerrainColors.cedar,
+            fontWeight: FontWeight.w800,
+            letterSpacing: 1.7,
+          ),
+        ),
+        const SizedBox(height: 5),
+        Text(title, style: Theme.of(context).textTheme.headlineLarge),
+        const SizedBox(height: 7),
+        ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 650),
+          child: Text(
+            subtitle,
+            style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+              height: 1.5,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _RangeCard extends StatelessWidget {
+  const _RangeCard({
+    required this.range,
+    required this.count,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final _MountainRange range;
+  final int count;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      clipBehavior: Clip.antiAlias,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(14),
+        side: BorderSide(
+          color: selected
+              ? PacificTerrainColors.cedar
+              : PacificTerrainColors.line,
+          width: selected ? 2 : 1,
+        ),
+      ),
+      child: InkWell(
+        onTap: onTap,
+        child: SizedBox(
+          height: 136,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              CachedNetworkImage(
+                imageUrl: range.imageUrl,
+                fit: BoxFit.cover,
+                errorWidget: (_, _, _) => const ColoredBox(
+                  color: PacificTerrainColors.navySoft,
+                  child: Icon(Icons.landscape, color: Colors.white),
+                ),
+              ),
+              const DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [Color(0x11112D3B), Color(0xD9112D3B)],
+                  ),
+                ),
+              ),
+              Positioned(
+                left: 14,
+                right: 14,
+                bottom: 12,
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            range.name,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(context).textTheme.titleMedium
+                                ?.copyWith(color: Colors.white),
+                          ),
+                          Text(
+                            '$count ${count == 1 ? 'crag' : 'crags'}',
+                            style: Theme.of(context).textTheme.labelSmall
+                                ?.copyWith(color: Colors.white70),
+                          ),
+                        ],
+                      ),
+                    ),
+                    if (selected)
+                      const Icon(
+                        Icons.arrow_forward,
+                        size: 19,
+                        color: Colors.white,
+                      ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SelectedRangeHeader extends StatelessWidget {
+  const _SelectedRangeHeader({required this.range, required this.count});
+
+  final _MountainRange range;
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                range.name,
+                style: Theme.of(context).textTheme.headlineSmall,
+              ),
+              const SizedBox(height: 2),
+              Text(
+                range.description,
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ),
+        ),
+        Text(
+          '$count FOUND',
+          style: Theme.of(context).textTheme.labelSmall?.copyWith(
+            color: PacificTerrainColors.cedar,
+            fontWeight: FontWeight.w800,
+            letterSpacing: 1.2,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _CragCard extends StatelessWidget {
+  const _CragCard({
+    required this.crag,
+    required this.range,
+    required this.onTap,
+  });
+
+  final Crag crag;
+  final _MountainRange range;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final routes = [for (final wall in crag.walls) ...wall.routes];
+    final imageUrl = routes.isEmpty ? range.imageUrl : routes.first.imageUrl;
+    return Card(
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Stack(
+              children: [
+                CachedNetworkImage(
+                  imageUrl: imageUrl,
+                  height: 154,
+                  width: double.infinity,
+                  fit: BoxFit.cover,
+                  errorWidget: (_, _, _) => const SizedBox(
+                    height: 154,
+                    child: ColoredBox(color: PacificTerrainColors.seaGlass),
+                  ),
+                ),
+                Positioned(
+                  top: 12,
+                  right: 12,
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: PacificTerrainColors.cloud.withValues(alpha: 0.92),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Padding(
+                      padding: EdgeInsets.all(8),
+                      child: Icon(
+                        Icons.arrow_outward,
+                        size: 18,
+                        color: PacificTerrainColors.navy,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    crag.name,
+                    style: Theme.of(context).textTheme.titleLarge,
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    '${crag.region}, ${crag.province}',
+                    style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                      color: PacificTerrainColors.cedar,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      _CragMetric(label: 'ROUTES', value: '${routes.length}'),
+                      _CragMetric(
+                        label: 'WALLS',
+                        value: '${crag.walls.length}',
+                      ),
+                      Expanded(
+                        child: _CragMetric(label: 'SEASON', value: crag.season),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    crag.accessNotes,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      height: 1.45,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _CragMetric extends StatelessWidget {
+  const _CragMetric({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(right: 18),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+              fontSize: 9,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+              letterSpacing: 1,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(
+              context,
+            ).textTheme.labelMedium?.copyWith(color: PacificTerrainColors.navy),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _EmptyRange extends StatelessWidget {
+  const _EmptyRange({required this.range});
+
+  final _MountainRange range;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(26),
+      decoration: BoxDecoration(
+        color: PacificTerrainColors.seaGlass.withValues(alpha: 0.55),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.landscape_outlined, size: 34),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Text(
+              'No ${range.name} crags are published yet. Add one when you have verified access and coordinates.',
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SkiCatalog extends StatelessWidget {
+  const _SkiCatalog({
+    required this.routes,
+    required this.mode,
+    required this.desktop,
+  });
+
+  final List<SkiRoute> routes;
+  final ActivityMode mode;
+  final bool desktop;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView(
+      padding: EdgeInsets.all(desktop ? 28 : 16),
+      children: [
+        const _CatalogHeader(
+          eyebrow: 'WINTER OBJECTIVES',
+          title: 'Ski tours',
+          subtitle:
+              'Browse touring objectives, compare distance and vertical, then open the map for the full line.',
+        ),
+        const SizedBox(height: 22),
+        NativeAdCard(mode: mode, compact: !desktop),
+        for (final route in routes)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: Card(
+              child: ListTile(
+                contentPadding: const EdgeInsets.all(12),
+                leading: const CircleAvatar(
+                  backgroundColor: PacificTerrainColors.seaGlass,
+                  child: Icon(Icons.downhill_skiing),
+                ),
+                title: Text(route.name),
+                subtitle: Text(
+                  '${route.area} · ${route.distanceKm} km · ${route.elevationGainMeters} m',
+                ),
+                trailing: Chip(label: Text(route.difficulty)),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+class _MountainRange {
+  const _MountainRange({
+    required this.id,
+    required this.name,
+    required this.description,
+    required this.imageUrl,
+    required this.keywords,
+  });
+
+  final String id;
+  final String name;
+  final String description;
+  final String imageUrl;
+  final List<String> keywords;
+
+  bool matches(Crag crag) {
+    final location = '${crag.region} ${crag.province}'.toLowerCase();
+    if (id == 'other') {
+      return !_mountainRanges
+          .where((range) => range.id != 'other')
+          .any((range) => range.keywords.any(location.contains));
+    }
+    return keywords.any(location.contains);
+  }
+}
+
+const _mountainRanges = <_MountainRange>[
+  _MountainRange(
+    id: 'south-island',
+    name: 'South Vancouver Island',
+    description: 'Victoria, Sooke, and the southern island granite and basalt.',
+    imageUrl: 'https://images.unsplash.com/photo-1522163182402-834f871fd851',
+    keywords: ['victoria', 'sooke', 'uvic', 'south vancouver island'],
+  ),
+  _MountainRange(
+    id: 'island-ranges',
+    name: 'Vancouver Island Ranges',
+    description: 'Island alpine, limestone, and west-coast objectives.',
+    imageUrl: 'https://images.unsplash.com/photo-1464822759023-fed622ff2c3b',
+    keywords: ['vancouver island', 'comox', 'nanaimo', 'strathcona'],
+  ),
+  _MountainRange(
+    id: 'coast-mountains',
+    name: 'Coast Mountains',
+    description: 'Squamish granite, Sea to Sky walls, and coastal alpine.',
+    imageUrl: 'https://images.unsplash.com/photo-1519681393784-d120267933ba',
+    keywords: [
+      'squamish',
+      'whistler',
+      'sea to sky',
+      'coast mountain',
+      'lower mainland',
+    ],
+  ),
+  _MountainRange(
+    id: 'interior',
+    name: 'Interior BC',
+    description: 'Okanagan, Thompson, and interior plateau climbing.',
+    imageUrl: 'https://images.unsplash.com/photo-1483728642387-6c3bdd6c93e5',
+    keywords: ['okanagan', 'kamloops', 'thompson', 'interior', 'kelowna'],
+  ),
+  _MountainRange(
+    id: 'rockies',
+    name: 'Canadian Rockies',
+    description: 'Long limestone lines and high alpine objectives.',
+    imageUrl: 'https://images.unsplash.com/photo-1500534623283-312aade485b7',
+    keywords: [
+      'rockies',
+      'kootenay',
+      'canmore',
+      'banff',
+      'fernie',
+      'revelstoke',
+    ],
+  ),
+  _MountainRange(
+    id: 'north',
+    name: 'Northern BC',
+    description: 'Remote ranges and northern climbing areas.',
+    imageUrl: 'https://images.unsplash.com/photo-1470770841072-f978cf4d019e',
+    keywords: ['northern', 'north coast', 'skeena', 'prince george'],
+  ),
+  _MountainRange(
+    id: 'other',
+    name: 'Other Regions',
+    description: 'Published crags outside the main range groupings.',
+    imageUrl: 'https://images.unsplash.com/photo-1464278533981-50106e6176b1',
+    keywords: [],
+  ),
+];
+
 class _CragRoutePicker extends ConsumerStatefulWidget {
   const _CragRoutePicker({required this.crag, required this.onRouteSelected});
 
@@ -164,6 +727,10 @@ class _CragRoutePickerState extends ConsumerState<_CragRoutePicker> {
   @override
   Widget build(BuildContext context) {
     final walls = widget.crag.walls;
+    final routes = [for (final wall in walls) ...wall.routes];
+    final heroImageUrl = routes.isEmpty
+        ? 'https://images.unsplash.com/photo-1522163182402-834f871fd851'
+        : routes.first.imageUrl;
     final isAdmin = ref.watch(isMapAdminProvider).valueOrNull == true;
 
     return DraggableScrollableSheet(
@@ -194,6 +761,17 @@ class _CragRoutePickerState extends ConsumerState<_CragRoutePicker> {
               ],
             ),
             const SizedBox(height: 12),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(16),
+              child: CachedNetworkImage(
+                imageUrl: heroImageUrl,
+                height: 230,
+                width: double.infinity,
+                fit: BoxFit.cover,
+                errorWidget: (_, _, _) => const SizedBox.shrink(),
+              ),
+            ),
+            const SizedBox(height: 14),
             Wrap(
               spacing: 8,
               runSpacing: 8,

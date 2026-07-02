@@ -1,8 +1,11 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../state/activity_mode_state.dart';
+import '../theme/climb_on_theme.dart';
 import '../widgets/climb_on_brand.dart';
 
 class MainShell extends ConsumerWidget {
@@ -13,134 +16,244 @@ class MainShell extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final path = GoRouterState.of(context).uri.path;
-    final compact = MediaQuery.sizeOf(context).width < 1024;
+    final width = MediaQuery.sizeOf(context).width;
+    final compact = width < 900;
     final mode = ref.watch(activityModeProvider);
 
-    if (compact) {
-      return Scaffold(
-        body: Column(
-          children: [
-            SafeArea(
-              bottom: false,
-              child: Container(
-                height: 58,
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-                decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.surface,
-                  border: const Border(
-                    bottom: BorderSide(color: Color(0xFFE1DDD1)),
-                  ),
-                ),
-                alignment: Alignment.centerLeft,
-                child: const ClimbOnBrand(showTagline: false),
-              ),
-            ),
-            Expanded(child: child),
-          ],
-        ),
-        bottomNavigationBar: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            _ModeSwitch(mode: mode),
-            NavigationBar(
-              selectedIndex: _selectedIndex(path),
-              onDestinationSelected: (index) {
-                context.go(_destinations[index].path);
-              },
-              destinations: [
-                for (final destination in _destinations)
-                  NavigationDestination(
-                    icon: Icon(destination.icon),
-                    selectedIcon: Icon(destination.selectedIcon),
-                    label: destination.label,
-                  ),
-              ],
-            ),
-          ],
-        ),
-      );
-    }
-
     return Scaffold(
+      backgroundColor: PacificTerrainColors.cloud,
       body: Column(
         children: [
-          SafeArea(
-            bottom: false,
-            child: Container(
-              height: 74,
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.surface,
-                border: const Border(
-                  bottom: BorderSide(color: Color(0xFFE1DDD1)),
-                ),
-              ),
-              child: Row(
-                children: [
-                  const ClimbOnBrand(),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      child: Row(
-                        children: [
-                          for (final destination in _destinations)
-                            _NavButton(
-                              icon: destination.icon,
-                              selectedIcon: destination.selectedIcon,
-                              label: destination.label,
-                              selected: path == destination.path,
-                              onTap: () => context.go(destination.path),
-                            ),
-                        ],
+          _AppHeader(compact: compact, mode: mode, path: path),
+          Expanded(
+            child: path == '/map'
+                ? child
+                : Stack(
+                    children: [
+                      const Positioned.fill(
+                        child: IgnorePointer(
+                          child: CustomPaint(painter: _ContourPainter()),
+                        ),
                       ),
-                    ),
+                      Positioned.fill(child: child),
+                    ],
                   ),
-                  const SizedBox(width: 16),
-                  _ModeSwitch(mode: mode),
-                ],
-              ),
-            ),
           ),
-          Expanded(child: child),
         ],
       ),
+      bottomNavigationBar: compact ? _MobileNavigation(path: path) : null,
     );
   }
+}
 
-  int _selectedIndex(String path) {
-    final index = _destinations.indexWhere((item) => item.path == path);
-    return index < 0 ? 0 : index;
+class _AppHeader extends StatelessWidget {
+  const _AppHeader({
+    required this.compact,
+    required this.mode,
+    required this.path,
+  });
+
+  final bool compact;
+  final ActivityMode mode;
+  final String path;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: const BoxDecoration(
+        color: PacificTerrainColors.cloud,
+        border: Border(bottom: BorderSide(color: PacificTerrainColors.line)),
+      ),
+      child: SafeArea(
+        bottom: false,
+        child: SizedBox(
+          height: compact ? 64 : 76,
+          child: Padding(
+            padding: EdgeInsets.symmetric(horizontal: compact ? 14 : 24),
+            child: Row(
+              children: [
+                ClimbOnBrand(showTagline: !compact),
+                if (!compact) ...[
+                  const SizedBox(width: 36),
+                  Expanded(
+                    child: Row(
+                      children: [
+                        for (final destination in _destinations)
+                          _DesktopNavItem(
+                            destination: destination,
+                            selected: path == destination.path,
+                          ),
+                      ],
+                    ),
+                  ),
+                ] else
+                  const Spacer(),
+                _ModeSwitch(mode: mode, compact: compact),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }
 
 class _ModeSwitch extends ConsumerWidget {
-  const _ModeSwitch({required this.mode});
+  const _ModeSwitch({required this.mode, required this.compact});
 
   final ActivityMode mode;
+  final bool compact;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      child: SegmentedButton<ActivityMode>(
-        segments: const [
-          ButtonSegment(
-            value: ActivityMode.climb,
-            label: SizedBox(width: 54, child: Center(child: Text('Climb'))),
-            icon: Icon(Icons.terrain),
+    return SegmentedButton<ActivityMode>(
+      showSelectedIcon: false,
+      segments: [
+        ButtonSegment(
+          value: ActivityMode.climb,
+          label: Text(
+            'Climb',
+            maxLines: 1,
+            softWrap: false,
+            style: TextStyle(fontSize: compact ? 11 : null),
           ),
-          ButtonSegment(
-            value: ActivityMode.ski,
-            label: SizedBox(width: 44, child: Center(child: Text('Ski'))),
-            icon: Icon(Icons.downhill_skiing),
+          icon: compact ? null : const Icon(Icons.landscape_outlined, size: 17),
+        ),
+        ButtonSegment(
+          value: ActivityMode.ski,
+          label: Text(
+            'Ski',
+            maxLines: 1,
+            softWrap: false,
+            style: TextStyle(fontSize: compact ? 11 : null),
+          ),
+          icon: compact ? null : const Icon(Icons.downhill_skiing, size: 17),
+        ),
+      ],
+      selected: {mode},
+      onSelectionChanged: (selection) {
+        ref.read(activityModeProvider.notifier).state = selection.first;
+      },
+    );
+  }
+}
+
+class _DesktopNavItem extends StatelessWidget {
+  const _DesktopNavItem({required this.destination, required this.selected});
+
+  final _AppDestination destination;
+  final bool selected;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(right: 4),
+      child: TextButton.icon(
+        onPressed: () => context.go(destination.path),
+        icon: Icon(
+          selected ? destination.selectedIcon : destination.icon,
+          size: 19,
+        ),
+        label: Text(destination.label),
+        style: TextButton.styleFrom(
+          foregroundColor: selected
+              ? PacificTerrainColors.cedar
+              : PacificTerrainColors.navy,
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          shape: const RoundedRectangleBorder(
+            borderRadius: BorderRadius.all(Radius.circular(10)),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _MobileNavigation extends StatelessWidget {
+  const _MobileNavigation({required this.path});
+
+  final String path;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: const BoxDecoration(
+        color: PacificTerrainColors.cloud,
+        border: Border(top: BorderSide(color: PacificTerrainColors.line)),
+        boxShadow: [
+          BoxShadow(
+            color: Color(0x14112D3B),
+            blurRadius: 18,
+            offset: Offset(0, -4),
           ),
         ],
-        selected: {mode},
-        onSelectionChanged: (selection) {
-          ref.read(activityModeProvider.notifier).state = selection.first;
-        },
+      ),
+      child: SafeArea(
+        top: false,
+        child: SizedBox(
+          height: 68,
+          child: Row(
+            children: [
+              for (final destination in _destinations)
+                Expanded(
+                  child: _MobileNavItem(
+                    destination: destination,
+                    selected: path == destination.path,
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _MobileNavItem extends StatelessWidget {
+  const _MobileNavItem({required this.destination, required this.selected});
+
+  final _AppDestination destination;
+  final bool selected;
+
+  @override
+  Widget build(BuildContext context) {
+    final isAdd = destination.path == '/submit';
+    final color = selected
+        ? PacificTerrainColors.cedar
+        : PacificTerrainColors.navySoft;
+    return InkWell(
+      onTap: () => context.go(destination.path),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          if (isAdd)
+            Container(
+              width: 38,
+              height: 38,
+              decoration: const BoxDecoration(
+                color: PacificTerrainColors.cedar,
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.add, color: Colors.white, size: 23),
+            )
+          else
+            Icon(
+              selected ? destination.selectedIcon : destination.icon,
+              size: 21,
+              color: color,
+            ),
+          if (!isAdd) ...[
+            const SizedBox(height: 3),
+            Text(
+              destination.label,
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                color: color,
+                fontSize: 10,
+                fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
+              ),
+            ),
+          ],
+        ],
       ),
     );
   }
@@ -162,14 +275,14 @@ const _destinations = [
   _AppDestination(
     path: '/crags',
     label: 'Crags',
-    icon: Icons.terrain_outlined,
-    selectedIcon: Icons.terrain,
+    icon: Icons.landscape_outlined,
+    selectedIcon: Icons.landscape,
   ),
   _AppDestination(
     path: '/submit',
     label: 'Add',
-    icon: Icons.add_location_alt_outlined,
-    selectedIcon: Icons.add_location_alt,
+    icon: Icons.add,
+    selectedIcon: Icons.add,
   ),
   _AppDestination(
     path: '/profile',
@@ -193,37 +306,38 @@ class _AppDestination {
   final IconData selectedIcon;
 }
 
-class _NavButton extends StatelessWidget {
-  const _NavButton({
-    required this.icon,
-    required this.selectedIcon,
-    required this.label,
-    required this.selected,
-    required this.onTap,
-  });
-
-  final IconData icon;
-  final IconData selectedIcon;
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
+class _ContourPainter extends CustomPainter {
+  const _ContourPainter();
 
   @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(right: 8),
-      child: TextButton.icon(
-        onPressed: onTap,
-        icon: Icon(selected ? selectedIcon : icon, size: 20),
-        label: Text(label),
-        style: TextButton.styleFrom(
-          foregroundColor: selected
-              ? Theme.of(context).colorScheme.primary
-              : Theme.of(context).colorScheme.onSurface,
-          backgroundColor: selected ? const Color(0xFFE8EBDD) : null,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-        ),
-      ),
-    );
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = PacificTerrainColors.navy.withValues(alpha: 0.035)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1;
+    final center = Offset(size.width * 0.88, size.height * 0.16);
+    for (var ring = 0; ring < 11; ring++) {
+      final baseRadius = 56.0 + ring * 31;
+      final path = Path();
+      for (var step = 0; step <= 80; step++) {
+        final angle = step / 80 * math.pi * 2;
+        final ripple = math.sin(angle * 3 + ring * 0.7) * (5 + ring * 0.8);
+        final radius = baseRadius + ripple;
+        final point = Offset(
+          center.dx + math.cos(angle) * radius * 1.35,
+          center.dy + math.sin(angle) * radius * 0.72,
+        );
+        if (step == 0) {
+          path.moveTo(point.dx, point.dy);
+        } else {
+          path.lineTo(point.dx, point.dy);
+        }
+      }
+      path.close();
+      canvas.drawPath(path, paint);
+    }
   }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

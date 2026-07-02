@@ -90,12 +90,13 @@ Licence – British Columbia. A boundary saved by an administrator overrides
 only that region, so hand-traced adjustments are preserved while other regions
 continue to use the official geometry.
 
-The Coast and Northern BC display boundaries are additionally clipped to the
-Statistics Canada 2021 Cartographic Boundary Files. This makes Vancouver
-Island and Haida Gwaii follow the shoreline rather than a broad marine tourism
-boundary. Islands under 1 km² are omitted and the shoreline is simplified for
-mobile rendering. The broader official tourism polygons remain the download
-geometry so detailed archipelagos do not create thousands of offline packs.
+The Coast, Cariboo–Chilcotin Coast, and Northern BC display boundaries are
+additionally clipped to the Statistics Canada 2021 Cartographic Boundary
+Files. This makes Vancouver Island, Haida Gwaii, and the Cariboo coastal
+section follow the shoreline rather than a broad marine tourism boundary.
+Islands under 1 km² are omitted and the shoreline is simplified for mobile
+rendering. The broader official tourism polygons remain the download geometry
+so detailed archipelagos do not create thousands of offline packs.
 
 The grey **Coming soon!** section previews expansion onto the Alberta side of
 the Rockies. It shares the official BC–Alberta boundary with the Rockies

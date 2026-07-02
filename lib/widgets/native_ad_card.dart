@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../state/activity_mode_state.dart';
+import '../theme/climb_on_theme.dart';
 
 class NativeAdCard extends StatelessWidget {
   const NativeAdCard({super.key, required this.mode, this.compact = false});
@@ -11,24 +12,23 @@ class NativeAdCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isSki = mode == ActivityMode.ski;
-    final scheme = Theme.of(context).colorScheme;
-
     return Card(
       margin: EdgeInsets.only(bottom: compact ? 16 : 24),
+      color: PacificTerrainColors.sand.withValues(alpha: 0.52),
       child: Padding(
-        padding: const EdgeInsets.all(14),
+        padding: const EdgeInsets.all(16),
         child: Row(
           children: [
             Container(
-              width: 54,
-              height: 54,
+              width: 58,
+              height: 58,
               decoration: BoxDecoration(
-                color: scheme.primaryContainer,
-                borderRadius: BorderRadius.circular(8),
+                color: PacificTerrainColors.navy,
+                borderRadius: BorderRadius.circular(12),
               ),
               child: Icon(
                 isSki ? Icons.ac_unit : Icons.storefront,
-                color: scheme.onPrimaryContainer,
+                color: PacificTerrainColors.cloud,
               ),
             ),
             const SizedBox(width: 12),
@@ -37,10 +37,12 @@ class NativeAdCard extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    isSki ? 'Sponsored: winter kit' : 'Sponsored: local gear',
+                    isSki ? 'SPONSORED · WINTER KIT' : 'SPONSORED · LOCAL GEAR',
                     style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                      color: scheme.primary,
+                      color: PacificTerrainColors.cedar,
                       fontWeight: FontWeight.w800,
+                      fontSize: 10,
+                      letterSpacing: 1.1,
                     ),
                   ),
                   const SizedBox(height: 3),
