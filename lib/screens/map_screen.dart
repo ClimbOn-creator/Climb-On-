@@ -366,6 +366,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                           urlTemplate:
                               'https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.png',
                           subdomains: const ['a', 'b', 'c', 'd'],
+                          retinaMode: true,
                           userAgentPackageName: 'com.climbon.app',
                         ),
                       PolylineLayer(
@@ -414,6 +415,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                           ],
                         ),
                       MarkerLayer(
+                        rotate: false,
                         markers: [
                           if (currentZoom >= 6.5 && currentZoom < 9)
                             ..._offlineRegionMarkers(mapRegions),
@@ -1830,12 +1832,12 @@ class _Terrain3DMapState extends State<_Terrain3DMap> {
       'labels': {
         'type': 'raster',
         'tiles': [
-          'https://a.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}.png',
-          'https://b.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}.png',
-          'https://c.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}.png',
-          'https://d.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}.png',
+          'https://a.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}@2x.png',
+          'https://b.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}@2x.png',
+          'https://c.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}@2x.png',
+          'https://d.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}@2x.png',
         ],
-        'tileSize': 256,
+        'tileSize': 512,
         'maxzoom': 20,
         'attribution': '© OpenStreetMap contributors © CARTO',
       },
@@ -2081,6 +2083,7 @@ class _Terrain3DMapState extends State<_Terrain3DMap> {
       textColor: selected ? '#FFD166' : '#FFFFFF',
       textHaloColor: '#17352E',
       textHaloWidth: selected ? 3 : 2,
+      textRotate: controller?.cameraPosition?.bearing ?? 0,
       textAnchor: 'center',
       textMaxWidth: 16,
       zIndex: selected ? 2 : 1,
@@ -2671,19 +2674,8 @@ class _HeadingControl extends StatelessWidget {
   final ValueChanged<double> onHeadingChanged;
   final VoidCallback onResetNorth;
 
-  void _changeHeadingFromGlobalPosition(
-    BuildContext context,
-    Offset globalPosition,
-  ) {
-    final box = context.findRenderObject() as RenderBox?;
-    if (box == null) return;
-    final local = box.globalToLocal(globalPosition);
-    final center = box.size.center(Offset.zero);
-    final delta = local - center;
-    if (delta.distance < 8) return;
-    final radians = math.atan2(delta.dx, -delta.dy);
-    onHeadingChanged(radians * 180 / math.pi);
-  }
+  double get signedHeading =>
+      headingDegrees > 180 ? headingDegrees - 360 : headingDegrees;
 
   @override
   Widget build(BuildContext context) {
@@ -2691,48 +2683,69 @@ class _HeadingControl extends StatelessWidget {
       right: 12,
       bottom: 146,
       child: SafeArea(
-        child: Builder(
-          builder: (controlContext) => GestureDetector(
-            onTapDown: (details) => _changeHeadingFromGlobalPosition(
-              controlContext,
-              details.globalPosition,
-            ),
-            onPanUpdate: (details) => _changeHeadingFromGlobalPosition(
-              controlContext,
-              details.globalPosition,
-            ),
-            onDoubleTap: onResetNorth,
-            child: Tooltip(
-              message: 'Drag to change map heading. Double tap for north.',
-              child: Material(
-                color: Theme.of(context).colorScheme.surface,
-                elevation: 4,
-                shape: const CircleBorder(),
-                child: SizedBox(
-                  width: 54,
-                  height: 54,
-                  child: Stack(
-                    alignment: Alignment.center,
-                    children: [
-                      Transform.rotate(
+        child: Material(
+          color: Theme.of(context).colorScheme.surface,
+          elevation: 4,
+          borderRadius: BorderRadius.circular(16),
+          child: SizedBox(
+            width: MediaQuery.sizeOf(context).width < 520 ? 224 : 280,
+            height: 72,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(8, 5, 10, 4),
+              child: Row(
+                children: [
+                  Tooltip(
+                    message: 'Reset map to north',
+                    child: IconButton(
+                      onPressed: onResetNorth,
+                      icon: Transform.rotate(
                         angle: headingDegrees * math.pi / 180,
-                        child: Icon(
-                          Icons.navigation,
-                          color: Theme.of(context).colorScheme.primary,
-                          size: 28,
-                        ),
+                        child: const Icon(Icons.navigation),
                       ),
-                      Positioned(
-                        bottom: 7,
-                        child: Text(
-                          'N',
-                          style: Theme.of(context).textTheme.labelSmall
-                              ?.copyWith(fontWeight: FontWeight.w900),
-                        ),
-                      ),
-                    ],
+                    ),
                   ),
-                ),
+                  Expanded(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Row(
+                          children: [
+                            Text(
+                              'Heading',
+                              style: Theme.of(context).textTheme.labelSmall
+                                  ?.copyWith(fontWeight: FontWeight.w800),
+                            ),
+                            const Spacer(),
+                            Text(
+                              '${headingDegrees.round() % 360}°',
+                              style: Theme.of(context).textTheme.labelSmall
+                                  ?.copyWith(fontWeight: FontWeight.w900),
+                            ),
+                          ],
+                        ),
+                        SizedBox(
+                          height: 28,
+                          child: Slider(
+                            value: signedHeading.clamp(-180, 180),
+                            min: -180,
+                            max: 180,
+                            onChanged: onHeadingChanged,
+                          ),
+                        ),
+                        const Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text('S', style: TextStyle(fontSize: 9)),
+                            Text('W', style: TextStyle(fontSize: 9)),
+                            Text('N', style: TextStyle(fontSize: 9)),
+                            Text('E', style: TextStyle(fontSize: 9)),
+                            Text('S', style: TextStyle(fontSize: 9)),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
             ),
           ),

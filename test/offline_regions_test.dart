@@ -29,6 +29,24 @@ void main() {
     );
   });
 
+  test('detailed Coast and Haida Gwaii shorelines are packaged', () async {
+    final source = await rootBundle.loadString(
+      'assets/data/bc_coastline_regions.geojson',
+    );
+    final regions = parseDetailedCoastlineRegions(source);
+
+    expect(regions['the-coast'], hasLength(greaterThan(100)));
+    expect(regions['northern-bc'], hasLength(greaterThan(100)));
+    expect(
+      regions['the-coast']!.fold<int>(0, (sum, ring) => sum + ring.length),
+      greaterThan(6000),
+    );
+    expect(
+      regions['northern-bc']!.fold<int>(0, (sum, ring) => sum + ring.length),
+      greaterThan(8000),
+    );
+  });
+
   test('six downloadable regions and one expansion preview are shown', () {
     expect(offlineBcRegions, hasLength(7));
     expect(offlineBcRegions.map((region) => region.id).toSet(), hasLength(7));

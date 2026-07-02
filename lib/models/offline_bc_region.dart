@@ -11,6 +11,7 @@ class OfflineBcRegion {
     required this.center,
     required this.polygons,
     required this.colorValue,
+    this.downloadPolygons,
   });
 
   final String id;
@@ -20,10 +21,14 @@ class OfflineBcRegion {
   final LatLng center;
   final List<List<LatLng>> polygons;
   final int colorValue;
+  final List<List<LatLng>>? downloadPolygons;
 
   bool get isComingSoon => id == 'alberta-rockies-coming-soon';
 
-  OfflineBcRegion copyWith({List<List<LatLng>>? polygons}) {
+  OfflineBcRegion copyWith({
+    List<List<LatLng>>? polygons,
+    List<List<LatLng>>? downloadPolygons,
+  }) {
     return OfflineBcRegion(
       id: id,
       name: name,
@@ -32,6 +37,7 @@ class OfflineBcRegion {
       center: center,
       polygons: polygons ?? this.polygons,
       colorValue: colorValue,
+      downloadPolygons: downloadPolygons ?? this.downloadPolygons,
     );
   }
 
@@ -41,7 +47,7 @@ class OfflineBcRegion {
 
   List<GeoBounds> downloadBounds({int bandsPerPolygon = 16}) {
     final result = <GeoBounds>[];
-    for (final polygon in polygons) {
+    for (final polygon in downloadPolygons ?? polygons) {
       if (polygon.length < 3) continue;
       final latitudes = polygon.map((point) => point.latitude);
       final south = latitudes.reduce((a, b) => a < b ? a : b);

@@ -118,6 +118,26 @@ function style(
     lang: "en",
     labelsOnly: true,
   });
+  const satelliteLabelLayers = labelLayers.map((layer) => {
+    if (layer.type !== "symbol") return layer;
+    return {
+      ...layer,
+      layout: {
+        ...layer.layout,
+        "text-rotation-alignment": "map",
+        "text-pitch-alignment": "map",
+        "icon-rotation-alignment": "map",
+        "icon-pitch-alignment": "map",
+      },
+      paint: {
+        ...layer.paint,
+        "text-color": "#263238",
+        "text-halo-color": "rgba(255, 255, 255, 0.94)",
+        "text-halo-width": 1.5,
+        "text-halo-blur": 0.15,
+      },
+    };
+  });
   const hillshade = {
     id: "terrain-hillshade",
     type: "hillshade",
@@ -153,7 +173,7 @@ function style(
       },
       layers: [
         { id: "satellite", type: "raster", source: "satellite" },
-        ...labelLayers,
+        ...satelliteLabelLayers,
       ],
     };
   }
@@ -173,7 +193,7 @@ function style(
       layers: [
         { id: "satellite", type: "raster", source: "satellite" },
         hillshade,
-        ...labelLayers,
+        ...satelliteLabelLayers,
       ],
     };
   }
