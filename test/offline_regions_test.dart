@@ -1,8 +1,34 @@
 import 'package:climb_on/models/offline_bc_region.dart';
+import 'package:climb_on/state/offline_region_state.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:latlong2/latlong.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
+  test('official BC tourism boundary asset contains all six regions', () async {
+    final source = await rootBundle.loadString(
+      'assets/data/bc_tourism_regions.geojson',
+    );
+    final regions = parseOfficialTourismRegions(source);
+
+    expect(
+      regions.keys,
+      containsAll(offlineBcRegions.map((region) => region.id)),
+    );
+    expect(regions['vancouver-coast-mountains']!.single, hasLength(6443));
+    expect(regions['thompson-okanagan']!.single, hasLength(9840));
+    expect(regions['bc-rockies']!.single, hasLength(3985));
+    expect(
+      regions['bc-rockies']!.single
+          .map((point) => point.longitude)
+          .reduce((a, b) => a > b ? a : b),
+      lessThan(-114.05),
+      reason: 'The Rockies boundary must not cross into Alberta.',
+    );
+  });
+
   test('BC is divided into no more than six offline sections', () {
     expect(offlineBcRegions, hasLength(6));
     expect(offlineBcRegions.map((region) => region.id).toSet(), hasLength(6));

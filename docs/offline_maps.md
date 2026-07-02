@@ -83,6 +83,13 @@ The native map engine accepts rectangular download areas, so the app converts
 each saved polygon into narrow adjoining bands. Those bands follow the traced
 shape and prevent the original large overlapping rectangles from returning.
 
+The built-in outlines come from the Province of British Columbia's official
+`WHSE_LEGAL_ADMIN_BOUNDARIES.ADM_TOURISM_REGIONS_SP` GIS layer. They are
+packaged in `assets/data/bc_tourism_regions.geojson` under the Open Government
+Licence – British Columbia. A boundary saved by an administrator overrides
+only that region, so hand-traced adjustments are preserved while other regions
+continue to use the official geometry.
+
 ## Data and attribution
 
 - Basemap: Protomaps v4, derived from OpenStreetMap, distributed as an ODbL
