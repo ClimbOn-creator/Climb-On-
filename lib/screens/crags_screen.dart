@@ -5,9 +5,11 @@ import 'package:go_router/go_router.dart';
 
 import '../models/crag.dart';
 import '../models/climb_route.dart';
+import '../models/app_visuals.dart';
 import '../models/ski_route.dart';
 import '../services/database_service.dart';
 import '../state/activity_mode_state.dart';
+import '../state/app_visuals_state.dart';
 import '../state/admin_state.dart';
 import '../state/catalog_state.dart';
 import '../state/climb_log_state.dart';
@@ -38,15 +40,6 @@ class _CragsScreenState extends ConsumerState<CragsScreen> {
     final catalogCrags = catalog.valueOrNull ?? const <Crag>[];
     final width = MediaQuery.sizeOf(context).width;
     final desktop = width >= 900;
-    final initialRange = _mountainRanges.firstWhere(
-      (range) => catalogCrags.any(range.matches),
-      orElse: () => _mountainRanges.first,
-    );
-    final initialSkiRange = _mountainRanges.firstWhere(
-      (range) => skiRoutes.any(range.matchesSki),
-      orElse: () => _mountainRanges.first,
-    );
-
     return Scaffold(
       backgroundColor: Colors.transparent,
       body: SideBannerLayout(
@@ -56,22 +49,24 @@ class _CragsScreenState extends ConsumerState<CragsScreen> {
                   ? const Center(child: CircularProgressIndicator())
                   : _SkiRangeCatalog(
                       routes: skiRoutes,
-                      selectedRangeId: selectedSkiRangeId ?? initialSkiRange.id,
+                      selectedRangeId: selectedSkiRangeId,
                       desktop: desktop,
                       onRangeSelected: (range) {
                         setState(() => selectedSkiRangeId = range.id);
                       },
+                      onBack: () => setState(() => selectedSkiRangeId = null),
                       onRouteSelected: (route) => _openSkiTour(context, route),
                     )
             : catalogCrags.isEmpty && catalog.isLoading
             ? const Center(child: CircularProgressIndicator())
             : _RangeCatalog(
                 crags: catalogCrags,
-                selectedRangeId: selectedRangeId ?? initialRange.id,
+                selectedRangeId: selectedRangeId,
                 desktop: desktop,
                 onRangeSelected: (range) {
                   setState(() => selectedRangeId = range.id);
                 },
+                onBack: () => setState(() => selectedRangeId = null),
                 onCragSelected: (crag) => _openCrag(context, ref, crag),
               ),
       ),
@@ -113,17 +108,27 @@ class _RangeCatalog extends StatelessWidget {
     required this.selectedRangeId,
     required this.desktop,
     required this.onRangeSelected,
+    required this.onBack,
     required this.onCragSelected,
   });
 
   final List<Crag> crags;
-  final String selectedRangeId;
+  final String? selectedRangeId;
   final bool desktop;
   final ValueChanged<_MountainRange> onRangeSelected;
+  final VoidCallback onBack;
   final ValueChanged<Crag> onCragSelected;
 
   @override
   Widget build(BuildContext context) {
+    if (selectedRangeId == null) {
+      return _MountainRangeLanding(
+        desktop: desktop,
+        ski: false,
+        countFor: (range) => crags.where(range.matches).length,
+        onRangeSelected: onRangeSelected,
+      );
+    }
     final selected = _mountainRanges.firstWhere(
       (range) => range.id == selectedRangeId,
       orElse: () => _mountainRanges.first,
@@ -132,116 +137,53 @@ class _RangeCatalog extends StatelessWidget {
         .where((crag) => selected.matches(crag))
         .toList(growable: false);
 
-    final content = ListView(
-      padding: EdgeInsets.fromLTRB(
-        desktop ? 28 : 16,
-        desktop ? 30 : 22,
-        desktop ? 28 : 16,
-        40,
-      ),
-      children: [
-        const _CatalogHeader(
-          eyebrow: 'EXPLORE BRITISH COLUMBIA',
-          title: 'Find your next crag',
-          subtitle:
-              'Choose a mountain range, then open a crag for walls, routes, access, and current conditions.',
-        ),
-        const SizedBox(height: 24),
-        if (!desktop)
-          SizedBox(
-            height: 158,
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              itemCount: _mountainRanges.length,
-              separatorBuilder: (_, _) => const SizedBox(width: 12),
-              itemBuilder: (context, index) {
-                final range = _mountainRanges[index];
-                return SizedBox(
-                  width: 220,
-                  child: _RangeCard(
-                    range: range,
-                    count: crags.where(range.matches).length,
-                    selected: selected.id == range.id,
-                    onTap: () => onRangeSelected(range),
-                  ),
-                );
-              },
-            ),
+    return _RangeDetailScroll(
+      range: selected,
+      count: visibleCrags.length,
+      countLabel: 'CRAGS',
+      description: selected.description,
+      onBack: onBack,
+      sliverBody: SliverToBoxAdapter(
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(
+            desktop ? 28 : 16,
+            18,
+            desktop ? 28 : 16,
+            44,
           ),
-        if (!desktop) const SizedBox(height: 20),
-        NativeAdCard(mode: ActivityMode.climb, compact: !desktop),
-        _SelectedRangeHeader(range: selected, count: visibleCrags.length),
-        const SizedBox(height: 14),
-        if (visibleCrags.isEmpty)
-          _EmptyRange(range: selected)
-        else
-          LayoutBuilder(
-            builder: (context, constraints) {
-              final columns = constraints.maxWidth >= 700 ? 2 : 1;
-              final cardWidth = columns == 1
-                  ? constraints.maxWidth
-                  : (constraints.maxWidth - 14) / 2;
-              return Wrap(
-                spacing: 14,
-                runSpacing: 14,
-                children: [
-                  for (final crag in visibleCrags)
-                    SizedBox(
-                      width: cardWidth,
-                      child: _CragCard(
-                        crag: crag,
-                        range: selected,
-                        onTap: () => onCragSelected(crag),
-                      ),
-                    ),
-                ],
-              );
-            },
-          ),
-      ],
-    );
-
-    if (!desktop) return content;
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        SizedBox(
-          width: 282,
-          child: DecoratedBox(
-            decoration: const BoxDecoration(
-              color: PacificTerrainColors.mist,
-              border: Border(
-                right: BorderSide(color: PacificTerrainColors.line),
-              ),
-            ),
-            child: ListView(
-              padding: const EdgeInsets.all(20),
-              children: [
-                Text(
-                  'MOUNTAIN RANGES',
-                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                    color: PacificTerrainColors.cedar,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 1.5,
-                  ),
+          child: Column(
+            children: [
+              NativeAdCard(mode: ActivityMode.climb, compact: !desktop),
+              if (visibleCrags.isEmpty)
+                _EmptyRange(range: selected)
+              else
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    final columns = constraints.maxWidth >= 700 ? 2 : 1;
+                    final cardWidth = columns == 1
+                        ? constraints.maxWidth
+                        : (constraints.maxWidth - 14) / 2;
+                    return Wrap(
+                      spacing: 14,
+                      runSpacing: 14,
+                      children: [
+                        for (final crag in visibleCrags)
+                          SizedBox(
+                            width: cardWidth,
+                            child: _CragCard(
+                              crag: crag,
+                              range: selected,
+                              onTap: () => onCragSelected(crag),
+                            ),
+                          ),
+                      ],
+                    );
+                  },
                 ),
-                const SizedBox(height: 14),
-                for (final range in _mountainRanges)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 12),
-                    child: _RangeCard(
-                      range: range,
-                      count: crags.where(range.matches).length,
-                      selected: selected.id == range.id,
-                      onTap: () => onRangeSelected(range),
-                    ),
-                  ),
-              ],
-            ),
+            ],
           ),
         ),
-        Expanded(child: content),
-      ],
+      ),
     );
   }
 }
@@ -288,7 +230,199 @@ class _CatalogHeader extends StatelessWidget {
   }
 }
 
-class _RangeCard extends StatelessWidget {
+class _MountainRangeLanding extends StatelessWidget {
+  const _MountainRangeLanding({
+    required this.desktop,
+    required this.ski,
+    required this.countFor,
+    required this.onRangeSelected,
+  });
+
+  final bool desktop;
+  final bool ski;
+  final int Function(_MountainRange range) countFor;
+  final ValueChanged<_MountainRange> onRangeSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView(
+      padding: EdgeInsets.fromLTRB(
+        desktop ? 28 : 16,
+        desktop ? 30 : 22,
+        desktop ? 28 : 16,
+        40,
+      ),
+      children: [
+        _CatalogHeader(
+          eyebrow: ski ? 'WINTER OBJECTIVES' : 'EXPLORE BRITISH COLUMBIA',
+          title: 'Choose a mountain range',
+          subtitle: ski
+              ? 'Start with the mountains. Tours and winter objectives appear after you choose a range.'
+              : 'Start with the mountains. Crags, walls, and routes appear after you choose a range.',
+        ),
+        const SizedBox(height: 24),
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final columns = constraints.maxWidth >= 900
+                ? 3
+                : constraints.maxWidth >= 560
+                ? 2
+                : 1;
+            final gap = 14.0 * (columns - 1);
+            final cardWidth = (constraints.maxWidth - gap) / columns;
+            return Wrap(
+              spacing: 14,
+              runSpacing: 14,
+              children: [
+                for (final range in _mountainRanges)
+                  SizedBox(
+                    width: cardWidth,
+                    child: _RangeCard(
+                      range: range,
+                      count: countFor(range),
+                      selected: false,
+                      itemSingular: ski ? 'tour' : 'crag',
+                      itemPlural: ski ? 'tours' : 'crags',
+                      onTap: () => onRangeSelected(range),
+                    ),
+                  ),
+              ],
+            );
+          },
+        ),
+      ],
+    );
+  }
+}
+
+class _RangeDetailScroll extends ConsumerWidget {
+  const _RangeDetailScroll({
+    required this.range,
+    required this.count,
+    required this.countLabel,
+    required this.description,
+    required this.onBack,
+    required this.sliverBody,
+  });
+
+  final _MountainRange range;
+  final int count;
+  final String countLabel;
+  final String description;
+  final VoidCallback onBack;
+  final Widget sliverBody;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final visuals =
+        ref.watch(appVisualsProvider).valueOrNull ?? AppVisuals.defaults;
+    return CustomScrollView(
+      physics: const BouncingScrollPhysics(),
+      slivers: [
+        SliverAppBar(
+          pinned: true,
+          stretch: true,
+          expandedHeight: 310,
+          backgroundColor: PacificTerrainColors.navy,
+          foregroundColor: Colors.white,
+          leading: Padding(
+            padding: const EdgeInsets.all(8),
+            child: IconButton.filled(
+              tooltip: 'All mountain ranges',
+              onPressed: onBack,
+              style: IconButton.styleFrom(
+                backgroundColor: Colors.black.withValues(alpha: 0.5),
+                foregroundColor: Colors.white,
+              ),
+              icon: const Icon(Icons.arrow_back),
+            ),
+          ),
+          flexibleSpace: FlexibleSpaceBar(
+            collapseMode: CollapseMode.parallax,
+            stretchModes: const [
+              StretchMode.zoomBackground,
+              StretchMode.fadeTitle,
+            ],
+            titlePadding: const EdgeInsets.fromLTRB(20, 0, 20, 18),
+            title: Text(
+              range.name,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w900,
+                shadows: [Shadow(blurRadius: 12, color: Colors.black)],
+              ),
+            ),
+            background: Stack(
+              fit: StackFit.expand,
+              children: [
+                CachedNetworkImage(
+                  imageUrl: visuals.url('range_${range.id}'),
+                  fit: BoxFit.cover,
+                  errorWidget: (_, _, _) => const ColoredBox(
+                    color: PacificTerrainColors.navySoft,
+                    child: Icon(Icons.landscape, color: Colors.white, size: 54),
+                  ),
+                ),
+                const DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [Color(0x22000000), Color(0xDD071216)],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 22, 20, 4),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: Text(
+                    description,
+                    style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      height: 1.45,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 16),
+                DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.primaryContainer,
+                    borderRadius: BorderRadius.circular(99),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 7,
+                    ),
+                    child: Text(
+                      '$count $countLabel',
+                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        sliverBody,
+      ],
+    );
+  }
+}
+
+class _RangeCard extends ConsumerWidget {
   const _RangeCard({
     required this.range,
     required this.count,
@@ -306,7 +440,9 @@ class _RangeCard extends StatelessWidget {
   final String itemPlural;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final visuals =
+        ref.watch(appVisualsProvider).valueOrNull ?? AppVisuals.defaults;
     return Card(
       clipBehavior: Clip.antiAlias,
       shape: RoundedRectangleBorder(
@@ -326,7 +462,7 @@ class _RangeCard extends StatelessWidget {
             fit: StackFit.expand,
             children: [
               CachedNetworkImage(
-                imageUrl: range.imageUrl,
+                imageUrl: visuals.url('range_${range.id}'),
                 fit: BoxFit.cover,
                 errorWidget: (_, _, _) => const ColoredBox(
                   color: PacificTerrainColors.navySoft,
@@ -385,53 +521,7 @@ class _RangeCard extends StatelessWidget {
   }
 }
 
-class _SelectedRangeHeader extends StatelessWidget {
-  const _SelectedRangeHeader({
-    required this.range,
-    required this.count,
-    this.description,
-  });
-
-  final _MountainRange range;
-  final int count;
-  final String? description;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                range.name,
-                style: Theme.of(context).textTheme.headlineSmall,
-              ),
-              const SizedBox(height: 2),
-              Text(
-                description ?? range.description,
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
-              ),
-            ],
-          ),
-        ),
-        Text(
-          '$count FOUND',
-          style: Theme.of(context).textTheme.labelSmall?.copyWith(
-            color: Theme.of(context).colorScheme.primary,
-            fontWeight: FontWeight.w800,
-            letterSpacing: 1.2,
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _CragCard extends StatelessWidget {
+class _CragCard extends ConsumerWidget {
   const _CragCard({
     required this.crag,
     required this.range,
@@ -443,9 +533,13 @@ class _CragCard extends StatelessWidget {
   final VoidCallback onTap;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final routes = [for (final wall in crag.walls) ...wall.routes];
-    final imageUrl = routes.isEmpty ? range.imageUrl : routes.first.imageUrl;
+    final visuals =
+        ref.watch(appVisualsProvider).valueOrNull ?? AppVisuals.defaults;
+    final imageUrl = routes.isEmpty
+        ? visuals.url('range_${range.id}')
+        : routes.first.imageUrl;
     return Card(
       clipBehavior: Clip.antiAlias,
       child: InkWell(
@@ -604,17 +698,27 @@ class _SkiRangeCatalog extends StatelessWidget {
     required this.selectedRangeId,
     required this.desktop,
     required this.onRangeSelected,
+    required this.onBack,
     required this.onRouteSelected,
   });
 
   final List<SkiRoute> routes;
-  final String selectedRangeId;
+  final String? selectedRangeId;
   final bool desktop;
   final ValueChanged<_MountainRange> onRangeSelected;
+  final VoidCallback onBack;
   final ValueChanged<SkiRoute> onRouteSelected;
 
   @override
   Widget build(BuildContext context) {
+    if (selectedRangeId == null) {
+      return _MountainRangeLanding(
+        desktop: desktop,
+        ski: true,
+        countFor: (range) => routes.where(range.matchesSki).length,
+        onRangeSelected: onRangeSelected,
+      );
+    }
     final selected = _mountainRanges.firstWhere(
       (range) => range.id == selectedRangeId,
       orElse: () => _mountainRanges.first,
@@ -623,124 +727,53 @@ class _SkiRangeCatalog extends StatelessWidget {
         .where(selected.matchesSki)
         .toList(growable: false);
 
-    final content = ListView(
-      padding: EdgeInsets.fromLTRB(
-        desktop ? 28 : 16,
-        desktop ? 30 : 22,
-        desktop ? 28 : 16,
-        40,
-      ),
-      children: [
-        const _CatalogHeader(
-          eyebrow: 'WINTER OBJECTIVES',
-          title: 'Find your next tour',
-          subtitle:
-              'Choose a mountain range, then compare distance, vertical, avalanche terrain, and seasonal access.',
-        ),
-        const SizedBox(height: 24),
-        if (!desktop)
-          SizedBox(
-            height: 158,
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              itemCount: _mountainRanges.length,
-              separatorBuilder: (_, _) => const SizedBox(width: 12),
-              itemBuilder: (context, index) {
-                final range = _mountainRanges[index];
-                return SizedBox(
-                  width: 220,
-                  child: _RangeCard(
-                    range: range,
-                    count: routes.where(range.matchesSki).length,
-                    selected: selected.id == range.id,
-                    itemSingular: 'tour',
-                    itemPlural: 'tours',
-                    onTap: () => onRangeSelected(range),
-                  ),
-                );
-              },
-            ),
+    return _RangeDetailScroll(
+      range: selected,
+      count: visibleRoutes.length,
+      countLabel: 'TOURS',
+      description: selected.skiDescription ?? selected.description,
+      onBack: onBack,
+      sliverBody: SliverToBoxAdapter(
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(
+            desktop ? 28 : 16,
+            18,
+            desktop ? 28 : 16,
+            44,
           ),
-        if (!desktop) const SizedBox(height: 20),
-        NativeAdCard(mode: ActivityMode.ski, compact: !desktop),
-        _SelectedRangeHeader(
-          range: selected,
-          count: visibleRoutes.length,
-          description: selected.skiDescription,
-        ),
-        const SizedBox(height: 14),
-        if (visibleRoutes.isEmpty)
-          _EmptySkiRange(range: selected)
-        else
-          LayoutBuilder(
-            builder: (context, constraints) {
-              final columns = constraints.maxWidth >= 700 ? 2 : 1;
-              final cardWidth = columns == 1
-                  ? constraints.maxWidth
-                  : (constraints.maxWidth - 14) / 2;
-              return Wrap(
-                spacing: 14,
-                runSpacing: 14,
-                children: [
-                  for (final route in visibleRoutes)
-                    SizedBox(
-                      width: cardWidth,
-                      child: _SkiRangeRouteCard(
-                        route: route,
-                        range: selected,
-                        onTap: () => onRouteSelected(route),
-                      ),
-                    ),
-                ],
-              );
-            },
-          ),
-      ],
-    );
-
-    if (!desktop) return content;
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        SizedBox(
-          width: 282,
-          child: DecoratedBox(
-            decoration: const BoxDecoration(
-              color: PacificTerrainColors.mist,
-              border: Border(
-                right: BorderSide(color: PacificTerrainColors.line),
-              ),
-            ),
-            child: ListView(
-              padding: const EdgeInsets.all(20),
-              children: [
-                Text(
-                  'MOUNTAIN RANGES',
-                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                    color: Theme.of(context).colorScheme.primary,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 1.5,
-                  ),
+          child: Column(
+            children: [
+              NativeAdCard(mode: ActivityMode.ski, compact: !desktop),
+              if (visibleRoutes.isEmpty)
+                _EmptySkiRange(range: selected)
+              else
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    final columns = constraints.maxWidth >= 700 ? 2 : 1;
+                    final cardWidth = columns == 1
+                        ? constraints.maxWidth
+                        : (constraints.maxWidth - 14) / 2;
+                    return Wrap(
+                      spacing: 14,
+                      runSpacing: 14,
+                      children: [
+                        for (final route in visibleRoutes)
+                          SizedBox(
+                            width: cardWidth,
+                            child: _SkiRangeRouteCard(
+                              route: route,
+                              range: selected,
+                              onTap: () => onRouteSelected(route),
+                            ),
+                          ),
+                      ],
+                    );
+                  },
                 ),
-                const SizedBox(height: 14),
-                for (final range in _mountainRanges)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 12),
-                    child: _RangeCard(
-                      range: range,
-                      count: routes.where(range.matchesSki).length,
-                      selected: selected.id == range.id,
-                      itemSingular: 'tour',
-                      itemPlural: 'tours',
-                      onTap: () => onRangeSelected(range),
-                    ),
-                  ),
-              ],
-            ),
+            ],
           ),
         ),
-        Expanded(child: content),
-      ],
+      ),
     );
   }
 }
@@ -1082,8 +1115,10 @@ class _CragRoutePickerState extends ConsumerState<_CragRoutePicker> {
   Widget build(BuildContext context) {
     final walls = widget.crag.walls;
     final routes = [for (final wall in walls) ...wall.routes];
+    final visuals =
+        ref.watch(appVisualsProvider).valueOrNull ?? AppVisuals.defaults;
     final heroImageUrl = routes.isEmpty
-        ? 'https://images.unsplash.com/photo-1522163182402-834f871fd851'
+        ? visuals.url('default_crag')
         : routes.first.imageUrl;
     final isAdmin = ref.watch(isMapAdminProvider).valueOrNull == true;
 

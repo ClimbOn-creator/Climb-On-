@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-class SideBannerLayout extends StatelessWidget {
+import '../models/app_visuals.dart';
+import '../state/app_visuals_state.dart';
+
+class SideBannerLayout extends ConsumerWidget {
   const SideBannerLayout({
     super.key,
     required this.child,
@@ -12,13 +16,12 @@ class SideBannerLayout extends StatelessWidget {
   final double maxContentWidth;
   final bool showCompactBanners;
 
-  static const _leftImage =
-      'https://images.unsplash.com/photo-1483728642387-6c3bdd6c93e5';
-  static const _rightImage =
-      'https://images.unsplash.com/photo-1519681393784-d120267933ba';
-
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final visuals =
+        ref.watch(appVisualsProvider).valueOrNull ?? AppVisuals.defaults;
+    final leftImage = visuals.url('side_banner_left');
+    final rightImage = visuals.url('side_banner_right');
     final width = MediaQuery.sizeOf(context).width;
     final showBanners = width >= 760;
     final bannerWidth = width >= 1180
@@ -31,7 +34,7 @@ class SideBannerLayout extends StatelessWidget {
       if (showCompactBanners) {
         return Column(
           children: [
-            const _CompactMountainBanner(imageUrl: _leftImage),
+            _CompactMountainBanner(imageUrl: leftImage),
             Expanded(
               child: Center(
                 child: ConstrainedBox(
@@ -40,7 +43,7 @@ class SideBannerLayout extends StatelessWidget {
                 ),
               ),
             ),
-            const _CompactMountainBanner(imageUrl: _rightImage),
+            _CompactMountainBanner(imageUrl: rightImage),
           ],
         );
       }
@@ -55,7 +58,7 @@ class SideBannerLayout extends StatelessWidget {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _VerticalMountainBanner(imageUrl: _leftImage, width: bannerWidth),
+        _VerticalMountainBanner(imageUrl: leftImage, width: bannerWidth),
         Expanded(
           child: Center(
             child: ConstrainedBox(
@@ -64,7 +67,7 @@ class SideBannerLayout extends StatelessWidget {
             ),
           ),
         ),
-        _VerticalMountainBanner(imageUrl: _rightImage, width: bannerWidth),
+        _VerticalMountainBanner(imageUrl: rightImage, width: bannerWidth),
       ],
     );
   }

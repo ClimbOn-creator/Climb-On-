@@ -3,7 +3,7 @@ import 'package:latlong2/latlong.dart';
 import 'comment.dart';
 import 'route_photo.dart';
 
-enum ClimbRouteType { sport, trad, boulder, ice, mixed }
+enum ClimbRouteType { sport, trad, topRope, boulder, ice, mixed }
 
 enum PitchType { boulder, singlePitch, multiPitch }
 
@@ -67,6 +67,7 @@ class ClimbRoute {
     return switch (type) {
       ClimbRouteType.sport => 'Sport',
       ClimbRouteType.trad => 'Trad',
+      ClimbRouteType.topRope => 'Top Rope',
       ClimbRouteType.boulder => 'Boulder',
       ClimbRouteType.ice => 'Ice',
       ClimbRouteType.mixed => 'Mixed',

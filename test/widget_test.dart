@@ -1,13 +1,74 @@
 import 'package:climb_on/models/climb_route.dart';
+import 'package:climb_on/models/app_visuals.dart';
 import 'package:climb_on/data/sample_crags.dart' as sample_data;
 import 'package:climb_on/models/social.dart';
 import 'package:climb_on/services/database_service.dart';
+import 'package:climb_on/screens/settings_screen.dart';
+import 'package:climb_on/state/admin_state.dart';
+import 'package:climb_on/state/app_visuals_state.dart';
 import 'package:climb_on/state/climb_log_state.dart';
 import 'package:climb_on/state/social_state.dart';
 import 'package:climb_on/utils/number_parser.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
+  test('Creator app pictures override catalogue defaults', () {
+    const visuals = AppVisuals({
+      'range_coast-range': 'https://example.com/coast.jpg',
+    });
+
+    expect(visuals.url('range_coast-range'), 'https://example.com/coast.jpg');
+    expect(AppVisuals.defaults.url('side_banner_left'), startsWith('https://'));
+  });
+
+  testWidgets('Creator sees the app picture manager on a phone', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(390, 844);
+    addTearDown(() {
+      tester.view.resetDevicePixelRatio();
+      tester.view.resetPhysicalSize();
+    });
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          isMapAdminProvider.overrideWith((ref) async => true),
+          appVisualsProvider.overrideWith((ref) async => AppVisuals.defaults),
+        ],
+        child: const MaterialApp(home: SettingsScreen()),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.text('App pictures'),
+      250,
+      scrollable: find.byType(Scrollable),
+    );
+
+    expect(find.text('App pictures'), findsOneWidget);
+    expect(find.text('Left background banner'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  test('Top-rope-only routes have their own climbing type', () {
+    const route = ClimbRoute(
+      id: 'top-rope-only',
+      name: 'Learning Wall',
+      grade: '5.7',
+      rating: 4,
+      type: ClimbRouteType.topRope,
+      topRope: true,
+    );
+
+    expect(route.typeLabel, 'Top Rope');
+  });
+
   test('Measurement fields accept common units', () {
     expect(parseWholeNumberWithUnits('4m'), 4);
     expect(parseWholeNumberWithUnits('60 m'), 60);

@@ -13,12 +13,14 @@ class CragSidebar extends ConsumerWidget {
     required this.selectedWall,
     required this.onWallSelected,
     this.onRouteSelected,
+    this.scrollController,
   });
 
   final Crag crag;
   final Wall? selectedWall;
   final ValueChanged<Wall> onWallSelected;
   final ValueChanged<ClimbRoute>? onRouteSelected;
+  final ScrollController? scrollController;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -32,6 +34,7 @@ class CragSidebar extends ConsumerWidget {
           final routes = selectedWall?.routes ?? const <ClimbRoute>[];
 
           return CustomScrollView(
+            controller: scrollController,
             slivers: [
               SliverToBoxAdapter(child: _CragHeader(crag: crag)),
               const SliverToBoxAdapter(child: Divider(height: 1)),

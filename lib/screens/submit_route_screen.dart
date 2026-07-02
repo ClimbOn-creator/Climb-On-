@@ -327,8 +327,11 @@ class _SubmitRouteScreenState extends ConsumerState<SubmitRouteScreen> {
       _MenuField(
         label: 'Route type',
         value: routeType,
-        values: const ['sport', 'trad', 'boulder', 'mixed', 'ice'],
-        onChanged: (value) => setState(() => routeType = value),
+        values: const ['sport', 'trad', 'top_rope', 'boulder', 'mixed', 'ice'],
+        onChanged: (value) => setState(() {
+          routeType = value;
+          if (value == 'top_rope') topRope = true;
+        }),
       ),
       _MenuField(
         label: 'Pitch type',
@@ -1071,7 +1074,10 @@ class _MenuField extends StatelessWidget {
         decoration: InputDecoration(labelText: label),
         items: [
           for (final item in values)
-            DropdownMenuItem(value: item, child: Text(item)),
+            DropdownMenuItem(
+              value: item,
+              child: Text(item == 'top_rope' ? 'Top Rope' : item),
+            ),
         ],
         onChanged: (value) {
           if (value != null) onChanged(value);

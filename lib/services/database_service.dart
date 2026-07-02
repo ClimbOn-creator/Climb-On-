@@ -23,6 +23,7 @@ class DatabaseService {
   static const _skiCatalogCacheKey = 'climb_on_ski_catalog_cache_v1';
   static const _mapPathsCacheKey = 'climb_on_map_paths_cache_v1';
   static const _offlineRegionsCacheKey = 'climb_on_offline_regions_cache_v1';
+  static const _appVisualsCacheKey = 'climb_on_app_visuals_cache_v1';
 
   User? get _currentUser {
     if (!SupabaseConfig.isConfigured) return null;
@@ -54,6 +55,53 @@ class DatabaseService {
     if (cached.isNotEmpty) return cached;
 
     return sample_data.crags;
+  }
+
+  Future<Map<String, String>> loadAppVisuals() async {
+    if (SupabaseConfig.isConfigured) {
+      try {
+        final result = await Supabase.instance.client.rpc('app_visual_catalog');
+        if (result is Map) {
+          await _cacheJson(_appVisualsCacheKey, result);
+          return _stringMap(result);
+        }
+      } catch (_) {
+        // Use the last creator-managed picture catalogue below.
+      }
+    }
+    return _stringMap(await _loadCachedJson(_appVisualsCacheKey));
+  }
+
+  Future<String> adminReplaceAppVisual({
+    required String visualKey,
+    required List<int> imageBytes,
+    required String imageName,
+    required String imageContentType,
+  }) async {
+    final user = _currentUser;
+    if (user == null) {
+      throw const AuthException('Sign in to edit app pictures.');
+    }
+    final extension = _safeFileExtension(imageName);
+    final path =
+        '${user.id}/app-visuals/$visualKey-${DateTime.now().microsecondsSinceEpoch}.$extension';
+    final storage = Supabase.instance.client.storage.from('submission-photos');
+    await storage.uploadBinary(
+      path,
+      Uint8List.fromList(imageBytes),
+      fileOptions: FileOptions(contentType: imageContentType, upsert: false),
+    );
+    final imageUrl = storage.getPublicUrl(path);
+    try {
+      await Supabase.instance.client.rpc(
+        'admin_update_app_visual',
+        params: {'target_visual_key': visualKey, 'new_image_url': imageUrl},
+      );
+      return imageUrl;
+    } catch (_) {
+      await storage.remove([path]);
+      rethrow;
+    }
   }
 
   Future<List<Crag>> loadCragsInBounds(GeoBounds bounds) async {
@@ -580,6 +628,20 @@ class DatabaseService {
     await _creatorUpdate('creator_update_route_warning', {
       'target_route_id': routeId,
       'new_warning': warning.trim(),
+    });
+  }
+
+  Future<void> updateCreatorRouteFieldNotes({
+    required String routeId,
+    required String dangerInfo,
+    required String gearNotes,
+    required String descentNotes,
+  }) async {
+    await _creatorUpdate('creator_update_route_field_notes', {
+      'target_route_id': routeId,
+      'new_danger_info': dangerInfo.trim(),
+      'new_gear_notes': gearNotes.trim(),
+      'new_descent_notes': descentNotes.trim(),
     });
   }
 
@@ -1137,6 +1199,15 @@ class DatabaseService {
     return const [];
   }
 
+  Map<String, String> _stringMap(Object? value) {
+    if (value is! Map) return const {};
+    return {
+      for (final entry in value.entries)
+        if (entry.value?.toString().trim().isNotEmpty == true)
+          entry.key.toString(): entry.value.toString(),
+    };
+  }
+
   Map<String, List<LatLng>> _pathMap(
     Object? value, {
     required String keyName,
@@ -1196,6 +1267,7 @@ class DatabaseService {
   ClimbRouteType _routeType(String value) {
     return switch (value.toLowerCase()) {
       'trad' => ClimbRouteType.trad,
+      'top_rope' || 'top rope' || 'top-rope' => ClimbRouteType.topRope,
       'boulder' => ClimbRouteType.boulder,
       'ice' => ClimbRouteType.ice,
       'mixed' => ClimbRouteType.mixed,

@@ -39,6 +39,8 @@ class _RouteCardState extends ConsumerState<RouteCard> {
   final photoCaptionController = TextEditingController();
   bool uploadingPhoto = false;
   String? dangerOverride;
+  String? gearOverride;
+  String? descentOverride;
   String? imageOverride;
   String? trailheadImageOverride;
 
@@ -72,6 +74,9 @@ class _RouteCardState extends ConsumerState<RouteCard> {
     final catalog = ref.watch(catalogProvider).valueOrNull ?? const <Crag>[];
     final routeWall = _findWall(catalog);
     final isAdmin = ref.watch(isMapAdminProvider).valueOrNull == true;
+    final canEditFieldNotes =
+        isAdmin ||
+        const DatabaseService().currentUserId == widget.route.createdBy;
     final social = ref.watch(socialProvider);
 
     return AnimatedBuilder(
@@ -103,6 +108,16 @@ class _RouteCardState extends ConsumerState<RouteCard> {
                     title: widget.route.name,
                     height: widget.expanded ? 320 : 220,
                   ),
+                  if (isAdmin) ...[
+                    const SizedBox(height: 8),
+                    OutlinedButton.icon(
+                      onPressed: uploadingPhoto
+                          ? null
+                          : _pickAndReplaceMainPicture,
+                      icon: const Icon(Icons.add_photo_alternate_outlined),
+                      label: const Text('Replace top picture'),
+                    ),
+                  ],
                   const SizedBox(height: 12),
                   Row(
                     children: [
@@ -172,18 +187,9 @@ class _RouteCardState extends ConsumerState<RouteCard> {
                   _RouteActions(
                     completed: completed,
                     savedProject: savedProject,
-                    commentsCount: comments.length,
                     onCompleted: () => climbLog.toggleRoute(widget.route),
                     onGradeOpinion: () => _showGradeDialog(climbLog),
                     onComment: () => _showCommentDialog(climbLog),
-                    onPhoto: uploadingPhoto
-                        ? null
-                        : isAdmin
-                        ? _pickAndReplaceMainPicture
-                        : () => _pickAndUploadPhoto(climbLog),
-                    photoActionLabel: isAdmin
-                        ? 'Replace top picture'
-                        : 'Add picture ${photos.length}',
                     onProject: () => climbLog.toggleProject(widget.route),
                     onShare: _shareRoute,
                   ),
@@ -242,27 +248,31 @@ class _RouteCardState extends ConsumerState<RouteCard> {
                         text: dangerOverride ?? widget.route.dangerInfo,
                         color: Theme.of(context).colorScheme.error,
                         icon: Icons.warning_amber,
-                        onEdit:
-                            const DatabaseService().currentUserId ==
-                                widget.route.createdBy
-                            ? _editRouteWarning
+                        onEdit: canEditFieldNotes
+                            ? () => _editRouteNote(_RouteNote.danger)
                             : null,
                       ),
                     ),
                     _InfoSection(
                       title: 'Gear Notes',
                       child: _AlertText(
-                        text: widget.route.gearNotes,
+                        text: gearOverride ?? widget.route.gearNotes,
                         color: Theme.of(context).colorScheme.secondary,
                         icon: Icons.construction,
+                        onEdit: canEditFieldNotes
+                            ? () => _editRouteNote(_RouteNote.gear)
+                            : null,
                       ),
                     ),
                     _InfoSection(
                       title: 'Descent',
                       child: _AlertText(
-                        text: widget.route.descentNotes,
+                        text: descentOverride ?? widget.route.descentNotes,
                         color: Theme.of(context).colorScheme.tertiary,
                         icon: Icons.south,
+                        onEdit: canEditFieldNotes
+                            ? () => _editRouteNote(_RouteNote.descent)
+                            : null,
                       ),
                     ),
                     if (photos.isNotEmpty)
@@ -284,57 +294,6 @@ class _RouteCardState extends ConsumerState<RouteCard> {
                           ],
                         ),
                       ),
-                    _InfoSection(
-                      title: 'Route Attributes',
-                      child: Column(
-                        children: [
-                          _AttributeRow(
-                            label: 'Type',
-                            value: widget.route.typeLabel,
-                          ),
-                          _AttributeRow(
-                            label: 'Pitch style',
-                            value: widget.route.pitchLabel,
-                          ),
-                          _AttributeRow(
-                            label: 'Angle',
-                            value: widget.route.angle,
-                          ),
-                          _AttributeRow(
-                            label: 'Bolts',
-                            value: widget.route.bolts > 0
-                                ? '${widget.route.bolts}'
-                                : 'Not listed',
-                          ),
-                          _AttributeRow(
-                            label: 'Route length',
-                            value: widget.route.routeLength > 0
-                                ? '${widget.route.routeLength}m'
-                                : 'Not listed',
-                          ),
-                          _AttributeRow(
-                            label: 'Height',
-                            value: widget.route.heightMeters > 0
-                                ? '${widget.route.heightMeters}m'
-                                : 'Not listed',
-                          ),
-                          _AttributeRow(
-                            label: 'Rope',
-                            value: '${widget.route.ropeLength}m',
-                          ),
-                          _AttributeRow(
-                            label: 'Top rope',
-                            value: widget.route.topRope ? 'Yes' : 'No',
-                          ),
-                          _AttributeRow(
-                            label: 'GPS',
-                            value: widget.route.location == null
-                                ? 'Not listed'
-                                : '${widget.route.location!.latitude.toStringAsFixed(5)}, ${widget.route.location!.longitude.toStringAsFixed(5)}',
-                          ),
-                        ],
-                      ),
-                    ),
                     _InfoSection(
                       title: 'Recent Sends',
                       child: Column(
@@ -398,6 +357,28 @@ class _RouteCardState extends ConsumerState<RouteCard> {
                         ],
                       ),
                     ),
+                    if (!isAdmin) ...[
+                      const SizedBox(height: 14),
+                      SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton.icon(
+                          onPressed: uploadingPhoto
+                              ? null
+                              : () => _pickAndUploadPhoto(climbLog),
+                          icon: uploadingPhoto
+                              ? const SizedBox.square(
+                                  dimension: 18,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : const Icon(Icons.add_photo_alternate_outlined),
+                          label: Text(
+                            uploadingPhoto ? 'Adding picture' : 'Add picture',
+                          ),
+                        ),
+                      ),
+                    ],
                   ],
                 ],
               ),
@@ -455,20 +436,27 @@ class _RouteCardState extends ConsumerState<RouteCard> {
     ).showSnackBar(const SnackBar(content: Text('Route and feed updated.')));
   }
 
-  Future<void> _editRouteWarning() async {
+  Future<void> _editRouteNote(_RouteNote note) async {
+    final currentDanger = dangerOverride ?? widget.route.dangerInfo;
+    final currentGear = gearOverride ?? widget.route.gearNotes;
+    final currentDescent = descentOverride ?? widget.route.descentNotes;
     final controller = TextEditingController(
-      text: dangerOverride ?? widget.route.dangerInfo,
+      text: switch (note) {
+        _RouteNote.danger => currentDanger,
+        _RouteNote.gear => currentGear,
+        _RouteNote.descent => currentDescent,
+      },
     );
-    final warning = await showDialog<String>(
+    final value = await showDialog<String>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Edit route warning'),
+        title: Text(note.dialogTitle),
         content: TextField(
           controller: controller,
           autofocus: true,
           minLines: 3,
           maxLines: 6,
-          decoration: const InputDecoration(labelText: 'Safety warning'),
+          decoration: InputDecoration(labelText: note.fieldLabel),
         ),
         actions: [
           TextButton(
@@ -483,19 +471,30 @@ class _RouteCardState extends ConsumerState<RouteCard> {
       ),
     );
     controller.dispose();
-    if (warning == null || warning.isEmpty || !mounted) return;
+    if (value == null || !mounted) return;
     try {
-      await const DatabaseService().updateCreatorRouteWarning(
+      await const DatabaseService().updateCreatorRouteFieldNotes(
         routeId: widget.route.id,
-        warning: warning,
+        dangerInfo: note == _RouteNote.danger ? value : currentDanger,
+        gearNotes: note == _RouteNote.gear ? value : currentGear,
+        descentNotes: note == _RouteNote.descent ? value : currentDescent,
       );
       if (!mounted) return;
-      setState(() => dangerOverride = warning);
+      setState(() {
+        switch (note) {
+          case _RouteNote.danger:
+            dangerOverride = value;
+          case _RouteNote.gear:
+            gearOverride = value;
+          case _RouteNote.descent:
+            descentOverride = value;
+        }
+      });
       ref.invalidate(catalogProvider);
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Could not update warning: $error')),
+        SnackBar(content: Text('Could not update route notes: $error')),
       );
     }
   }
@@ -530,22 +529,16 @@ class _RouteCardState extends ConsumerState<RouteCard> {
           icon: Icons.straighten,
           color: const Color(0xFFDDEBCF),
         ),
-      if (route.heightMeters > 0)
-        _RouteTag(
-          label: '${route.heightMeters}m tall',
-          icon: Icons.height,
-          color: const Color(0xFFD6E5EF),
-        ),
       if (route.ropeLength > 0)
         _RouteTag(
           label: '${route.ropeLength}m rope',
           icon: Icons.cable,
           color: const Color(0xFFE6DCEF),
         ),
-      if (route.type != ClimbRouteType.boulder)
+      if (route.topRope && route.type != ClimbRouteType.topRope)
         _RouteTag(
-          label: route.topRope ? 'Top rope access' : 'Lead only',
-          icon: route.topRope ? Icons.vertical_align_top : Icons.trending_up,
+          label: 'Top rope access',
+          icon: Icons.vertical_align_top,
           color: const Color(0xFFF1DCC7),
         ),
     ];
@@ -996,7 +989,7 @@ class _ExpandableCommentsState extends State<_ExpandableComments> {
         : widget.comments.take(previewCount).toList(growable: false);
 
     return _InfoSection(
-      title: 'Comments (${widget.comments.length})',
+      title: 'Comments',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1040,11 +1033,7 @@ class _ExpandableCommentsState extends State<_ExpandableComments> {
                 visualDensity: VisualDensity.compact,
                 padding: const EdgeInsets.symmetric(horizontal: 4),
               ),
-              child: Text(
-                expanded
-                    ? 'Show less'
-                    : 'Read more (${widget.comments.length - previewCount})',
-              ),
+              child: Text(expanded ? 'Show less' : 'Read more'),
             ),
           const SizedBox(height: 6),
           Row(
@@ -1116,24 +1105,18 @@ class _RouteActions extends StatelessWidget {
   const _RouteActions({
     required this.completed,
     required this.savedProject,
-    required this.commentsCount,
     required this.onCompleted,
     required this.onGradeOpinion,
     required this.onComment,
-    required this.onPhoto,
-    required this.photoActionLabel,
     required this.onProject,
     required this.onShare,
   });
 
   final bool completed;
   final bool savedProject;
-  final int commentsCount;
   final VoidCallback onCompleted;
   final VoidCallback onGradeOpinion;
   final VoidCallback onComment;
-  final VoidCallback? onPhoto;
-  final String photoActionLabel;
   final VoidCallback onProject;
   final VoidCallback onShare;
 
@@ -1177,32 +1160,13 @@ class _RouteActions extends StatelessWidget {
             size: 18,
             color: PacificTerrainColors.navy,
           ),
-          label: Text('Comment $commentsCount'),
+          label: const Text('Comment'),
           backgroundColor: const Color(0xFFF3D7CA),
           labelStyle: const TextStyle(
             color: PacificTerrainColors.navy,
             fontWeight: FontWeight.w700,
           ),
           onPressed: onComment,
-        ),
-        ActionChip(
-          avatar: onPhoto == null
-              ? const SizedBox.square(
-                  dimension: 18,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : const Icon(
-                  Icons.add_photo_alternate_outlined,
-                  size: 18,
-                  color: PacificTerrainColors.navy,
-                ),
-          label: Text(onPhoto == null ? 'Updating picture' : photoActionLabel),
-          backgroundColor: const Color(0xFFE5DCF0),
-          labelStyle: const TextStyle(
-            color: PacificTerrainColors.navy,
-            fontWeight: FontWeight.w700,
-          ),
-          onPressed: onPhoto,
         ),
         ActionChip(
           avatar: Icon(
@@ -1288,6 +1252,22 @@ class _RouteTag {
   final String label;
   final IconData icon;
   final Color color;
+}
+
+enum _RouteNote { danger, gear, descent }
+
+extension on _RouteNote {
+  String get dialogTitle => switch (this) {
+    _RouteNote.danger => 'Edit danger info',
+    _RouteNote.gear => 'Edit gear notes',
+    _RouteNote.descent => 'Edit descent notes',
+  };
+
+  String get fieldLabel => switch (this) {
+    _RouteNote.danger => 'Danger info',
+    _RouteNote.gear => 'Gear notes',
+    _RouteNote.descent => 'Descent notes',
+  };
 }
 
 class _AlertText extends StatelessWidget {

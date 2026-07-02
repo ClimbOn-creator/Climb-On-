@@ -293,10 +293,20 @@ class OfflineDownloadState extends ChangeNotifier {
         _mapProgress(region.id, finished, total, style.key);
       }
     }
-    return (
-      mapsReady: true,
-      terrainReady: includeTerrain3d && OfflineMapConfig.terrainConfigured,
-    );
+    final installed = await ml.getListOfRegions();
+    final installedLayers = installed
+        .where(
+          (pack) => pack.metadata['climbOnRegionId']?.toString() == region.id,
+        )
+        .map((pack) => pack.metadata['layer']?.toString())
+        .whereType<String>()
+        .toSet();
+    final mapsReady =
+        installedLayers.contains('Clean 2D') &&
+        installedLayers.contains('Satellite');
+    final terrainReady =
+        includeTerrain3d && installedLayers.contains('Satellite 3D');
+    return (mapsReady: mapsReady, terrainReady: terrainReady);
   }
 
   Future<void> _downloadPack({

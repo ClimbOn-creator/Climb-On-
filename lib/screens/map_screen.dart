@@ -484,7 +484,8 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                   ),
                 _MapLayerSwitcher(
                   selected: tileStyle,
-                  terrainAvailable: OfflineMapConfig.terrainConfigured,
+                  terrainAvailable:
+                      kIsWeb || OfflineMapConfig.terrainConfigured,
                   onChanged: (style) {
                     if (style == _MapTileStyle.terrain3d && pathEditMode) {
                       _cancelPathEditor();
@@ -1001,15 +1002,30 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
-      builder: (_) => CragSidebar(
-        crag: crag,
-        selectedWall: crag.walls.isEmpty ? null : crag.walls.first,
-        onWallSelected: (wall) => setState(() => selectedWall = wall),
-        onRouteSelected: (route) {
-          Navigator.pop(context);
-          _openRouteInFeed(route);
-        },
-      ),
+      builder: (sheetContext) {
+        var sheetWall = crag.walls.isEmpty ? null : crag.walls.first;
+        return StatefulBuilder(
+          builder: (context, setSheetState) => DraggableScrollableSheet(
+            expand: false,
+            initialChildSize: 0.82,
+            minChildSize: 0.45,
+            maxChildSize: 0.96,
+            builder: (context, scrollController) => CragSidebar(
+              crag: crag,
+              selectedWall: sheetWall,
+              scrollController: scrollController,
+              onWallSelected: (wall) {
+                setSheetState(() => sheetWall = wall);
+                setState(() => selectedWall = wall);
+              },
+              onRouteSelected: (route) {
+                Navigator.pop(sheetContext);
+                _openRouteInFeed(route);
+              },
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -1864,13 +1880,31 @@ class _Terrain3DMapState extends State<_Terrain3DMap> {
         'maxzoom': 20,
         'attribution': '© OpenStreetMap contributors © CARTO',
       },
+      'terrain': {
+        'type': 'raster-dem',
+        'url': 'https://tiles.mapterhorn.com/tilejson.json',
+        'tileSize': 256,
+        'attribution': 'Terrain © MapTiler and OpenStreetMap contributors',
+      },
     },
+    'terrain': {'source': 'terrain', 'exaggeration': 1.12},
     'layers': [
       {
         'id': 'satellite',
         'type': 'raster',
         'source': 'satellite',
         'paint': {'raster-saturation': -0.05, 'raster-contrast': 0.08},
+      },
+      {
+        'id': 'terrain-hillshade',
+        'type': 'hillshade',
+        'source': 'terrain',
+        'paint': {
+          'hillshade-exaggeration': 0.28,
+          'hillshade-shadow-color': '#23342f',
+          'hillshade-highlight-color': '#ffffff',
+          'hillshade-accent-color': '#60776d',
+        },
       },
       {'id': 'labels', 'type': 'raster', 'source': 'labels'},
     ],

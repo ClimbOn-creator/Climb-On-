@@ -61,7 +61,11 @@ class _AdminRouteEditorState extends State<AdminRouteEditor> {
       'descent': TextEditingController(text: route?.descentNotes ?? ''),
       'danger': TextEditingController(text: route?.dangerInfo ?? ''),
     };
-    routeType = route?.type.name ?? 'sport';
+    routeType = switch (route?.type) {
+      ClimbRouteType.topRope => 'top_rope',
+      final type? => type.name,
+      null => 'sport',
+    };
     pitchType = switch (route?.pitchType) {
       PitchType.multiPitch => 'multi_pitch',
       PitchType.boulder => 'boulder',
@@ -115,6 +119,7 @@ class _AdminRouteEditorState extends State<AdminRouteEditor> {
             _menu('Route type', routeType, const [
               'sport',
               'trad',
+              'top_rope',
               'boulder',
               'ice',
               'mixed',
@@ -145,9 +150,11 @@ class _AdminRouteEditorState extends State<AdminRouteEditor> {
             _field('rope', 'Rope length (m)', integer: true),
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
-              title: const Text('Top-rope access'),
-              value: topRope,
-              onChanged: (value) => setState(() => topRope = value),
+              title: const Text('Can also be top-roped'),
+              value: routeType == 'top_rope' || topRope,
+              onChanged: routeType == 'top_rope'
+                  ? null
+                  : (value) => setState(() => topRope = value),
             ),
             Row(
               children: [
@@ -274,7 +281,9 @@ class _AdminRouteEditorState extends State<AdminRouteEditor> {
           for (final item in values)
             DropdownMenuItem(
               value: item,
-              child: Text(item.replaceAll('_', ' ')),
+              child: Text(
+                item == 'top_rope' ? 'Top Rope' : item.replaceAll('_', ' '),
+              ),
             ),
         ],
         onChanged: (next) {
@@ -333,7 +342,7 @@ class _AdminRouteEditorState extends State<AdminRouteEditor> {
             fields['length']!.text,
           )!,
           'route_rope_length': parseWholeNumberWithUnits(fields['rope']!.text)!,
-          'route_top_rope': topRope,
+          'route_top_rope': routeType == 'top_rope' || topRope,
           'route_lat': parseNumberWithUnits(fields['lat']!.text)!,
           'route_lng': parseNumberWithUnits(fields['lng']!.text)!,
           'route_description': fields['description']!.text.trim(),

@@ -239,9 +239,10 @@ security definer
 set search_path = public
 as $$
 begin
-  if not public.is_app_admin() then raise exception 'Not authorized'; end if;
+  if auth.uid() is null then raise exception 'Sign in required'; end if;
   update public.routes set image_url = trim(new_image_url)
-  where id = target_route_id;
+  where id = target_route_id
+    and (created_by = auth.uid() or public.is_app_admin());
   if not found then raise exception 'Route not found'; end if;
 end;
 $$;
@@ -259,9 +260,10 @@ security definer
 set search_path = public
 as $$
 begin
-  if not public.is_app_admin() then raise exception 'Not authorized'; end if;
+  if auth.uid() is null then raise exception 'Sign in required'; end if;
   update public.routes set trailhead_image_url = trim(new_image_url)
-  where id = target_route_id;
+  where id = target_route_id
+    and (created_by = auth.uid() or public.is_app_admin());
   if not found then raise exception 'Route not found'; end if;
 end;
 $$;

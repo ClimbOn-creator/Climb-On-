@@ -53,6 +53,35 @@ to authenticated;
 grant execute on function public.creator_update_route_warning(uuid, text)
 to authenticated;
 
+create or replace function public.creator_update_route_field_notes(
+  target_route_id uuid,
+  new_danger_info text,
+  new_gear_notes text,
+  new_descent_notes text
+)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if auth.uid() is null then raise exception 'Sign in required'; end if;
+  update public.routes
+  set danger_info = trim(new_danger_info),
+      gear_notes = trim(new_gear_notes),
+      descent_notes = trim(new_descent_notes)
+  where id = target_route_id
+    and (created_by = auth.uid() or public.is_app_admin());
+  if not found then
+    raise exception 'Only the route creator or an administrator can edit these notes';
+  end if;
+end;
+$$;
+
+grant execute on function public.creator_update_route_field_notes(
+  uuid, text, text, text
+) to authenticated;
+
 create table if not exists public.recorded_paths (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users(id) on delete cascade,
