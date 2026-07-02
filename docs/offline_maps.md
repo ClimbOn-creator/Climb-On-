@@ -74,8 +74,8 @@ gigabytes and belong in R2 rather than GitHub.
 ## Editing download sections
 
 Run `supabase/offline_map_regions.sql` once. An app administrator can then open
-Map, enable **Edit map**, choose **Edit download section**, and select any of the
-six BC sections. The existing outline opens in the same point editor used for
+Map, enable **Edit map**, choose **Edit download section**, and select any
+available section. The existing outline opens in the same point editor used for
 approach and ski lines. Tap to add points, tap a numbered point and then the map
 to move it, or clear the draft and retrace it. Saving publishes the boundary to
 all users and caches it for offline use. Regular users have read-only access.
@@ -89,6 +89,12 @@ packaged in `assets/data/bc_tourism_regions.geojson` under the Open Government
 Licence – British Columbia. A boundary saved by an administrator overrides
 only that region, so hand-traced adjustments are preserved while other regions
 continue to use the official geometry.
+
+The grey **Coming soon!** section previews expansion onto the Alberta side of
+the Rockies. It shares the official BC–Alberta boundary with the Rockies
+section but cannot be downloaded yet. Satellite views place an OpenStreetMap /
+CARTO reference-label layer over the imagery; self-hosted offline satellite and
+3D styles use the packaged Protomaps labels instead.
 
 ## Data and attribution
 

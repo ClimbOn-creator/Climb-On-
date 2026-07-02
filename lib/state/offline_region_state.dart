@@ -23,7 +23,7 @@ final offlineRegionCatalogProvider = FutureProvider<List<OfflineBcRegion>>((
 });
 
 const _officialRegionIds = <String, String>{
-  'A': 'the-islands',
+  'A': 'the-coast',
   'B': 'vancouver-coast-mountains',
   'C': 'thompson-okanagan',
   'D': 'bc-rockies',
@@ -67,5 +67,50 @@ Map<String, List<List<LatLng>>> parseOfficialTourismRegions(String source) {
           ],
     ];
   }
+  final rockies = result['bc-rockies']?.firstOrNull;
+  if (rockies != null) {
+    result['alberta-rockies-coming-soon'] = [_albertaSideOfRockies(rockies)];
+  }
   return result;
+}
+
+List<LatLng> _albertaSideOfRockies(List<LatLng> rockies) {
+  var eastIndex = 0;
+  var northIndex = 0;
+  for (var index = 1; index < rockies.length; index++) {
+    if (rockies[index].longitude > rockies[eastIndex].longitude) {
+      eastIndex = index;
+    }
+    if (rockies[index].latitude > rockies[northIndex].latitude) {
+      northIndex = index;
+    }
+  }
+
+  List<LatLng> path(int step) {
+    final result = <LatLng>[];
+    var index = eastIndex;
+    while (true) {
+      result.add(rockies[index]);
+      if (index == northIndex) return result;
+      index = (index + step) % rockies.length;
+      if (index < 0) index += rockies.length;
+    }
+  }
+
+  final first = path(1);
+  final second = path(-1);
+  final border = _averageLongitude(first) > _averageLongitude(second)
+      ? first
+      : second;
+  return [
+    ...border,
+    LatLng(border.last.latitude, -109.80),
+    const LatLng(49.00, -109.80),
+    const LatLng(49.00, -114.05),
+  ];
+}
+
+double _averageLongitude(List<LatLng> points) {
+  return points.fold<double>(0, (sum, point) => sum + point.longitude) /
+      points.length;
 }

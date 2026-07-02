@@ -21,6 +21,8 @@ class OfflineBcRegion {
   final List<List<LatLng>> polygons;
   final int colorValue;
 
+  bool get isComingSoon => id == 'alberta-rockies-coming-soon';
+
   OfflineBcRegion copyWith({List<List<LatLng>>? polygons}) {
     return OfflineBcRegion(
       id: id,
@@ -103,14 +105,15 @@ const bcMapBounds = GeoBounds(
   south: 48.20,
   west: -139.10,
   north: 60.05,
-  east: -113.80,
+  east: -109.80,
 );
 
 const offlineBcRegions = <OfflineBcRegion>[
   OfflineBcRegion(
-    id: 'the-islands',
-    name: 'The Islands',
-    description: 'Vancouver Island, the Gulf Islands, and nearby islands.',
+    id: 'the-coast',
+    name: 'The Coast',
+    description:
+        'Vancouver Island, the Gulf Islands, and the adjoining central coast.',
     bounds: GeoBounds(south: 48.20, west: -128.90, north: 51.10, east: -123.05),
     center: LatLng(49.55, -125.55),
     colorValue: 0xFF337EAA,
@@ -131,7 +134,7 @@ const offlineBcRegions = <OfflineBcRegion>[
   ),
   OfflineBcRegion(
     id: 'vancouver-coast-mountains',
-    name: 'Vancouver Coast & Mountains',
+    name: 'Mainland and Sunshine Coast',
     description: 'Vancouver, the Fraser Valley, Sea to Sky, and south coast.',
     bounds: GeoBounds(south: 48.80, west: -128.50, north: 52.10, east: -121.00),
     center: LatLng(50.15, -123.40),
@@ -172,7 +175,7 @@ const offlineBcRegions = <OfflineBcRegion>[
   ),
   OfflineBcRegion(
     id: 'bc-rockies',
-    name: 'BC Rockies',
+    name: 'Rockies',
     description: 'The Kootenays, Columbia Mountains, and Canadian Rockies.',
     bounds: GeoBounds(south: 48.80, west: -119.00, north: 54.30, east: -113.80),
     center: LatLng(50.55, -116.20),
@@ -243,6 +246,24 @@ const offlineBcRegions = <OfflineBcRegion>[
         LatLng(52.00, -131.90),
         LatLng(52.50, -133.30),
         LatLng(53.50, -133.90),
+      ],
+    ],
+  ),
+  OfflineBcRegion(
+    id: 'alberta-rockies-coming-soon',
+    name: 'Coming soon!',
+    description: 'The Alberta side of the Canadian Rockies is coming soon.',
+    bounds: GeoBounds(south: 48.90, west: -118.10, north: 52.60, east: -109.80),
+    center: LatLng(50.85, -113.20),
+    colorValue: 0xFF80868B,
+    polygons: [
+      [
+        LatLng(49.00, -114.05),
+        LatLng(50.00, -114.70),
+        LatLng(51.00, -115.70),
+        LatLng(52.50, -117.99),
+        LatLng(52.50, -109.80),
+        LatLng(49.00, -109.80),
       ],
     ],
   ),

@@ -29,19 +29,24 @@ void main() {
     );
   });
 
-  test('BC is divided into no more than six offline sections', () {
-    expect(offlineBcRegions, hasLength(6));
-    expect(offlineBcRegions.map((region) => region.id).toSet(), hasLength(6));
+  test('six downloadable regions and one expansion preview are shown', () {
+    expect(offlineBcRegions, hasLength(7));
+    expect(offlineBcRegions.map((region) => region.id).toSet(), hasLength(7));
+    expect(
+      offlineBcRegions.where((region) => region.isComingSoon),
+      hasLength(1),
+    );
   });
 
   test('offline sections use the requested BC region names', () {
     expect(offlineBcRegions.map((region) => region.name), [
-      'The Islands',
-      'Vancouver Coast & Mountains',
+      'The Coast',
+      'Mainland and Sunshine Coast',
       'Thompson Okanagan',
-      'BC Rockies',
+      'Rockies',
       'Cariboo, Chilcotin Coast',
       'Northern BC',
+      'Coming soon!',
     ]);
   });
 

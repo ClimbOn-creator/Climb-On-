@@ -167,7 +167,9 @@ class _RegionDownloadCard extends StatelessWidget {
                   const Chip(
                     avatar: Icon(Icons.photo_library_outlined, size: 17),
                     label: Text('Info ready'),
-                  ),
+                  )
+                else if (region.isComingSoon)
+                  const Chip(label: Text('Coming soon')),
               ],
             ),
             const SizedBox(height: 4),
@@ -187,14 +189,22 @@ class _RegionDownloadCard extends StatelessWidget {
             Row(
               children: [
                 FilledButton.icon(
-                  onPressed: status.downloading ? null : onDownload,
+                  onPressed: status.downloading || region.isComingSoon
+                      ? null
+                      : onDownload,
                   icon: status.downloading
                       ? const SizedBox.square(
                           dimension: 16,
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
                       : Icon(status.dataReady ? Icons.sync : Icons.download),
-                  label: Text(status.dataReady ? 'Update' : 'Download'),
+                  label: Text(
+                    region.isComingSoon
+                        ? 'Not available yet'
+                        : status.dataReady
+                        ? 'Update'
+                        : 'Download',
+                  ),
                 ),
                 if (status.dataReady || status.mapsReady) ...[
                   const SizedBox(width: 8),

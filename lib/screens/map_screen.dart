@@ -361,6 +361,13 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                         PolygonLayer(
                           polygons: _offlineRegionPolygons(mapRegions),
                         ),
+                      if (tileStyle == _MapTileStyle.satellite)
+                        TileLayer(
+                          urlTemplate:
+                              'https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.png',
+                          subdomains: const ['a', 'b', 'c', 'd'],
+                          userAgentPackageName: 'com.climbon.app',
+                        ),
                       PolylineLayer(
                         polylines: [
                           ...(mode == ActivityMode.ski
@@ -1820,6 +1827,18 @@ class _Terrain3DMapState extends State<_Terrain3DMap> {
         'maxzoom': 19,
         'attribution': 'Imagery © Esri and data providers',
       },
+      'labels': {
+        'type': 'raster',
+        'tiles': [
+          'https://a.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}.png',
+          'https://b.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}.png',
+          'https://c.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}.png',
+          'https://d.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}.png',
+        ],
+        'tileSize': 256,
+        'maxzoom': 20,
+        'attribution': '© OpenStreetMap contributors © CARTO',
+      },
     },
     'layers': [
       {
@@ -1828,6 +1847,7 @@ class _Terrain3DMapState extends State<_Terrain3DMap> {
         'source': 'satellite',
         'paint': {'raster-saturation': -0.05, 'raster-contrast': 0.08},
       },
+      {'id': 'labels', 'type': 'raster', 'source': 'labels'},
     ],
   });
 
@@ -2192,7 +2212,8 @@ enum _MapTileStyle {
     urlTemplate:
         'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
     subdomains: [],
-    attribution: 'Tiles © Esri and data providers',
+    attribution:
+        'Tiles © Esri and data providers · Labels © OpenStreetMap contributors © CARTO',
   ),
   terrain3d(
     label: 'Satellite 3D',

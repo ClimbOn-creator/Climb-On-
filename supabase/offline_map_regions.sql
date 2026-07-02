@@ -37,11 +37,13 @@ begin
 
   if region_id not in (
     'the-islands',
+    'the-coast',
     'vancouver-coast-mountains',
     'thompson-okanagan',
     'bc-rockies',
     'cariboo-chilcotin-coast',
-    'northern-bc'
+    'northern-bc',
+    'alberta-rockies-coming-soon'
   ) then
     raise exception 'Unknown offline map region';
   end if;
