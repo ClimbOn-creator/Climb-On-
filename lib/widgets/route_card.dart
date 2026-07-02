@@ -13,6 +13,7 @@ import '../state/admin_state.dart';
 import '../state/catalog_state.dart';
 import '../state/climb_log_state.dart';
 import '../state/social_state.dart';
+import '../theme/climb_on_theme.dart';
 import '../utils/picked_upload_image.dart';
 import 'admin_route_editor.dart';
 
@@ -129,9 +130,17 @@ class _RouteCardState extends ConsumerState<RouteCard> {
                       ),
                       if (completed)
                         Chip(
-                          avatar: const Icon(Icons.check_circle, size: 16),
+                          avatar: const Icon(
+                            Icons.check_circle,
+                            size: 16,
+                            color: PacificTerrainColors.navy,
+                          ),
                           label: const Text('Completed'),
                           backgroundColor: const Color(0xFFBCE7F7),
+                          labelStyle: const TextStyle(
+                            color: PacificTerrainColors.navy,
+                            fontWeight: FontWeight.w700,
+                          ),
                         ),
                     ],
                   ),
@@ -142,9 +151,17 @@ class _RouteCardState extends ConsumerState<RouteCard> {
                     children: [
                       for (final tag in _routeTags())
                         Chip(
-                          avatar: Icon(tag.icon, size: 16),
+                          avatar: Icon(
+                            tag.icon,
+                            size: 16,
+                            color: PacificTerrainColors.navy,
+                          ),
                           label: Text(tag.label),
                           backgroundColor: tag.color,
+                          labelStyle: const TextStyle(
+                            color: PacificTerrainColors.navy,
+                            fontWeight: FontWeight.w700,
+                          ),
                           side: BorderSide(
                             color: tag.color.withValues(alpha: 0.9),
                           ),
@@ -1127,21 +1144,45 @@ class _RouteActions extends StatelessWidget {
       runSpacing: 8,
       children: [
         ActionChip(
-          avatar: Icon(completed ? Icons.check_circle : Icons.done, size: 18),
+          avatar: Icon(
+            completed ? Icons.check_circle : Icons.done,
+            size: 18,
+            color: PacificTerrainColors.navy,
+          ),
           label: Text(completed ? 'Sent' : 'Mark sent'),
           backgroundColor: const Color(0xFFCDE8D2),
+          labelStyle: const TextStyle(
+            color: PacificTerrainColors.navy,
+            fontWeight: FontWeight.w700,
+          ),
           onPressed: onCompleted,
         ),
         ActionChip(
-          avatar: const Icon(Icons.grade, size: 18),
+          avatar: const Icon(
+            Icons.grade,
+            size: 18,
+            color: PacificTerrainColors.navy,
+          ),
           label: const Text('Grade'),
           backgroundColor: const Color(0xFFD3E7F5),
+          labelStyle: const TextStyle(
+            color: PacificTerrainColors.navy,
+            fontWeight: FontWeight.w700,
+          ),
           onPressed: onGradeOpinion,
         ),
         ActionChip(
-          avatar: const Icon(Icons.comment, size: 18),
+          avatar: const Icon(
+            Icons.comment,
+            size: 18,
+            color: PacificTerrainColors.navy,
+          ),
           label: Text('Comment $commentsCount'),
           backgroundColor: const Color(0xFFF3D7CA),
+          labelStyle: const TextStyle(
+            color: PacificTerrainColors.navy,
+            fontWeight: FontWeight.w700,
+          ),
           onPressed: onComment,
         ),
         ActionChip(
@@ -1150,24 +1191,45 @@ class _RouteActions extends StatelessWidget {
                   dimension: 18,
                   child: CircularProgressIndicator(strokeWidth: 2),
                 )
-              : const Icon(Icons.add_photo_alternate_outlined, size: 18),
+              : const Icon(
+                  Icons.add_photo_alternate_outlined,
+                  size: 18,
+                  color: PacificTerrainColors.navy,
+                ),
           label: Text(onPhoto == null ? 'Updating picture' : photoActionLabel),
           backgroundColor: const Color(0xFFE5DCF0),
+          labelStyle: const TextStyle(
+            color: PacificTerrainColors.navy,
+            fontWeight: FontWeight.w700,
+          ),
           onPressed: onPhoto,
         ),
         ActionChip(
           avatar: Icon(
             savedProject ? Icons.bookmark : Icons.bookmark_border,
             size: 18,
+            color: PacificTerrainColors.navy,
           ),
           label: Text(savedProject ? 'Project' : 'Save'),
           backgroundColor: const Color(0xFFFFE2A3),
+          labelStyle: const TextStyle(
+            color: PacificTerrainColors.navy,
+            fontWeight: FontWeight.w700,
+          ),
           onPressed: onProject,
         ),
         ActionChip(
-          avatar: const Icon(Icons.ios_share, size: 18),
+          avatar: const Icon(
+            Icons.ios_share,
+            size: 18,
+            color: PacificTerrainColors.navy,
+          ),
           label: const Text('Share'),
           backgroundColor: const Color(0xFFD1E9E7),
+          labelStyle: const TextStyle(
+            color: PacificTerrainColors.navy,
+            fontWeight: FontWeight.w700,
+          ),
           onPressed: onShare,
         ),
       ],

@@ -136,19 +136,6 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
                       'Using saved route data while the cloud reconnects.',
                     ),
                   ),
-                if (query.trim().isEmpty && allRoutes.isNotEmpty) ...[
-                  _FeaturedStory(
-                    imageUrl: allRoutes.first.imageUrl,
-                    eyebrow: 'ROUTE OF THE WEEK',
-                    title: allRoutes.first.name,
-                    subtitle: 'A community favourite from the field guide',
-                    meta:
-                        '${allRoutes.first.grade} · ${allRoutes.first.typeLabel} · ${allRoutes.first.rating}/5',
-                    onTap: () => _openRouteDetails(context, allRoutes.first),
-                  ),
-                  const SizedBox(height: 18),
-                ],
-                NativeAdCard(mode: mode, compact: !desktop),
                 if (focusedRoute != null) ...[
                   _SectionHeader(
                     title: 'Selected route',
@@ -163,6 +150,21 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
                   RouteCard(route: focusedRoute, expanded: true),
                   const SizedBox(height: 24),
                 ],
+                if (focusedRoute == null &&
+                    query.trim().isEmpty &&
+                    allRoutes.isNotEmpty) ...[
+                  _FeaturedStory(
+                    imageUrl: allRoutes.first.imageUrl,
+                    eyebrow: 'ROUTE OF THE WEEK',
+                    title: allRoutes.first.name,
+                    subtitle: 'A community favourite from the field guide',
+                    meta:
+                        '${allRoutes.first.grade} · ${allRoutes.first.typeLabel} · ${allRoutes.first.rating}/5',
+                    onTap: () => _openRouteDetails(context, allRoutes.first),
+                  ),
+                  const SizedBox(height: 18),
+                ],
+                NativeAdCard(mode: mode, compact: !desktop),
                 if (query.trim().isNotEmpty) ...[
                   _SectionHeader(title: 'Search results (${results.length})'),
                   for (final route in results)
@@ -551,10 +553,11 @@ class _SkiSocialPost extends ConsumerWidget {
             ),
             InkWell(
               onTap: onTap,
-              child: AspectRatio(
-                aspectRatio: 1.08,
+              child: SizedBox(
+                height: MediaQuery.sizeOf(context).width >= 700 ? 410 : 280,
                 child: CachedNetworkImage(
                   imageUrl: route.imageUrl,
+                  width: double.infinity,
                   fit: BoxFit.cover,
                   errorWidget: (_, _, _) => ColoredBox(
                     color: Theme.of(context).colorScheme.primaryContainer,
@@ -886,10 +889,11 @@ class _SocialRoutePost extends StatelessWidget {
             ),
             InkWell(
               onTap: onRouteTap,
-              child: AspectRatio(
-                aspectRatio: 1.08,
+              child: SizedBox(
+                height: MediaQuery.sizeOf(context).width >= 700 ? 410 : 280,
                 child: CachedNetworkImage(
                   imageUrl: route.imageUrl,
+                  width: double.infinity,
                   fit: BoxFit.cover,
                   errorWidget: (_, _, _) => ColoredBox(
                     color: Theme.of(context).colorScheme.primaryContainer,

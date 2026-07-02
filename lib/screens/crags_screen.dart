@@ -27,6 +27,7 @@ class CragsScreen extends ConsumerStatefulWidget {
 
 class _CragsScreenState extends ConsumerState<CragsScreen> {
   String? selectedRangeId;
+  String? selectedSkiRangeId;
 
   @override
   Widget build(BuildContext context) {
@@ -41,6 +42,10 @@ class _CragsScreenState extends ConsumerState<CragsScreen> {
       (range) => catalogCrags.any(range.matches),
       orElse: () => _mountainRanges.first,
     );
+    final initialSkiRange = _mountainRanges.firstWhere(
+      (range) => skiRoutes.any(range.matchesSki),
+      orElse: () => _mountainRanges.first,
+    );
 
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -49,7 +54,15 @@ class _CragsScreenState extends ConsumerState<CragsScreen> {
         child: mode == ActivityMode.ski
             ? skiRoutes.isEmpty && skiCatalog.isLoading
                   ? const Center(child: CircularProgressIndicator())
-                  : _SkiCatalog(routes: skiRoutes, mode: mode, desktop: desktop)
+                  : _SkiRangeCatalog(
+                      routes: skiRoutes,
+                      selectedRangeId: selectedSkiRangeId ?? initialSkiRange.id,
+                      desktop: desktop,
+                      onRangeSelected: (range) {
+                        setState(() => selectedSkiRangeId = range.id);
+                      },
+                      onRouteSelected: (route) => _openSkiTour(context, route),
+                    )
             : catalogCrags.isEmpty && catalog.isLoading
             ? const Center(child: CircularProgressIndicator())
             : _RangeCatalog(
@@ -80,6 +93,16 @@ class _CragsScreenState extends ConsumerState<CragsScreen> {
           },
         );
       },
+    );
+  }
+
+  void _openSkiTour(BuildContext context, SkiRoute route) {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      showDragHandle: true,
+      builder: (context) => _SkiTourDetails(route: route),
     );
   }
 }
@@ -242,7 +265,7 @@ class _CatalogHeader extends StatelessWidget {
         Text(
           eyebrow,
           style: Theme.of(context).textTheme.labelSmall?.copyWith(
-            color: PacificTerrainColors.cedar,
+            color: Theme.of(context).colorScheme.primary,
             fontWeight: FontWeight.w800,
             letterSpacing: 1.7,
           ),
@@ -271,12 +294,16 @@ class _RangeCard extends StatelessWidget {
     required this.count,
     required this.selected,
     required this.onTap,
+    this.itemSingular = 'crag',
+    this.itemPlural = 'crags',
   });
 
   final _MountainRange range;
   final int count;
   final bool selected;
   final VoidCallback onTap;
+  final String itemSingular;
+  final String itemPlural;
 
   @override
   Widget build(BuildContext context) {
@@ -286,7 +313,7 @@ class _RangeCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(14),
         side: BorderSide(
           color: selected
-              ? PacificTerrainColors.cedar
+              ? Theme.of(context).colorScheme.primary
               : PacificTerrainColors.line,
           width: selected ? 2 : 1,
         ),
@@ -334,7 +361,7 @@ class _RangeCard extends StatelessWidget {
                                 ?.copyWith(color: Colors.white),
                           ),
                           Text(
-                            '$count ${count == 1 ? 'crag' : 'crags'}',
+                            '$count ${count == 1 ? itemSingular : itemPlural}',
                             style: Theme.of(context).textTheme.labelSmall
                                 ?.copyWith(color: Colors.white70),
                           ),
@@ -359,10 +386,15 @@ class _RangeCard extends StatelessWidget {
 }
 
 class _SelectedRangeHeader extends StatelessWidget {
-  const _SelectedRangeHeader({required this.range, required this.count});
+  const _SelectedRangeHeader({
+    required this.range,
+    required this.count,
+    this.description,
+  });
 
   final _MountainRange range;
   final int count;
+  final String? description;
 
   @override
   Widget build(BuildContext context) {
@@ -378,7 +410,7 @@ class _SelectedRangeHeader extends StatelessWidget {
               ),
               const SizedBox(height: 2),
               Text(
-                range.description,
+                description ?? range.description,
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                   color: Theme.of(context).colorScheme.onSurfaceVariant,
                 ),
@@ -389,7 +421,7 @@ class _SelectedRangeHeader extends StatelessWidget {
         Text(
           '$count FOUND',
           style: Theme.of(context).textTheme.labelSmall?.copyWith(
-            color: PacificTerrainColors.cedar,
+            color: Theme.of(context).colorScheme.primary,
             fontWeight: FontWeight.w800,
             letterSpacing: 1.2,
           ),
@@ -566,49 +598,341 @@ class _EmptyRange extends StatelessWidget {
   }
 }
 
-class _SkiCatalog extends StatelessWidget {
-  const _SkiCatalog({
+class _SkiRangeCatalog extends StatelessWidget {
+  const _SkiRangeCatalog({
     required this.routes,
-    required this.mode,
+    required this.selectedRangeId,
     required this.desktop,
+    required this.onRangeSelected,
+    required this.onRouteSelected,
   });
 
   final List<SkiRoute> routes;
-  final ActivityMode mode;
+  final String selectedRangeId;
   final bool desktop;
+  final ValueChanged<_MountainRange> onRangeSelected;
+  final ValueChanged<SkiRoute> onRouteSelected;
 
   @override
   Widget build(BuildContext context) {
-    return ListView(
-      padding: EdgeInsets.all(desktop ? 28 : 16),
+    final selected = _mountainRanges.firstWhere(
+      (range) => range.id == selectedRangeId,
+      orElse: () => _mountainRanges.first,
+    );
+    final visibleRoutes = routes
+        .where(selected.matchesSki)
+        .toList(growable: false);
+
+    final content = ListView(
+      padding: EdgeInsets.fromLTRB(
+        desktop ? 28 : 16,
+        desktop ? 30 : 22,
+        desktop ? 28 : 16,
+        40,
+      ),
       children: [
         const _CatalogHeader(
           eyebrow: 'WINTER OBJECTIVES',
-          title: 'Ski tours',
+          title: 'Find your next tour',
           subtitle:
-              'Browse touring objectives, compare distance and vertical, then open the map for the full line.',
+              'Choose a mountain range, then compare distance, vertical, avalanche terrain, and seasonal access.',
         ),
-        const SizedBox(height: 22),
-        NativeAdCard(mode: mode, compact: !desktop),
-        for (final route in routes)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 12),
-            child: Card(
-              child: ListTile(
-                contentPadding: const EdgeInsets.all(12),
-                leading: const CircleAvatar(
-                  backgroundColor: PacificTerrainColors.seaGlass,
-                  child: Icon(Icons.downhill_skiing),
-                ),
-                title: Text(route.name),
-                subtitle: Text(
-                  '${route.area} · ${route.distanceKm} km · ${route.elevationGainMeters} m',
-                ),
-                trailing: Chip(label: Text(route.difficulty)),
-              ),
+        const SizedBox(height: 24),
+        if (!desktop)
+          SizedBox(
+            height: 158,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              itemCount: _mountainRanges.length,
+              separatorBuilder: (_, _) => const SizedBox(width: 12),
+              itemBuilder: (context, index) {
+                final range = _mountainRanges[index];
+                return SizedBox(
+                  width: 220,
+                  child: _RangeCard(
+                    range: range,
+                    count: routes.where(range.matchesSki).length,
+                    selected: selected.id == range.id,
+                    itemSingular: 'tour',
+                    itemPlural: 'tours',
+                    onTap: () => onRangeSelected(range),
+                  ),
+                );
+              },
             ),
           ),
+        if (!desktop) const SizedBox(height: 20),
+        NativeAdCard(mode: ActivityMode.ski, compact: !desktop),
+        _SelectedRangeHeader(
+          range: selected,
+          count: visibleRoutes.length,
+          description: selected.skiDescription,
+        ),
+        const SizedBox(height: 14),
+        if (visibleRoutes.isEmpty)
+          _EmptySkiRange(range: selected)
+        else
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final columns = constraints.maxWidth >= 700 ? 2 : 1;
+              final cardWidth = columns == 1
+                  ? constraints.maxWidth
+                  : (constraints.maxWidth - 14) / 2;
+              return Wrap(
+                spacing: 14,
+                runSpacing: 14,
+                children: [
+                  for (final route in visibleRoutes)
+                    SizedBox(
+                      width: cardWidth,
+                      child: _SkiRangeRouteCard(
+                        route: route,
+                        range: selected,
+                        onTap: () => onRouteSelected(route),
+                      ),
+                    ),
+                ],
+              );
+            },
+          ),
       ],
+    );
+
+    if (!desktop) return content;
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        SizedBox(
+          width: 282,
+          child: DecoratedBox(
+            decoration: const BoxDecoration(
+              color: PacificTerrainColors.mist,
+              border: Border(
+                right: BorderSide(color: PacificTerrainColors.line),
+              ),
+            ),
+            child: ListView(
+              padding: const EdgeInsets.all(20),
+              children: [
+                Text(
+                  'MOUNTAIN RANGES',
+                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                    color: Theme.of(context).colorScheme.primary,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 1.5,
+                  ),
+                ),
+                const SizedBox(height: 14),
+                for (final range in _mountainRanges)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: _RangeCard(
+                      range: range,
+                      count: routes.where(range.matchesSki).length,
+                      selected: selected.id == range.id,
+                      itemSingular: 'tour',
+                      itemPlural: 'tours',
+                      onTap: () => onRangeSelected(range),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
+        Expanded(child: content),
+      ],
+    );
+  }
+}
+
+class _SkiRangeRouteCard extends StatelessWidget {
+  const _SkiRangeRouteCard({
+    required this.route,
+    required this.range,
+    required this.onTap,
+  });
+
+  final SkiRoute route;
+  final _MountainRange range;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            CachedNetworkImage(
+              imageUrl: route.imageUrl,
+              height: 154,
+              width: double.infinity,
+              fit: BoxFit.cover,
+              errorWidget: (_, _, _) => ColoredBox(
+                color: Theme.of(context).colorScheme.primaryContainer,
+                child: const SizedBox(
+                  height: 154,
+                  child: Center(child: Icon(Icons.downhill_skiing, size: 42)),
+                ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          route.name,
+                          style: Theme.of(context).textTheme.titleLarge,
+                        ),
+                      ),
+                      Icon(
+                        Icons.arrow_outward,
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    '${route.area} · ${range.name}',
+                    style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      _TourMetric(label: '${route.distanceKm} km'),
+                      _TourMetric(label: '${route.elevationGainMeters} m gain'),
+                      _TourMetric(label: route.difficulty),
+                      _TourMetric(label: route.avalancheTerrain),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _TourMetric extends StatelessWidget {
+  const _TourMetric({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.primaryContainer,
+        borderRadius: BorderRadius.circular(99),
+        border: Border.all(
+          color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.35),
+        ),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        child: Text(label, style: Theme.of(context).textTheme.labelSmall),
+      ),
+    );
+  }
+}
+
+class _EmptySkiRange extends StatelessWidget {
+  const _EmptySkiRange({required this.range});
+
+  final _MountainRange range;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(28),
+        child: Row(
+          children: [
+            Icon(
+              Icons.downhill_skiing,
+              color: Theme.of(context).colorScheme.primary,
+              size: 34,
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Text(
+                'No ${range.name} tours are published yet. Add one when the line and access have been verified.',
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SkiTourDetails extends StatelessWidget {
+  const _SkiTourDetails({required this.route});
+
+  final SkiRoute route;
+
+  @override
+  Widget build(BuildContext context) {
+    return DraggableScrollableSheet(
+      expand: false,
+      initialChildSize: 0.88,
+      minChildSize: 0.6,
+      maxChildSize: 0.96,
+      builder: (context, controller) => ListView(
+        controller: controller,
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 28),
+        children: [
+          Text(route.name, style: Theme.of(context).textTheme.headlineMedium),
+          const SizedBox(height: 12),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(14),
+            child: CachedNetworkImage(
+              imageUrl: route.imageUrl,
+              height: 260,
+              width: double.infinity,
+              fit: BoxFit.cover,
+            ),
+          ),
+          const SizedBox(height: 14),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _TourMetric(label: '${route.distanceKm} km'),
+              _TourMetric(label: '${route.elevationGainMeters} m gain'),
+              _TourMetric(label: route.difficulty),
+              _TourMetric(label: route.aspect),
+              _TourMetric(label: route.avalancheTerrain),
+            ],
+          ),
+          const SizedBox(height: 18),
+          Text(route.description, style: Theme.of(context).textTheme.bodyLarge),
+          const SizedBox(height: 18),
+          Text('Approach', style: Theme.of(context).textTheme.titleLarge),
+          const SizedBox(height: 6),
+          Text(route.approachNotes),
+          const SizedBox(height: 18),
+          Text('Descent', style: Theme.of(context).textTheme.titleLarge),
+          const SizedBox(height: 6),
+          Text(route.descentNotes),
+          const SizedBox(height: 18),
+          Text('Safety', style: Theme.of(context).textTheme.titleLarge),
+          const SizedBox(height: 6),
+          Text(route.dangerInfo),
+        ],
+      ),
     );
   }
 }
@@ -620,6 +944,7 @@ class _MountainRange {
     required this.description,
     required this.imageUrl,
     required this.keywords,
+    this.skiDescription,
   });
 
   final String id;
@@ -627,9 +952,15 @@ class _MountainRange {
   final String description;
   final String imageUrl;
   final List<String> keywords;
+  final String? skiDescription;
 
   bool matches(Crag crag) {
     final location = '${crag.region} ${crag.province}'.toLowerCase();
+    return keywords.any(location.contains);
+  }
+
+  bool matchesSki(SkiRoute route) {
+    final location = '${route.area} ${route.region}'.toLowerCase();
     return keywords.any(location.contains);
   }
 }
@@ -641,6 +972,8 @@ const _mountainRanges = <_MountainRange>[
     description: 'Long limestone lines from the southern parks to the north.',
     imageUrl: 'https://images.unsplash.com/photo-1500534623283-312aade485b7',
     keywords: ['canadian rockies', 'rockies', 'canmore', 'banff', 'jasper'],
+    skiDescription:
+        'Big alpine objectives, long approaches, and continental snowpacks.',
   ),
   _MountainRange(
     id: 'cariboo',
@@ -648,6 +981,8 @@ const _mountainRanges = <_MountainRange>[
     description: 'The northernmost Columbia Mountains and their deep valleys.',
     imageUrl: 'https://images.unsplash.com/photo-1464278533981-50106e6176b1',
     keywords: ['cariboo', 'wells gray', 'valemount'],
+    skiDescription:
+        'Remote powder terrain, deep valleys, and serious winter access.',
   ),
   _MountainRange(
     id: 'selkirk',
@@ -655,6 +990,8 @@ const _mountainRanges = <_MountainRange>[
     description: 'Steep Columbia Mountain terrain around Rogers Pass.',
     imageUrl: 'https://images.unsplash.com/photo-1464822759023-fed622ff2c3b',
     keywords: ['selkirk', 'rogers pass', 'glacier national park'],
+    skiDescription:
+        'Deep-snow touring and complex alpine terrain around Rogers Pass.',
   ),
   _MountainRange(
     id: 'monashee',
@@ -662,6 +999,8 @@ const _mountainRanges = <_MountainRange>[
     description: 'Granite, alpine ridges, and the western Columbia Mountains.',
     imageUrl: 'https://images.unsplash.com/photo-1483728642387-6c3bdd6c93e5',
     keywords: ['monashee', 'revelstoke', 'north okanagan'],
+    skiDescription:
+        'Gladed powder, alpine ridges, and the western Columbia Mountains.',
   ),
   _MountainRange(
     id: 'purcell',
@@ -669,6 +1008,8 @@ const _mountainRanges = <_MountainRange>[
     description: 'Bugaboo granite and the eastern Columbia Mountains.',
     imageUrl: 'https://images.unsplash.com/photo-1519681393784-d120267933ba',
     keywords: ['purcell', 'bugaboo', 'kimberley', 'cranbrook'],
+    skiDescription:
+        'High alpine touring across the eastern Columbia Mountains.',
   ),
   _MountainRange(
     id: 'hart',
@@ -676,6 +1017,8 @@ const _mountainRanges = <_MountainRange>[
     description: 'The southern Northern Rockies around the Pine Pass country.',
     imageUrl: 'https://images.unsplash.com/photo-1470770841072-f978cf4d019e',
     keywords: ['hart range', 'pine pass', 'tumbler ridge', 'chetwynd'],
+    skiDescription:
+        'Northern Rockies touring around Pine Pass and the Hart foothills.',
   ),
   _MountainRange(
     id: 'muskwa',
@@ -683,6 +1026,8 @@ const _mountainRanges = <_MountainRange>[
     description: 'Remote limestone peaks of the northern Northern Rockies.',
     imageUrl: 'https://images.unsplash.com/photo-1464278533981-50106e6176b1',
     keywords: ['muskwa', 'northern rockies', 'muncho', 'fort nelson'],
+    skiDescription:
+        'Remote northern objectives with long approaches and sparse access.',
   ),
   _MountainRange(
     id: 'coast-range',
@@ -702,7 +1047,14 @@ const _mountainRanges = <_MountainRange>[
       'uvic',
       'nanaimo',
       'comox',
+      'strathcona',
+      'forbidden plateau',
+      'buttle lake',
+      'sutton pass',
+      'arrowsmith',
     ],
+    skiDescription:
+        'Coastal snowpacks, island summits, and Sea to Sky touring terrain.',
   ),
 ];
 

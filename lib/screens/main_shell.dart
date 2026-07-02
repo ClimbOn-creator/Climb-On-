@@ -41,7 +41,9 @@ class MainShell extends ConsumerWidget {
           ),
         ],
       ),
-      bottomNavigationBar: compact ? _MobileNavigation(path: path) : null,
+      bottomNavigationBar: compact
+          ? _MobileNavigation(path: path, mode: mode)
+          : null,
     );
   }
 }
@@ -82,6 +84,7 @@ class _AppHeader extends StatelessWidget {
                           _DesktopNavItem(
                             destination: destination,
                             selected: path == destination.path,
+                            mode: mode,
                           ),
                       ],
                     ),
@@ -139,10 +142,15 @@ class _ModeSwitch extends ConsumerWidget {
 }
 
 class _DesktopNavItem extends StatelessWidget {
-  const _DesktopNavItem({required this.destination, required this.selected});
+  const _DesktopNavItem({
+    required this.destination,
+    required this.selected,
+    required this.mode,
+  });
 
   final _AppDestination destination;
   final bool selected;
+  final ActivityMode mode;
 
   @override
   Widget build(BuildContext context) {
@@ -154,7 +162,7 @@ class _DesktopNavItem extends StatelessWidget {
           selected ? destination.selectedIcon : destination.icon,
           size: 19,
         ),
-        label: Text(destination.label),
+        label: Text(destination.labelFor(mode)),
         style: TextButton.styleFrom(
           foregroundColor: selected
               ? Theme.of(context).colorScheme.primary
@@ -170,9 +178,10 @@ class _DesktopNavItem extends StatelessWidget {
 }
 
 class _MobileNavigation extends StatelessWidget {
-  const _MobileNavigation({required this.path});
+  const _MobileNavigation({required this.path, required this.mode});
 
   final String path;
+  final ActivityMode mode;
 
   @override
   Widget build(BuildContext context) {
@@ -199,6 +208,7 @@ class _MobileNavigation extends StatelessWidget {
                   child: _MobileNavItem(
                     destination: destination,
                     selected: path == destination.path,
+                    mode: mode,
                   ),
                 ),
             ],
@@ -210,10 +220,15 @@ class _MobileNavigation extends StatelessWidget {
 }
 
 class _MobileNavItem extends StatelessWidget {
-  const _MobileNavItem({required this.destination, required this.selected});
+  const _MobileNavItem({
+    required this.destination,
+    required this.selected,
+    required this.mode,
+  });
 
   final _AppDestination destination;
   final bool selected;
+  final ActivityMode mode;
 
   @override
   Widget build(BuildContext context) {
@@ -249,7 +264,7 @@ class _MobileNavItem extends StatelessWidget {
           if (!isAdd) ...[
             const SizedBox(height: 3),
             Text(
-              destination.label,
+              destination.labelFor(mode),
               style: Theme.of(context).textTheme.labelSmall?.copyWith(
                 color: color,
                 fontSize: 10,
@@ -279,6 +294,7 @@ const _destinations = [
   _AppDestination(
     path: '/crags',
     label: 'Crags',
+    skiLabel: 'Tours',
     icon: Icons.landscape_outlined,
     selectedIcon: Icons.landscape,
   ),
@@ -300,14 +316,20 @@ class _AppDestination {
   const _AppDestination({
     required this.path,
     required this.label,
+    this.skiLabel,
     required this.icon,
     required this.selectedIcon,
   });
 
   final String path;
   final String label;
+  final String? skiLabel;
   final IconData icon;
   final IconData selectedIcon;
+
+  String labelFor(ActivityMode mode) {
+    return mode == ActivityMode.ski ? skiLabel ?? label : label;
+  }
 }
 
 class _ContourPainter extends CustomPainter {
