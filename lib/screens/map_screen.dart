@@ -34,6 +34,45 @@ import '../state/ski_route_state.dart';
 import '../utils/number_parser.dart';
 import '../widgets/pulsing_user_marker.dart';
 
+class _RegionBoundaryLod {
+  _RegionBoundaryLod(this.source) {
+    if (source.isEmpty) {
+      maximumSpan = 0;
+      return;
+    }
+    var south = source.first.latitude;
+    var north = south;
+    var west = source.first.longitude;
+    var east = west;
+    for (final point in source.skip(1)) {
+      south = math.min(south, point.latitude);
+      north = math.max(north, point.latitude);
+      west = math.min(west, point.longitude);
+      east = math.max(east, point.longitude);
+    }
+    maximumSpan = math.max(north - south, east - west);
+  }
+
+  final List<LatLng> source;
+  final Map<int, List<LatLng>> cache = {};
+  late final double maximumSpan;
+
+  bool isVisibleAt(double minimumSpan) => maximumSpan >= minimumSpan;
+
+  List<LatLng> pointsFor(int targetPoints) {
+    if (source.length <= targetPoints) return source;
+    return cache.putIfAbsent(targetPoints, () {
+      final stride = (source.length / targetPoints).ceil();
+      final result = <LatLng>[
+        for (var index = 0; index < source.length; index += stride)
+          source[index],
+      ];
+      if (result.last != source.last) result.add(source.last);
+      return result;
+    });
+  }
+}
+
 class MapScreen extends ConsumerStatefulWidget {
   const MapScreen({super.key});
 
@@ -62,6 +101,8 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   LatLng? currentMapCenter;
   double currentMapRotation = 0;
   final Set<_MapRouteFilter> activeFilters = {};
+  final Map<List<LatLng>, _RegionBoundaryLod> regionBoundaryLod =
+      Map.identity();
   final MapController mapController = MapController();
   ml.MapLibreMapController? mapLibreController;
   StreamSubscription<Position>? positionSubscription;
@@ -359,7 +400,10 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                       ),
                       if (currentZoom < 9)
                         PolygonLayer(
-                          polygons: _offlineRegionPolygons(mapRegions),
+                          polygons: _offlineRegionPolygons(
+                            mapRegions,
+                            currentZoom,
+                          ),
                         ),
                       if (tileStyle == _MapTileStyle.satellite)
                         TileLayer(
@@ -435,8 +479,8 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                   ),
                 if (!useMapLibre && currentZoom < 6.5)
                   Positioned(
-                    left: 12,
-                    top: 170,
+                    right: 12,
+                    bottom: 158,
                     child: _BcRegionLegend(regions: mapRegions),
                   ),
                 if (useMapLibre && OfflineMapConfig.mapsConfigured)
@@ -487,7 +531,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                 ),
                 Positioned(
                   left: 12,
-                  top: 72,
+                  top: 12,
                   child: SafeArea(
                     child: FilledButton.tonalIcon(
                       onPressed: () => context.go('/offline'),
@@ -734,17 +778,29 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     ];
   }
 
-  List<Polygon> _offlineRegionPolygons(List<OfflineBcRegion> regions) {
+  List<Polygon> _offlineRegionPolygons(
+    List<OfflineBcRegion> regions,
+    double zoom,
+  ) {
+    final (targetPoints, minimumSpan) = switch (zoom) {
+      < 6.2 => (160, 0.12),
+      < 7.2 => (400, 0.04),
+      < 8.2 => (900, 0.012),
+      _ => (2000, 0.003),
+    };
     return [
       for (final region in regions)
         for (final boundary in region.polygons)
-          Polygon(
-            points: boundary,
-            color: Color(region.colorValue).withValues(alpha: 0.18),
-            borderColor: Color(region.colorValue).withValues(alpha: 0.92),
-            borderStrokeWidth: 2,
-            isFilled: true,
-          ),
+          if (regionBoundaryLod
+              .putIfAbsent(boundary, () => _RegionBoundaryLod(boundary))
+              .isVisibleAt(minimumSpan))
+            Polygon(
+              points: regionBoundaryLod[boundary]!.pointsFor(targetPoints),
+              color: Color(region.colorValue).withValues(alpha: 0.18),
+              borderColor: Color(region.colorValue).withValues(alpha: 0.92),
+              borderStrokeWidth: 2,
+              isFilled: true,
+            ),
     ];
   }
 
@@ -2387,8 +2443,8 @@ class _MapLayerSwitcher extends StatelessWidget {
         : selected;
 
     return Positioned(
-      left: 12,
-      top: 12,
+      right: 12,
+      bottom: selected == _MapTileStyle.terrain3d ? 12 : 96,
       child: SafeArea(
         child: Material(
           color: Theme.of(context).colorScheme.surface,
@@ -2681,7 +2737,7 @@ class _HeadingControl extends StatelessWidget {
   Widget build(BuildContext context) {
     return Positioned(
       right: 12,
-      bottom: 146,
+      bottom: 12,
       child: SafeArea(
         child: Material(
           color: Theme.of(context).colorScheme.surface,
@@ -2940,7 +2996,7 @@ class _PathEditorTools extends StatelessWidget {
 
     return Positioned(
       right: 12,
-      bottom: 82,
+      bottom: 170,
       child: SafeArea(
         child: Material(
           color: Theme.of(context).colorScheme.surface,
