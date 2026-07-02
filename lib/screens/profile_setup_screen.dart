@@ -11,7 +11,9 @@ import '../state/profile_state.dart';
 import '../utils/picked_upload_image.dart';
 
 class ProfileSetupScreen extends ConsumerStatefulWidget {
-  const ProfileSetupScreen({super.key});
+  const ProfileSetupScreen({super.key, this.settingsPage = false});
+
+  final bool settingsPage;
 
   @override
   ConsumerState<ProfileSetupScreen> createState() => _ProfileSetupScreenState();
@@ -65,7 +67,16 @@ class _ProfileSetupScreenState extends ConsumerState<ProfileSetupScreen> {
     });
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Profile setup')),
+      appBar: AppBar(
+        title: Text(widget.settingsPage ? 'Edit profile' : 'Profile setup'),
+        leading: widget.settingsPage
+            ? IconButton(
+                tooltip: 'Back to settings',
+                onPressed: () => context.go('/settings'),
+                icon: const Icon(Icons.arrow_back),
+              )
+            : null,
+      ),
       body: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 640),
@@ -73,7 +84,7 @@ class _ProfileSetupScreenState extends ConsumerState<ProfileSetupScreen> {
             padding: const EdgeInsets.all(16),
             children: [
               Text(
-                'Set up your profile',
+                widget.settingsPage ? 'Your profile' : 'Set up your profile',
                 style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                   fontWeight: FontWeight.w900,
                 ),
@@ -192,7 +203,7 @@ class _ProfileSetupScreenState extends ConsumerState<ProfileSetupScreen> {
       );
       ref.invalidate(currentProfileProvider);
       if (!mounted) return;
-      context.go('/profile');
+      context.go(widget.settingsPage ? '/settings' : '/profile');
     } on PostgrestException catch (error) {
       if (!mounted) return;
       final message = error.code == '23505'

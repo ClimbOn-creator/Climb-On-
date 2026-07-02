@@ -18,7 +18,6 @@ import '../state/ski_log_state.dart';
 import '../state/ski_route_state.dart';
 import '../state/social_state.dart';
 import '../theme/climb_on_theme.dart';
-import '../widgets/native_ad_card.dart';
 import '../widgets/side_banner_layout.dart';
 
 class ProfileScreen extends ConsumerStatefulWidget {
@@ -134,7 +133,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                           areaCount: climbedAreas.length,
                         ),
                         const SizedBox(height: 16),
-                        NativeAdCard(mode: mode, compact: !desktop),
                         if (desktop)
                           Row(
                             crossAxisAlignment: CrossAxisAlignment.start,
@@ -694,15 +692,6 @@ class _AccountCard extends ConsumerWidget {
                   spacing: 8,
                   runSpacing: 8,
                   children: [
-                    OutlinedButton.icon(
-                      onPressed: () => context.go('/profile/setup'),
-                      icon: Icon(
-                        profileComplete ? Icons.edit : Icons.person_add,
-                      ),
-                      label: Text(
-                        profileComplete ? 'Edit profile' : 'Finish profile',
-                      ),
-                    ),
                     TextButton.icon(
                       onPressed: () async {
                         try {
@@ -826,30 +815,15 @@ class _ProfileHeader extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 14),
-            Stack(
-              clipBehavior: Clip.none,
-              children: [
-                CircleAvatar(
-                  radius: 44,
-                  backgroundColor: PacificTerrainColors.seaGlass,
-                  backgroundImage: avatarUrl == null || avatarUrl.isEmpty
-                      ? null
-                      : NetworkImage(avatarUrl),
-                  child: avatarUrl == null || avatarUrl.isEmpty
-                      ? const Icon(Icons.person, size: 42)
-                      : null,
-                ),
-                if (user != null)
-                  Positioned(
-                    right: -6,
-                    bottom: -6,
-                    child: IconButton.filled(
-                      tooltip: 'Edit profile picture',
-                      onPressed: () => context.go('/profile/setup'),
-                      icon: const Icon(Icons.photo_camera_outlined),
-                    ),
-                  ),
-              ],
+            CircleAvatar(
+              radius: 44,
+              backgroundColor: PacificTerrainColors.seaGlass,
+              backgroundImage: avatarUrl == null || avatarUrl.isEmpty
+                  ? null
+                  : NetworkImage(avatarUrl),
+              child: avatarUrl == null || avatarUrl.isEmpty
+                  ? const Icon(Icons.person, size: 42)
+                  : null,
             ),
             const SizedBox(height: 12),
             Text(
@@ -881,17 +855,6 @@ class _ProfileHeader extends StatelessWidget {
                 ],
               ),
             ),
-            if (user != null) ...[
-              const SizedBox(height: 6),
-              TextButton.icon(
-                style: TextButton.styleFrom(
-                  foregroundColor: Theme.of(context).colorScheme.primary,
-                ),
-                onPressed: () => context.go('/profile/setup'),
-                icon: const Icon(Icons.edit_outlined),
-                label: const Text('Edit username and profile'),
-              ),
-            ],
           ],
         ),
       ),
@@ -1088,29 +1051,14 @@ class _SkiProfileHeader extends StatelessWidget {
                 icon: const Icon(Icons.settings_outlined),
               ),
             ),
-            Stack(
-              clipBehavior: Clip.none,
-              children: [
-                CircleAvatar(
-                  radius: 44,
-                  backgroundImage: avatarUrl == null || avatarUrl.isEmpty
-                      ? null
-                      : NetworkImage(avatarUrl),
-                  child: avatarUrl == null || avatarUrl.isEmpty
-                      ? const Icon(Icons.person, size: 42)
-                      : null,
-                ),
-                if (user != null)
-                  Positioned(
-                    right: -6,
-                    bottom: -6,
-                    child: IconButton.filled(
-                      tooltip: 'Edit profile picture',
-                      onPressed: () => context.go('/profile/setup'),
-                      icon: const Icon(Icons.photo_camera_outlined),
-                    ),
-                  ),
-              ],
+            CircleAvatar(
+              radius: 44,
+              backgroundImage: avatarUrl == null || avatarUrl.isEmpty
+                  ? null
+                  : NetworkImage(avatarUrl),
+              child: avatarUrl == null || avatarUrl.isEmpty
+                  ? const Icon(Icons.person, size: 42)
+                  : null,
             ),
             const SizedBox(height: 12),
             Text(
@@ -1124,14 +1072,6 @@ class _SkiProfileHeader extends StatelessWidget {
               subtitle.isEmpty ? 'Your outdoor logbook' : subtitle,
               textAlign: TextAlign.center,
             ),
-            if (user != null) ...[
-              const SizedBox(height: 6),
-              TextButton.icon(
-                onPressed: () => context.go('/profile/setup'),
-                icon: const Icon(Icons.edit_outlined),
-                label: const Text('Edit username and profile'),
-              ),
-            ],
             const SizedBox(height: 14),
             Wrap(
               spacing: 10,

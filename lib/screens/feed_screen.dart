@@ -14,7 +14,6 @@ import '../state/ski_log_state.dart';
 import '../state/ski_route_state.dart';
 import '../state/social_state.dart';
 import '../theme/climb_on_theme.dart';
-import '../widgets/native_ad_card.dart';
 import '../widgets/route_card.dart';
 import '../widgets/side_banner_layout.dart';
 
@@ -120,7 +119,6 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
                   ),
                   const SizedBox(height: 18),
                 ],
-                NativeAdCard(mode: mode, compact: !desktop),
                 _SkiFeed(
                   query: query,
                   routes: skiResults,
@@ -164,7 +162,6 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
                   ),
                   const SizedBox(height: 18),
                 ],
-                NativeAdCard(mode: mode, compact: !desktop),
                 if (query.trim().isNotEmpty) ...[
                   _SectionHeader(title: 'Search results (${results.length})'),
                   for (final route in results)

@@ -16,7 +16,6 @@ import '../state/climb_log_state.dart';
 import '../state/ski_route_state.dart';
 import '../theme/climb_on_theme.dart';
 import '../models/wall.dart';
-import '../widgets/native_ad_card.dart';
 import '../widgets/side_banner_layout.dart';
 import '../widgets/admin_route_editor.dart';
 
@@ -153,7 +152,6 @@ class _RangeCatalog extends StatelessWidget {
           ),
           child: Column(
             children: [
-              NativeAdCard(mode: ActivityMode.climb, compact: !desktop),
               if (visibleCrags.isEmpty)
                 _EmptyRange(range: selected)
               else
@@ -743,7 +741,6 @@ class _SkiRangeCatalog extends StatelessWidget {
           ),
           child: Column(
             children: [
-              NativeAdCard(mode: ActivityMode.ski, compact: !desktop),
               if (visibleRoutes.isEmpty)
                 _EmptySkiRange(range: selected)
               else

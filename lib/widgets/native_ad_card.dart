@@ -4,14 +4,84 @@ import '../state/activity_mode_state.dart';
 import '../theme/climb_on_theme.dart';
 
 class NativeAdCard extends StatelessWidget {
-  const NativeAdCard({super.key, required this.mode, this.compact = false});
+  const NativeAdCard({
+    super.key,
+    required this.mode,
+    this.compact = false,
+    this.persistent = false,
+  });
 
   final ActivityMode mode;
   final bool compact;
+  final bool persistent;
 
   @override
   Widget build(BuildContext context) {
     final isSki = mode == ActivityMode.ski;
+    if (persistent) {
+      return DecoratedBox(
+        decoration: const BoxDecoration(
+          color: PacificTerrainColors.navySoft,
+          border: Border(top: BorderSide(color: PacificTerrainColors.line)),
+        ),
+        child: SafeArea(
+          top: false,
+          bottom: false,
+          child: SizedBox(
+            height: compact ? 58 : 66,
+            child: Padding(
+              padding: EdgeInsets.symmetric(horizontal: compact ? 14 : 24),
+              child: Row(
+                children: [
+                  Container(
+                    width: 36,
+                    height: 36,
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.primaryContainer,
+                      borderRadius: BorderRadius.circular(9),
+                    ),
+                    child: Icon(
+                      isSki ? Icons.ac_unit : Icons.storefront,
+                      size: 19,
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          isSki
+                              ? 'SPONSORED · WINTER KIT'
+                              : 'SPONSORED · LOCAL GEAR',
+                          maxLines: 1,
+                          style: Theme.of(context).textTheme.labelSmall
+                              ?.copyWith(
+                                color: Theme.of(context).colorScheme.primary,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: 1,
+                              ),
+                        ),
+                        Text(
+                          isSki
+                              ? 'Touring essentials from Canadian shops.'
+                              : 'Climbing gear from Canadian shops.',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    }
     return Card(
       margin: EdgeInsets.only(bottom: compact ? 16 : 24),
       color: PacificTerrainColors.navySoft,

@@ -504,21 +504,6 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                     });
                   },
                 ),
-                Positioned(
-                  left: 12,
-                  top: 12,
-                  child: SafeArea(
-                    child: FilledButton.tonalIcon(
-                      onPressed: () => context.go('/offline'),
-                      icon: const Icon(Icons.download_for_offline_outlined),
-                      label: const Text('Offline'),
-                    ),
-                  ),
-                ),
-                if (userLocationAccuracyMeters != null)
-                  _GpsAccuracyBadge(
-                    accuracyMeters: userLocationAccuracyMeters!,
-                  ),
                 _AdminMapTools(
                   isAdmin:
                       ref.watch(isMapAdminProvider).valueOrNull == true &&
@@ -577,6 +562,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                   ),
                 if (!pathEditMode && tileStyle != _MapTileStyle.terrain3d)
                   _GpsRecorderTools(
+                    top: mode == ActivityMode.climb ? 64 : 94,
                     recording: gpsRecording,
                     elapsed: recordingElapsed,
                     hasDraft: recordedTrack.isNotEmpty,
@@ -593,11 +579,11 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                 if (mode == ActivityMode.climb)
                   _MapFilters(
                     activeFilters: activeFilters,
-                    top: recordedTrack.isNotEmpty ? 168 : 66,
+                    top: 12,
                     onToggle: _toggleFilter,
                   )
                 else
-                  _SkiMapLegend(top: recordedTrack.isNotEmpty ? 168 : 66),
+                  const _SkiMapLegend(top: 12),
                 if (catalog.isLoading)
                   const Positioned(
                     left: 0,
@@ -2680,47 +2666,6 @@ class _AdminMapTools extends StatelessWidget {
   }
 }
 
-class _GpsAccuracyBadge extends StatelessWidget {
-  const _GpsAccuracyBadge({required this.accuracyMeters});
-
-  final double accuracyMeters;
-
-  @override
-  Widget build(BuildContext context) {
-    return Positioned(
-      left: 12,
-      bottom: 72,
-      child: SafeArea(
-        child: Material(
-          color: Theme.of(context).colorScheme.surface,
-          elevation: 3,
-          borderRadius: BorderRadius.circular(8),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  Icons.gps_fixed,
-                  size: 18,
-                  color: Theme.of(context).colorScheme.primary,
-                ),
-                const SizedBox(width: 7),
-                Text(
-                  'GPS ±${accuracyMeters.toStringAsFixed(accuracyMeters < 10 ? 1 : 0)} m',
-                  style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 class _HeadingControl extends StatelessWidget {
   const _HeadingControl({
     required this.headingDegrees,
@@ -2815,6 +2760,7 @@ class _HeadingControl extends StatelessWidget {
 
 class _GpsRecorderTools extends StatelessWidget {
   const _GpsRecorderTools({
+    required this.top,
     required this.recording,
     required this.elapsed,
     required this.hasDraft,
@@ -2829,6 +2775,7 @@ class _GpsRecorderTools extends StatelessWidget {
     required this.onDiscard,
   });
 
+  final double top;
   final bool recording;
   final Duration elapsed;
   final bool hasDraft;
@@ -2849,7 +2796,7 @@ class _GpsRecorderTools extends StatelessWidget {
         : '${lengthMeters.round()} m';
     return Positioned(
       right: 12,
-      top: 12,
+      top: top,
       child: SafeArea(
         child: Material(
           elevation: 5,

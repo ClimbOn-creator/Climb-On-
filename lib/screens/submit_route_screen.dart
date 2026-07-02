@@ -13,7 +13,6 @@ import '../theme/climb_on_theme.dart';
 import '../utils/number_parser.dart';
 import '../utils/picked_upload_image.dart';
 import '../utils/vancouver_island.dart';
-import '../widgets/native_ad_card.dart';
 import '../widgets/side_banner_layout.dart';
 
 class SubmitRouteScreen extends ConsumerStatefulWidget {
@@ -160,7 +159,6 @@ class _SubmitRouteScreenState extends ConsumerState<SubmitRouteScreen> {
                       ],
                     ),
                   ),
-                  NativeAdCard(mode: mode, compact: !desktop),
                   _SubmissionSection(
                     number: '02',
                     title: 'Pin the location',

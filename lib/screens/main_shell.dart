@@ -8,6 +8,7 @@ import '../state/activity_mode_state.dart';
 import '../state/app_settings_state.dart';
 import '../theme/climb_on_theme.dart';
 import '../widgets/climb_on_brand.dart';
+import '../widgets/native_ad_card.dart';
 
 class MainShell extends ConsumerWidget {
   const MainShell({super.key, required this.child});
@@ -42,6 +43,7 @@ class MainShell extends ConsumerWidget {
                     ],
                   ),
           ),
+          NativeAdCard(mode: mode, compact: compact, persistent: true),
         ],
       ),
       bottomNavigationBar: compact

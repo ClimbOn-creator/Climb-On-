@@ -2,16 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 
 import '../config/offline_map_config.dart';
-import '../models/app_visuals.dart';
-import '../services/database_service.dart';
 import '../state/admin_state.dart';
 import '../state/activity_mode_state.dart';
 import '../state/app_settings_state.dart';
-import '../state/app_visuals_state.dart';
-import '../utils/picked_upload_image.dart';
 import '../widgets/side_banner_layout.dart';
 
 class SettingsScreen extends ConsumerWidget {
@@ -23,6 +18,7 @@ class SettingsScreen extends ConsumerWidget {
     final mode = ref.watch(activityModeProvider);
     final desktop = MediaQuery.sizeOf(context).width >= 900;
     final isAdmin = ref.watch(isMapAdminProvider).valueOrNull == true;
+    final isCreator = ref.watch(isOwnerAccountProvider) || isAdmin;
 
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -66,6 +62,22 @@ class SettingsScreen extends ConsumerWidget {
               ],
             ),
             const SizedBox(height: 22),
+            _SettingsCard(
+              title: 'Profile',
+              icon: Icons.person_outline,
+              child: ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const CircleAvatar(
+                  child: Icon(Icons.manage_accounts_outlined),
+                ),
+                title: const Text('Edit profile'),
+                subtitle: const Text(
+                  'Change your username, profile information, privacy, and profile picture.',
+                ),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => context.go('/settings/profile'),
+              ),
+            ),
             _SettingsCard(
               title: 'Activity',
               icon: Icons.swap_horiz,
@@ -159,138 +171,25 @@ class SettingsScreen extends ConsumerWidget {
                 ),
               ),
             ),
-            if (isAdmin) const _AppPicturesSettings(),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _AppPicturesSettings extends ConsumerStatefulWidget {
-  const _AppPicturesSettings();
-
-  @override
-  ConsumerState<_AppPicturesSettings> createState() =>
-      _AppPicturesSettingsState();
-}
-
-class _AppPicturesSettingsState extends ConsumerState<_AppPicturesSettings> {
-  String? uploadingKey;
-
-  @override
-  Widget build(BuildContext context) {
-    final visuals =
-        ref.watch(appVisualsProvider).valueOrNull ?? AppVisuals.defaults;
-    return _SettingsCard(
-      title: 'App pictures',
-      icon: Icons.photo_library_outlined,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'These pictures appear throughout the catalogue and app background. Only creator accounts can replace them.',
-            style: Theme.of(context).textTheme.bodyMedium,
-          ),
-          const SizedBox(height: 14),
-          for (final definition in AppVisuals.definitions) ...[
-            _AppPictureRow(
-              definition: definition,
-              imageUrl: visuals.url(definition.key),
-              uploading: uploadingKey == definition.key,
-              onReplace: uploadingKey == null
-                  ? () => _replacePicture(definition)
-                  : null,
-            ),
-            if (definition != AppVisuals.definitions.last) const Divider(),
-          ],
-        ],
-      ),
-    );
-  }
-
-  Future<void> _replacePicture(AppVisualDefinition definition) async {
-    final image = await pickUploadImage();
-    if (image == null || !mounted) return;
-    setState(() => uploadingKey = definition.key);
-    try {
-      await const DatabaseService().adminReplaceAppVisual(
-        visualKey: definition.key,
-        imageBytes: image.bytes,
-        imageName: image.fileName,
-        imageContentType: image.contentType,
-      );
-      ref.invalidate(appVisualsProvider);
-      if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('${definition.label} updated.')));
-    } catch (error) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Could not update picture: $error')),
-      );
-    } finally {
-      if (mounted) setState(() => uploadingKey = null);
-    }
-  }
-}
-
-class _AppPictureRow extends StatelessWidget {
-  const _AppPictureRow({
-    required this.definition,
-    required this.imageUrl,
-    required this.uploading,
-    required this.onReplace,
-  });
-
-  final AppVisualDefinition definition;
-  final String imageUrl;
-  final bool uploading;
-  final VoidCallback? onReplace;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 10),
-      child: Row(
-        children: [
-          ClipRRect(
-            borderRadius: BorderRadius.circular(10),
-            child: CachedNetworkImage(
-              imageUrl: imageUrl,
-              width: 92,
-              height: 68,
-              fit: BoxFit.cover,
-              errorWidget: (_, _, _) => const SizedBox(
-                width: 92,
-                height: 68,
-                child: ColoredBox(
-                  color: Color(0xFFE1E8E5),
-                  child: Icon(Icons.broken_image_outlined),
+            if (isCreator)
+              _SettingsCard(
+                title: 'Creator tools',
+                icon: Icons.admin_panel_settings_outlined,
+                child: ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const CircleAvatar(
+                    child: Icon(Icons.photo_library_outlined),
+                  ),
+                  title: const Text('Manage app pictures'),
+                  subtitle: const Text(
+                    'Change mountain-range pictures, backgrounds, and default catalogue artwork.',
+                  ),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => context.go('/settings/pictures'),
                 ),
               ),
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              definition.label,
-              style: Theme.of(context).textTheme.titleSmall,
-            ),
-          ),
-          const SizedBox(width: 8),
-          OutlinedButton.icon(
-            onPressed: onReplace,
-            icon: uploading
-                ? const SizedBox.square(
-                    dimension: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.upload_outlined),
-            label: Text(uploading ? 'Uploading' : 'Replace'),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

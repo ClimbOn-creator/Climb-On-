@@ -8,6 +8,7 @@ import '../screens/offline_downloads_screen.dart';
 import '../screens/profile_screen.dart';
 import '../screens/profile_setup_screen.dart';
 import '../screens/settings_screen.dart';
+import '../screens/app_pictures_screen.dart';
 import '../screens/submit_route_screen.dart';
 
 final appRouter = GoRouter(
@@ -43,6 +44,15 @@ final appRouter = GoRouter(
         GoRoute(
           path: '/settings',
           builder: (context, state) => const SettingsScreen(),
+        ),
+        GoRoute(
+          path: '/settings/profile',
+          builder: (context, state) =>
+              const ProfileSetupScreen(settingsPage: true),
+        ),
+        GoRoute(
+          path: '/settings/pictures',
+          builder: (context, state) => const AppPicturesScreen(),
         ),
       ],
     ),

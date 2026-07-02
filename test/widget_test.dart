@@ -24,7 +24,7 @@ void main() {
     expect(AppVisuals.defaults.url('side_banner_left'), startsWith('https://'));
   });
 
-  testWidgets('Creator sees the app picture manager on a phone', (
+  testWidgets('Creator sees the app picture button in settings', (
     tester,
   ) async {
     SharedPreferences.setMockInitialValues({});
@@ -45,14 +45,10 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    await tester.scrollUntilVisible(
-      find.text('App pictures'),
-      250,
-      scrollable: find.byType(Scrollable),
-    );
+    await tester.scrollUntilVisible(find.text('Manage app pictures'), 250);
 
-    expect(find.text('App pictures'), findsOneWidget);
-    expect(find.text('Left background banner'), findsOneWidget);
+    expect(find.text('Manage app pictures'), findsOneWidget);
+    expect(find.text('Creator tools'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
