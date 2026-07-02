@@ -124,63 +124,73 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                               'Using saved route data while the cloud reconnects.',
                             ),
                           ),
-                        const _ProfileHeader(),
+                        _ProfileHeader(
+                          completedCount: completedRoutes.length,
+                          projectCount: projectRoutes.length,
+                          areaCount: climbedAreas.length,
+                        ),
                         const SizedBox(height: 16),
                         NativeAdCard(mode: mode, compact: !desktop),
-                        _SectionCard(
-                          title: 'Best sends',
-                          child: Column(
+                        if (desktop)
+                          Row(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Wrap(
-                                spacing: 12,
-                                runSpacing: 12,
-                                children: [
-                                  _BestSendTile(
-                                    icon: Icons.landscape_outlined,
-                                    label: 'Best boulder',
-                                    route: hardestBoulder,
-                                  ),
-                                  _BestSendTile(
-                                    icon: Icons.bolt,
-                                    label: 'Best sport climb',
-                                    route: hardestSport,
-                                  ),
-                                ],
+                              Expanded(
+                                child: _BestSendsPanel(
+                                  hardestBoulder: hardestBoulder,
+                                  hardestSport: hardestSport,
+                                  completedCount: completedRoutes.length,
+                                  projectCount: projectRoutes.length,
+                                ),
                               ),
-                              const Divider(height: 28),
-                              Wrap(
-                                spacing: 10,
-                                runSpacing: 10,
-                                children: [
-                                  _StatTile(
-                                    label: 'Completed',
-                                    value: '${completedRoutes.length}',
-                                  ),
-                                  _StatTile(
-                                    label: 'Projects',
-                                    value: '${projectRoutes.length}',
-                                  ),
-                                ],
+                              const SizedBox(width: 16),
+                              Expanded(
+                                child: Column(
+                                  children: [
+                                    _SectionCard(
+                                      title: 'Bouldering grade pyramid',
+                                      child: _GradePyramid(
+                                        grades: boulderPyramid,
+                                        emptyText:
+                                            'Send boulders to build this pyramid.',
+                                      ),
+                                    ),
+                                    _SectionCard(
+                                      title: 'Sport climbing grade pyramid',
+                                      child: _GradePyramid(
+                                        grades: sportPyramid,
+                                        emptyText:
+                                            'Send sport climbs to build this pyramid.',
+                                      ),
+                                    ),
+                                  ],
+                                ),
                               ),
                             ],
+                          )
+                        else ...[
+                          _BestSendsPanel(
+                            hardestBoulder: hardestBoulder,
+                            hardestSport: hardestSport,
+                            completedCount: completedRoutes.length,
+                            projectCount: projectRoutes.length,
                           ),
-                        ),
-                        _SectionCard(
-                          title: 'Bouldering grade pyramid',
-                          child: _GradePyramid(
-                            grades: boulderPyramid,
-                            emptyText: 'Send boulders to build this pyramid.',
+                          _SectionCard(
+                            title: 'Bouldering grade pyramid',
+                            child: _GradePyramid(
+                              grades: boulderPyramid,
+                              emptyText: 'Send boulders to build this pyramid.',
+                            ),
                           ),
-                        ),
-                        _SectionCard(
-                          title: 'Sport climbing grade pyramid',
-                          child: _GradePyramid(
-                            grades: sportPyramid,
-                            emptyText:
-                                'Send sport climbs to build this pyramid.',
+                          _SectionCard(
+                            title: 'Sport climbing grade pyramid',
+                            child: _GradePyramid(
+                              grades: sportPyramid,
+                              emptyText:
+                                  'Send sport climbs to build this pyramid.',
+                            ),
                           ),
-                        ),
+                        ],
                         _SectionCard(
                           title: 'Map of areas climbed',
                           child: climbedAreas.isEmpty
@@ -716,7 +726,15 @@ class _AccountCard extends ConsumerWidget {
 }
 
 class _ProfileHeader extends StatelessWidget {
-  const _ProfileHeader();
+  const _ProfileHeader({
+    required this.completedCount,
+    required this.projectCount,
+    required this.areaCount,
+  });
+
+  final int completedCount;
+  final int projectCount;
+  final int areaCount;
 
   @override
   Widget build(BuildContext context) {
@@ -759,6 +777,15 @@ class _ProfileHeader extends StatelessWidget {
         padding: const EdgeInsets.all(24),
         child: Column(
           children: [
+            Text(
+              'FIELD LOG · 2026',
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                color: PacificTerrainColors.sand,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 1.5,
+              ),
+            ),
+            const SizedBox(height: 14),
             Stack(
               clipBehavior: Clip.none,
               children: [
@@ -797,6 +824,23 @@ class _ProfileHeader extends StatelessWidget {
               textAlign: TextAlign.center,
               style: const TextStyle(color: Colors.white70),
             ),
+            const SizedBox(height: 20),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.07),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: Colors.white12),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceAround,
+                children: [
+                  _ProfileHeroStat(label: 'SENDS', value: '$completedCount'),
+                  _ProfileHeroStat(label: 'PROJECTS', value: '$projectCount'),
+                  _ProfileHeroStat(label: 'AREAS', value: '$areaCount'),
+                ],
+              ),
+            ),
             if (user != null) ...[
               const SizedBox(height: 6),
               TextButton.icon(
@@ -810,6 +854,86 @@ class _ProfileHeader extends StatelessWidget {
             ],
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _ProfileHeroStat extends StatelessWidget {
+  const _ProfileHeroStat({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Text(
+          value,
+          style: Theme.of(
+            context,
+          ).textTheme.headlineSmall?.copyWith(color: Colors.white),
+        ),
+        Text(
+          label,
+          style: Theme.of(context).textTheme.labelSmall?.copyWith(
+            color: Colors.white60,
+            fontSize: 9,
+            letterSpacing: 1.1,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _BestSendsPanel extends StatelessWidget {
+  const _BestSendsPanel({
+    required this.hardestBoulder,
+    required this.hardestSport,
+    required this.completedCount,
+    required this.projectCount,
+  });
+
+  final ClimbRoute? hardestBoulder;
+  final ClimbRoute? hardestSport;
+  final int completedCount;
+  final int projectCount;
+
+  @override
+  Widget build(BuildContext context) {
+    return _SectionCard(
+      title: 'Best sends',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Wrap(
+            spacing: 12,
+            runSpacing: 12,
+            children: [
+              _BestSendTile(
+                icon: Icons.landscape_outlined,
+                label: 'Best boulder',
+                route: hardestBoulder,
+              ),
+              _BestSendTile(
+                icon: Icons.bolt,
+                label: 'Best sport climb',
+                route: hardestSport,
+              ),
+            ],
+          ),
+          const Divider(height: 28),
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: [
+              _StatTile(label: 'Completed', value: '$completedCount'),
+              _StatTile(label: 'Projects', value: '$projectCount'),
+            ],
+          ),
+        ],
       ),
     );
   }

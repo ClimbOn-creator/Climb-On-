@@ -9,9 +9,11 @@ import '../state/catalog_state.dart';
 import '../state/admin_state.dart';
 import '../state/map_path_state.dart';
 import '../state/ski_route_state.dart';
+import '../theme/climb_on_theme.dart';
 import '../utils/number_parser.dart';
 import '../utils/picked_upload_image.dart';
 import '../utils/vancouver_island.dart';
+import '../widgets/native_ad_card.dart';
 import '../widgets/side_banner_layout.dart';
 
 class SubmitRouteScreen extends ConsumerStatefulWidget {
@@ -93,7 +95,7 @@ class _SubmitRouteScreenState extends ConsumerState<SubmitRouteScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final showTitleBar = MediaQuery.sizeOf(context).width >= 1024;
+    final desktop = MediaQuery.sizeOf(context).width >= 900;
     final mode = ref.watch(activityModeProvider);
     final catalogCrags =
         ref.watch(catalogProvider).valueOrNull ?? const <Crag>[];
@@ -102,134 +104,161 @@ class _SubmitRouteScreenState extends ConsumerState<SubmitRouteScreen> {
     final isSki = mode == ActivityMode.ski;
 
     return Scaffold(
-      appBar: showTitleBar
-          ? AppBar(title: Text(isSki ? 'Add ski tour' : 'Add climb'))
-          : null,
+      backgroundColor: Colors.transparent,
       body: SideBannerLayout(
+        maxContentWidth: 1180,
         showCompactBanners: true,
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 760),
-            child: Form(
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final form = Form(
               key: formKey,
               child: ListView(
-                padding: const EdgeInsets.all(16),
+                padding: EdgeInsets.fromLTRB(
+                  desktop ? 32 : 16,
+                  desktop ? 32 : 24,
+                  desktop ? 32 : 16,
+                  44,
+                ),
                 children: [
                   Text(
-                    isSki ? 'Add a ski tour' : 'Add a climb',
-                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                      fontWeight: FontWeight.w900,
+                    isSki ? 'CONTRIBUTE A WINTER LINE' : 'CONTRIBUTE A CLIMB',
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      color: PacificTerrainColors.cedar,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 1.7,
                     ),
                   ),
-                  const SizedBox(height: 12),
-                  _Field(controller: submitterName, label: 'Your name'),
-                  if (isSki) ..._skiFields() else ..._climbFields(catalogCrags),
-                  if (isSki) ...[
-                    _Field(
-                      controller: trailheadLatitude,
-                      label: 'Trailhead latitude',
-                      decimal: true,
+                  const SizedBox(height: 6),
+                  Text(
+                    isSki ? 'Add a ski tour' : 'Add to the field guide',
+                    style: Theme.of(context).textTheme.headlineLarge,
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    isSki
+                        ? 'Share a complete, safety-minded touring objective with the community.'
+                        : 'Document a route with the detail another climber needs to arrive prepared.',
+                    style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      height: 1.5,
                     ),
-                    _Field(
-                      controller: trailheadLongitude,
-                      label: 'Trailhead longitude',
-                      decimal: true,
+                  ),
+                  const SizedBox(height: 26),
+                  _SubmissionSection(
+                    number: '01',
+                    title: isSki ? 'Tour identity' : 'Route identity',
+                    subtitle: isSki
+                        ? 'Name the objective and establish its character.'
+                        : 'Place the route in the correct crag and wall.',
+                    child: Column(
+                      children: [
+                        _Field(controller: submitterName, label: 'Your name'),
+                        if (isSki)
+                          ..._skiFields()
+                        else
+                          ..._climbFields(catalogCrags),
+                      ],
                     ),
-                  ] else ...[
-                    _Field(
-                      controller: latitude,
-                      label: 'GPS latitude',
-                      decimal: true,
+                  ),
+                  NativeAdCard(mode: mode, compact: !desktop),
+                  _SubmissionSection(
+                    number: '02',
+                    title: 'Pin the location',
+                    subtitle:
+                        'Accurate coordinates keep visitors on the right trail and out of sensitive areas.',
+                    child: Column(
+                      children: [
+                        if (isSki) ...[
+                          _Field(
+                            controller: trailheadLatitude,
+                            label: 'Trailhead latitude',
+                            decimal: true,
+                          ),
+                          _Field(
+                            controller: trailheadLongitude,
+                            label: 'Trailhead longitude',
+                            decimal: true,
+                          ),
+                        ] else ...[
+                          _Field(
+                            controller: latitude,
+                            label: 'GPS latitude',
+                            decimal: true,
+                          ),
+                          _Field(
+                            controller: longitude,
+                            label: 'GPS longitude',
+                            decimal: true,
+                          ),
+                        ],
+                      ],
                     ),
-                    _Field(
-                      controller: longitude,
-                      label: 'GPS longitude',
-                      decimal: true,
-                    ),
-                  ],
-                  _RequiredPictureUpload(
-                    photos: photos,
-                    onPressed: submitting ? null : pickPicture,
-                    onRemove: submitting
-                        ? null
-                        : (index) => setState(() => photos.removeAt(index)),
                   ),
-                  _Field(
-                    controller: description,
-                    label: isSki ? 'Tour description' : 'Route description',
-                    lines: 3,
-                  ),
-                  _Field(
-                    controller: approachNotes,
-                    label: 'Approach notes',
-                    lines: 3,
-                  ),
-                  _Field(
-                    controller: descentNotes,
-                    label: 'Descent notes',
-                    lines: 2,
-                  ),
-                  _Field(
-                    controller: dangerInfo,
-                    label: 'Danger/safety notes',
-                    lines: 2,
-                  ),
-                  _Field(controller: gearNotes, label: 'Gear notes', lines: 2),
-                  const SizedBox(height: 12),
-                  if (isAdmin && !isSki)
-                    const Card(
-                      color: Color(0xFFDDEEDC),
-                      child: ListTile(
-                        leading: Icon(Icons.admin_panel_settings),
-                        title: Text('Administrator publishing mode'),
-                        subtitle: Text(
-                          'This route will publish directly to the map and feed.',
+                  _SubmissionSection(
+                    number: '03',
+                    title: 'Photos & field notes',
+                    subtitle:
+                        'A clear image and honest notes make this useful—not merely another pin.',
+                    child: Column(
+                      children: [
+                        _RequiredPictureUpload(
+                          photos: photos,
+                          onPressed: submitting ? null : pickPicture,
+                          onRemove: submitting
+                              ? null
+                              : (index) =>
+                                    setState(() => photos.removeAt(index)),
                         ),
-                      ),
-                    ),
-                  if (isAdmin && isSki)
-                    const Card(
-                      color: Color(0xFFDDEEDC),
-                      child: ListTile(
-                        leading: Icon(Icons.admin_panel_settings),
-                        title: Text('Administrator publishing mode'),
-                        subtitle: Text(
-                          'This ski tour will publish directly to the ski map.',
+                        _Field(
+                          controller: description,
+                          label: isSki
+                              ? 'Tour description'
+                              : 'Route description',
+                          lines: 3,
                         ),
-                      ),
-                    ),
-                  if (isOwnerAccount && !isAdmin && !isSki)
-                    const Card(
-                      color: Color(0xFFFFE0B2),
-                      child: ListTile(
-                        leading: Icon(Icons.warning_amber),
-                        title: Text('Administrator mode is not enabled'),
-                        subtitle: Text(
-                          'Run admin_map_editor_setup.sql and check_and_add_admin_user.sql in Supabase.',
+                        _Field(
+                          controller: approachNotes,
+                          label: 'Approach notes',
+                          lines: 3,
                         ),
-                      ),
+                        _Field(
+                          controller: descentNotes,
+                          label: 'Descent notes',
+                          lines: 2,
+                        ),
+                        _Field(
+                          controller: dangerInfo,
+                          label: 'Danger/safety notes',
+                          lines: 2,
+                        ),
+                        _Field(
+                          controller: gearNotes,
+                          label: 'Gear notes',
+                          lines: 2,
+                        ),
+                      ],
                     ),
-                  FilledButton.icon(
-                    onPressed: submitting ? null : () => submit(isAdmin),
-                    icon: submitting
-                        ? const SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Icon(Icons.cloud_upload),
-                    label: Text(
-                      isAdmin && !isSki
-                          ? 'Publish route to map and feed'
-                          : isAdmin && isSki
-                          ? 'Publish ski tour to map'
-                          : 'Submit for review',
-                    ),
+                  ),
+                  _PublishPanel(
+                    isAdmin: isAdmin,
+                    isOwnerAccount: isOwnerAccount,
+                    isSki: isSki,
+                    submitting: submitting,
+                    onSubmit: () => submit(isAdmin),
                   ),
                 ],
               ),
-            ),
-          ),
+            );
+
+            if (!desktop) return form;
+            return Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                SizedBox(width: 260, child: _SubmissionAside(isSki: isSki)),
+                Expanded(child: form),
+              ],
+            );
+          },
         ),
       ),
     );
@@ -600,6 +629,259 @@ class _SubmitRouteScreenState extends ConsumerState<SubmitRouteScreen> {
         context,
       ).showSnackBar(SnackBar(content: Text('Could not open picture: $error')));
     }
+  }
+}
+
+class _SubmissionAside extends StatelessWidget {
+  const _SubmissionAside({required this.isSki});
+
+  final bool isSki;
+
+  @override
+  Widget build(BuildContext context) {
+    return ColoredBox(
+      color: PacificTerrainColors.navy,
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Icon(
+              Icons.landscape_outlined,
+              color: PacificTerrainColors.seaGlass,
+              size: 34,
+            ),
+            const SizedBox(height: 22),
+            Text(
+              isSki ? 'BUILD A GOOD TOUR' : 'BUILD A GOOD ENTRY',
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                color: PacificTerrainColors.sand,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 1.4,
+              ),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              'Useful beta is precise, current, and honest about uncertainty.',
+              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                color: Colors.white,
+                height: 1.25,
+              ),
+            ),
+            const SizedBox(height: 30),
+            const _GuideStep(number: '01', label: 'Identity & character'),
+            const _GuideStep(number: '02', label: 'Verified location'),
+            const _GuideStep(number: '03', label: 'Photos & field notes'),
+            const _GuideStep(number: '04', label: 'Community review'),
+            const Spacer(),
+            Text(
+              'Access changes. Re-check closures, land ownership, hazards, and parking before publishing.',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: Colors.white60,
+                height: 1.5,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _GuideStep extends StatelessWidget {
+  const _GuideStep({required this.number, required this.label});
+
+  final String number;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 18),
+      child: Row(
+        children: [
+          Container(
+            width: 34,
+            height: 34,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              border: Border.all(color: Colors.white24),
+              shape: BoxShape.circle,
+            ),
+            child: Text(
+              number,
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                color: PacificTerrainColors.seaGlass,
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(label, style: const TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SubmissionSection extends StatelessWidget {
+  const _SubmissionSection({
+    required this.number,
+    required this.title,
+    required this.subtitle,
+    required this.child,
+  });
+
+  final String number;
+  final String title;
+  final String subtitle;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 18),
+      child: Card(
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    width: 42,
+                    height: 42,
+                    alignment: Alignment.center,
+                    decoration: const BoxDecoration(
+                      color: PacificTerrainColors.seaGlass,
+                      shape: BoxShape.circle,
+                    ),
+                    child: Text(
+                      number,
+                      style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                        color: PacificTerrainColors.navy,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          title,
+                          style: Theme.of(context).textTheme.titleLarge,
+                        ),
+                        const SizedBox(height: 3),
+                        Text(
+                          subtitle,
+                          style: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(
+                                color: Theme.of(
+                                  context,
+                                ).colorScheme.onSurfaceVariant,
+                                height: 1.4,
+                              ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 18),
+                child: Divider(height: 1),
+              ),
+              child,
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _PublishPanel extends StatelessWidget {
+  const _PublishPanel({
+    required this.isAdmin,
+    required this.isOwnerAccount,
+    required this.isSki,
+    required this.submitting,
+    required this.onSubmit,
+  });
+
+  final bool isAdmin;
+  final bool isOwnerAccount;
+  final bool isSki;
+  final bool submitting;
+  final VoidCallback onSubmit;
+
+  @override
+  Widget build(BuildContext context) {
+    final actionLabel = isAdmin && !isSki
+        ? 'Publish route to map and feed'
+        : isAdmin && isSki
+        ? 'Publish ski tour to map'
+        : 'Submit for community review';
+    return Container(
+      padding: const EdgeInsets.all(22),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [PacificTerrainColors.navy, PacificTerrainColors.navySoft],
+        ),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            isAdmin ? 'READY TO PUBLISH' : 'READY FOR REVIEW',
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+              color: PacificTerrainColors.sand,
+              letterSpacing: 1.4,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            isAdmin
+                ? 'Your administrator account can publish this directly.'
+                : 'A complete submission will be checked before it appears publicly.',
+            style: Theme.of(
+              context,
+            ).textTheme.bodyMedium?.copyWith(color: Colors.white70),
+          ),
+          if (isOwnerAccount && !isAdmin && !isSki) ...[
+            const SizedBox(height: 10),
+            const Text(
+              'Administrator mode is not enabled for this account.',
+              style: TextStyle(color: PacificTerrainColors.sand),
+            ),
+          ],
+          const SizedBox(height: 18),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              style: FilledButton.styleFrom(
+                backgroundColor: PacificTerrainColors.cedar,
+              ),
+              onPressed: submitting ? null : onSubmit,
+              icon: submitting
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.arrow_outward),
+              label: Text(actionLabel),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 

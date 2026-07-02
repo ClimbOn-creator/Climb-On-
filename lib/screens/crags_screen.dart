@@ -630,77 +630,79 @@ class _MountainRange {
 
   bool matches(Crag crag) {
     final location = '${crag.region} ${crag.province}'.toLowerCase();
-    if (id == 'other') {
-      return !_mountainRanges
-          .where((range) => range.id != 'other')
-          .any((range) => range.keywords.any(location.contains));
-    }
     return keywords.any(location.contains);
   }
 }
 
 const _mountainRanges = <_MountainRange>[
   _MountainRange(
-    id: 'south-island',
-    name: 'South Vancouver Island',
-    description: 'Victoria, Sooke, and the southern island granite and basalt.',
-    imageUrl: 'https://images.unsplash.com/photo-1522163182402-834f871fd851',
-    keywords: ['victoria', 'sooke', 'uvic', 'south vancouver island'],
+    id: 'canadian-rockies',
+    name: 'Canadian Rockies',
+    description: 'Long limestone lines from the southern parks to the north.',
+    imageUrl: 'https://images.unsplash.com/photo-1500534623283-312aade485b7',
+    keywords: ['canadian rockies', 'rockies', 'canmore', 'banff', 'jasper'],
   ),
   _MountainRange(
-    id: 'island-ranges',
-    name: 'Vancouver Island Ranges',
-    description: 'Island alpine, limestone, and west-coast objectives.',
+    id: 'cariboo',
+    name: 'Cariboo Mountains',
+    description: 'The northernmost Columbia Mountains and their deep valleys.',
+    imageUrl: 'https://images.unsplash.com/photo-1464278533981-50106e6176b1',
+    keywords: ['cariboo', 'wells gray', 'valemount'],
+  ),
+  _MountainRange(
+    id: 'selkirk',
+    name: 'Selkirk Mountains',
+    description: 'Steep Columbia Mountain terrain around Rogers Pass.',
     imageUrl: 'https://images.unsplash.com/photo-1464822759023-fed622ff2c3b',
-    keywords: ['vancouver island', 'comox', 'nanaimo', 'strathcona'],
+    keywords: ['selkirk', 'rogers pass', 'glacier national park'],
   ),
   _MountainRange(
-    id: 'coast-mountains',
-    name: 'Coast Mountains',
-    description: 'Squamish granite, Sea to Sky walls, and coastal alpine.',
+    id: 'monashee',
+    name: 'Monashee Mountains',
+    description: 'Granite, alpine ridges, and the western Columbia Mountains.',
+    imageUrl: 'https://images.unsplash.com/photo-1483728642387-6c3bdd6c93e5',
+    keywords: ['monashee', 'revelstoke', 'north okanagan'],
+  ),
+  _MountainRange(
+    id: 'purcell',
+    name: 'Purcell Mountains',
+    description: 'Bugaboo granite and the eastern Columbia Mountains.',
     imageUrl: 'https://images.unsplash.com/photo-1519681393784-d120267933ba',
+    keywords: ['purcell', 'bugaboo', 'kimberley', 'cranbrook'],
+  ),
+  _MountainRange(
+    id: 'hart',
+    name: 'Hart Ranges',
+    description: 'The southern Northern Rockies around the Pine Pass country.',
+    imageUrl: 'https://images.unsplash.com/photo-1470770841072-f978cf4d019e',
+    keywords: ['hart range', 'pine pass', 'tumbler ridge', 'chetwynd'],
+  ),
+  _MountainRange(
+    id: 'muskwa',
+    name: 'Muskwa Ranges',
+    description: 'Remote limestone peaks of the northern Northern Rockies.',
+    imageUrl: 'https://images.unsplash.com/photo-1464278533981-50106e6176b1',
+    keywords: ['muskwa', 'northern rockies', 'muncho', 'fort nelson'],
+  ),
+  _MountainRange(
+    id: 'coast-range',
+    name: 'Coast Range',
+    description: 'West-coast granite, island crags, and Sea to Sky walls.',
+    imageUrl: 'https://images.unsplash.com/photo-1522163182402-834f871fd851',
     keywords: [
+      'coast range',
+      'coast mountain',
       'squamish',
       'whistler',
       'sea to sky',
-      'coast mountain',
       'lower mainland',
+      'vancouver island',
+      'victoria',
+      'sooke',
+      'uvic',
+      'nanaimo',
+      'comox',
     ],
-  ),
-  _MountainRange(
-    id: 'interior',
-    name: 'Interior BC',
-    description: 'Okanagan, Thompson, and interior plateau climbing.',
-    imageUrl: 'https://images.unsplash.com/photo-1483728642387-6c3bdd6c93e5',
-    keywords: ['okanagan', 'kamloops', 'thompson', 'interior', 'kelowna'],
-  ),
-  _MountainRange(
-    id: 'rockies',
-    name: 'Canadian Rockies',
-    description: 'Long limestone lines and high alpine objectives.',
-    imageUrl: 'https://images.unsplash.com/photo-1500534623283-312aade485b7',
-    keywords: [
-      'rockies',
-      'kootenay',
-      'canmore',
-      'banff',
-      'fernie',
-      'revelstoke',
-    ],
-  ),
-  _MountainRange(
-    id: 'north',
-    name: 'Northern BC',
-    description: 'Remote ranges and northern climbing areas.',
-    imageUrl: 'https://images.unsplash.com/photo-1470770841072-f978cf4d019e',
-    keywords: ['northern', 'north coast', 'skeena', 'prince george'],
-  ),
-  _MountainRange(
-    id: 'other',
-    name: 'Other Regions',
-    description: 'Published crags outside the main range groupings.',
-    imageUrl: 'https://images.unsplash.com/photo-1464278533981-50106e6176b1',
-    keywords: [],
   ),
 ];
 

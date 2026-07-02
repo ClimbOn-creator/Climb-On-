@@ -1,0 +1,13 @@
+name = "climb-on-open-maps"
+main = "src/index.ts"
+compatibility_date = "2025-06-20"
+
+[[r2_buckets]]
+binding = "BUCKET"
+bucket_name = "climb-on-maps"
+
+[vars]
+ALLOWED_ORIGINS = "*"
+CACHE_CONTROL = "public, max-age=86400"
+# Change this when rebuilding the satellite mosaic from another data year.
+SENTINEL_DATA_YEAR = "2026"

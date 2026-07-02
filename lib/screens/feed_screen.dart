@@ -102,10 +102,23 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
                 ),
               ),
               const SizedBox(height: 16),
-              NativeAdCard(mode: mode, compact: !desktop),
               if (mode == ActivityMode.ski) ...[
                 if (skiCatalog.isLoading)
                   const LinearProgressIndicator(minHeight: 3),
+                if (query.trim().isEmpty && skiRoutes.isNotEmpty) ...[
+                  _FeaturedStory(
+                    imageUrl: skiRoutes.first.imageUrl,
+                    eyebrow: 'FEATURED TOUR',
+                    title: skiRoutes.first.name,
+                    subtitle:
+                        '${skiRoutes.first.area}, ${skiRoutes.first.region}',
+                    meta:
+                        '${skiRoutes.first.distanceKm} km · ${skiRoutes.first.elevationGainMeters} m gain · ${skiRoutes.first.difficulty}',
+                    onTap: () => _openSkiDetails(context, skiRoutes.first),
+                  ),
+                  const SizedBox(height: 18),
+                ],
+                NativeAdCard(mode: mode, compact: !desktop),
                 _SkiFeed(
                   query: query,
                   routes: skiResults,
@@ -121,6 +134,19 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
                       'Using saved route data while the cloud reconnects.',
                     ),
                   ),
+                if (query.trim().isEmpty && allRoutes.isNotEmpty) ...[
+                  _FeaturedStory(
+                    imageUrl: allRoutes.first.imageUrl,
+                    eyebrow: 'ROUTE OF THE WEEK',
+                    title: allRoutes.first.name,
+                    subtitle: 'A community favourite from the field guide',
+                    meta:
+                        '${allRoutes.first.grade} · ${allRoutes.first.typeLabel} · ${allRoutes.first.rating}/5',
+                    onTap: () => _openRouteDetails(context, allRoutes.first),
+                  ),
+                  const SizedBox(height: 18),
+                ],
+                NativeAdCard(mode: mode, compact: !desktop),
                 if (focusedRoute != null) ...[
                   _SectionHeader(
                     title: 'Selected route',
@@ -316,6 +342,120 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
             const SizedBox(height: 12),
             _SkiTourCard(route: route),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _FeaturedStory extends StatelessWidget {
+  const _FeaturedStory({
+    required this.imageUrl,
+    required this.eyebrow,
+    required this.title,
+    required this.subtitle,
+    required this.meta,
+    required this.onTap,
+  });
+
+  final String imageUrl;
+  final String eyebrow;
+  final String title;
+  final String subtitle;
+  final String meta;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: SizedBox(
+          height: MediaQuery.sizeOf(context).width >= 700 ? 330 : 280,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              CachedNetworkImage(
+                imageUrl: imageUrl,
+                fit: BoxFit.cover,
+                errorWidget: (_, _, _) => const ColoredBox(
+                  color: PacificTerrainColors.navySoft,
+                  child: Icon(
+                    Icons.landscape_outlined,
+                    size: 52,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+              const DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [Color(0x08112D3B), Color(0xE8112D3B)],
+                    stops: [0.25, 1],
+                  ),
+                ),
+              ),
+              Positioned(
+                left: 20,
+                right: 20,
+                bottom: 18,
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            eyebrow,
+                            style: Theme.of(context).textTheme.labelSmall
+                                ?.copyWith(
+                                  color: PacificTerrainColors.sand,
+                                  fontWeight: FontWeight.w800,
+                                  letterSpacing: 1.5,
+                                ),
+                          ),
+                          const SizedBox(height: 5),
+                          Text(
+                            title,
+                            style: Theme.of(context).textTheme.headlineMedium
+                                ?.copyWith(color: Colors.white),
+                          ),
+                          const SizedBox(height: 3),
+                          Text(
+                            subtitle,
+                            style: Theme.of(context).textTheme.bodyMedium
+                                ?.copyWith(color: Colors.white70),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            meta,
+                            style: Theme.of(context).textTheme.labelMedium
+                                ?.copyWith(color: Colors.white),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Container(
+                      width: 44,
+                      height: 44,
+                      decoration: const BoxDecoration(
+                        color: PacificTerrainColors.cloud,
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(
+                        Icons.arrow_outward,
+                        color: PacificTerrainColors.navy,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

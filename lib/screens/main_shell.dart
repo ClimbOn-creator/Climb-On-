@@ -312,30 +312,50 @@ class _ContourPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint()
-      ..color = PacificTerrainColors.navy.withValues(alpha: 0.035)
+      ..color = PacificTerrainColors.navy.withValues(alpha: 0.042)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1;
-    final center = Offset(size.width * 0.88, size.height * 0.16);
-    for (var ring = 0; ring < 11; ring++) {
-      final baseRadius = 56.0 + ring * 31;
-      final path = Path();
-      for (var step = 0; step <= 80; step++) {
-        final angle = step / 80 * math.pi * 2;
-        final ripple = math.sin(angle * 3 + ring * 0.7) * (5 + ring * 0.8);
-        final radius = baseRadius + ripple;
-        final point = Offset(
-          center.dx + math.cos(angle) * radius * 1.35,
-          center.dy + math.sin(angle) * radius * 0.72,
-        );
-        if (step == 0) {
-          path.moveTo(point.dx, point.dy);
-        } else {
-          path.lineTo(point.dx, point.dy);
+
+    void drawCluster({
+      required Offset center,
+      required double scale,
+      required double phase,
+    }) {
+      for (var ring = 0; ring < 12; ring++) {
+        final baseRadius = (48.0 + ring * 29) * scale;
+        final path = Path();
+        for (var step = 0; step <= 88; step++) {
+          final angle = step / 88 * math.pi * 2;
+          final ripple =
+              math.sin(angle * 3 + ring * 0.7 + phase) *
+              (5 + ring * 0.75) *
+              scale;
+          final radius = baseRadius + ripple;
+          final point = Offset(
+            center.dx + math.cos(angle) * radius * 1.35,
+            center.dy + math.sin(angle) * radius * 0.72,
+          );
+          if (step == 0) {
+            path.moveTo(point.dx, point.dy);
+          } else {
+            path.lineTo(point.dx, point.dy);
+          }
         }
+        path.close();
+        canvas.drawPath(path, paint);
       }
-      path.close();
-      canvas.drawPath(path, paint);
     }
+
+    drawCluster(
+      center: Offset(size.width * 0.86, size.height * 0.12),
+      scale: 1,
+      phase: 0,
+    );
+    drawCluster(
+      center: Offset(size.width * 0.08, size.height * 0.82),
+      scale: 0.72,
+      phase: 1.6,
+    );
   }
 
   @override
