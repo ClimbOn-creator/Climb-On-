@@ -14,7 +14,7 @@ class NativeAdCard extends StatelessWidget {
     final isSki = mode == ActivityMode.ski;
     return Card(
       margin: EdgeInsets.only(bottom: compact ? 16 : 24),
-      color: PacificTerrainColors.sand.withValues(alpha: 0.52),
+      color: PacificTerrainColors.navySoft,
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Row(
@@ -23,12 +23,12 @@ class NativeAdCard extends StatelessWidget {
               width: 58,
               height: 58,
               decoration: BoxDecoration(
-                color: PacificTerrainColors.navy,
+                color: Theme.of(context).colorScheme.primaryContainer,
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Icon(
                 isSki ? Icons.ac_unit : Icons.storefront,
-                color: PacificTerrainColors.cloud,
+                color: Theme.of(context).colorScheme.primary,
               ),
             ),
             const SizedBox(width: 12),
@@ -39,7 +39,7 @@ class NativeAdCard extends StatelessWidget {
                   Text(
                     isSki ? 'SPONSORED · WINTER KIT' : 'SPONSORED · LOCAL GEAR',
                     style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                      color: PacificTerrainColors.cedar,
+                      color: Theme.of(context).colorScheme.primary,
                       fontWeight: FontWeight.w800,
                       fontSize: 10,
                       letterSpacing: 1.1,

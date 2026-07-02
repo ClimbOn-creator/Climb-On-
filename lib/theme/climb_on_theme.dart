@@ -2,15 +2,16 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 abstract final class PacificTerrainColors {
-  static const navy = Color(0xFF112D3B);
-  static const navySoft = Color(0xFF1D4655);
-  static const seaGlass = Color(0xFFD7E8E3);
-  static const cedar = Color(0xFFB85C3E);
-  static const sand = Color(0xFFE9DDC7);
-  static const cloud = Color(0xFFFAFAF7);
-  static const ink = Color(0xFF172427);
-  static const mist = Color(0xFFEFF3F0);
-  static const line = Color(0xFFD9E0DC);
+  static const navy = Color(0xFF070A0B);
+  static const navySoft = Color(0xFF14191B);
+  static const seaGlass = Color(0xFF1B2926);
+  static const cedar = Color(0xFFB7FF3C);
+  static const skiBlue = Color(0xFF24C8FF);
+  static const sand = Color(0xFFDDE6E2);
+  static const cloud = Color(0xFF090C0D);
+  static const ink = Color(0xFFF4F7F5);
+  static const mist = Color(0xFF151B1D);
+  static const line = Color(0xFF2A3335);
 }
 
 class ClimbOnTheme {
@@ -19,11 +20,17 @@ class ClimbOnTheme {
   static ThemeData ski() => _build(ski: true);
 
   static ThemeData _build({required bool ski}) {
-    final primary = ski ? const Color(0xFF17495C) : PacificTerrainColors.navy;
-    final bodyTheme = GoogleFonts.manropeTextTheme().apply(
-      bodyColor: PacificTerrainColors.ink,
-      displayColor: PacificTerrainColors.ink,
-    );
+    final accent = ski
+        ? PacificTerrainColors.skiBlue
+        : PacificTerrainColors.cedar;
+    final accentWash = ski
+        ? const Color(0xFF102C35)
+        : PacificTerrainColors.seaGlass;
+    final bodyTheme = GoogleFonts.manropeTextTheme(ThemeData.dark().textTheme)
+        .apply(
+          bodyColor: PacificTerrainColors.ink,
+          displayColor: PacificTerrainColors.ink,
+        );
     final serifTheme = GoogleFonts.sourceSerif4TextTheme(bodyTheme).apply(
       bodyColor: PacificTerrainColors.ink,
       displayColor: PacificTerrainColors.ink,
@@ -60,39 +67,40 @@ class ClimbOnTheme {
     );
 
     final scheme = ColorScheme(
-      brightness: Brightness.light,
-      primary: primary,
-      onPrimary: PacificTerrainColors.cloud,
-      primaryContainer: PacificTerrainColors.seaGlass,
-      onPrimaryContainer: PacificTerrainColors.navy,
-      secondary: PacificTerrainColors.cedar,
-      onSecondary: Colors.white,
-      secondaryContainer: PacificTerrainColors.sand,
+      brightness: Brightness.dark,
+      primary: accent,
+      onPrimary: PacificTerrainColors.navy,
+      primaryContainer: accentWash,
+      onPrimaryContainer: accent,
+      secondary: accent,
+      onSecondary: PacificTerrainColors.navy,
+      secondaryContainer: accentWash,
       onSecondaryContainer: PacificTerrainColors.ink,
-      tertiary: const Color(0xFF527A71),
-      onTertiary: Colors.white,
-      tertiaryContainer: const Color(0xFFDCEAE5),
-      onTertiaryContainer: PacificTerrainColors.navy,
-      error: const Color(0xFFA94635),
-      onError: Colors.white,
-      errorContainer: const Color(0xFFF4DED7),
-      onErrorContainer: const Color(0xFF561E16),
+      tertiary: ski ? PacificTerrainColors.cedar : PacificTerrainColors.skiBlue,
+      onTertiary: PacificTerrainColors.navy,
+      tertiaryContainer: const Color(0xFF182427),
+      onTertiaryContainer: PacificTerrainColors.ink,
+      error: const Color(0xFFFF705C),
+      onError: PacificTerrainColors.navy,
+      errorContainer: const Color(0xFF401D18),
+      onErrorContainer: const Color(0xFFFFDAD2),
       surface: PacificTerrainColors.cloud,
       onSurface: PacificTerrainColors.ink,
       surfaceContainerHighest: PacificTerrainColors.mist,
-      onSurfaceVariant: const Color(0xFF56625F),
+      onSurfaceVariant: const Color(0xFFAAB5B1),
       outline: PacificTerrainColors.line,
-      outlineVariant: const Color(0xFFE6EAE7),
-      shadow: PacificTerrainColors.navy,
-      scrim: PacificTerrainColors.navy,
-      inverseSurface: PacificTerrainColors.navy,
-      onInverseSurface: PacificTerrainColors.cloud,
-      inversePrimary: PacificTerrainColors.seaGlass,
+      outlineVariant: const Color(0xFF202729),
+      shadow: Colors.black,
+      scrim: Colors.black,
+      inverseSurface: PacificTerrainColors.ink,
+      onInverseSurface: PacificTerrainColors.navy,
+      inversePrimary: accent,
     );
 
     const radius = BorderRadius.all(Radius.circular(14));
     return ThemeData(
       useMaterial3: true,
+      brightness: Brightness.dark,
       scaffoldBackgroundColor: PacificTerrainColors.cloud,
       colorScheme: scheme,
       textTheme: textTheme,
@@ -102,18 +110,16 @@ class ClimbOnTheme {
         scrolledUnderElevation: 0,
         centerTitle: false,
         backgroundColor: PacificTerrainColors.cloud,
-        foregroundColor: PacificTerrainColors.navy,
+        foregroundColor: PacificTerrainColors.ink,
         surfaceTintColor: Colors.transparent,
-        titleTextStyle: textTheme.headlineSmall?.copyWith(
-          color: PacificTerrainColors.navy,
-        ),
+        titleTextStyle: textTheme.headlineSmall,
       ),
       cardTheme: const CardThemeData(
-        color: Colors.white,
+        color: PacificTerrainColors.navySoft,
         elevation: 0,
         margin: EdgeInsets.zero,
         surfaceTintColor: Colors.transparent,
-        shadowColor: Color(0x19112D3B),
+        shadowColor: Colors.black,
         shape: RoundedRectangleBorder(
           borderRadius: radius,
           side: BorderSide(color: PacificTerrainColors.line),
@@ -121,35 +127,33 @@ class ClimbOnTheme {
       ),
       chipTheme: ChipThemeData(
         backgroundColor: PacificTerrainColors.mist,
-        selectedColor: PacificTerrainColors.seaGlass,
+        selectedColor: accentWash,
         side: const BorderSide(color: PacificTerrainColors.line),
         padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
-        labelStyle: textTheme.labelMedium?.copyWith(
-          color: PacificTerrainColors.navy,
-        ),
+        labelStyle: textTheme.labelMedium,
         shape: const RoundedRectangleBorder(borderRadius: radius),
       ),
       navigationBarTheme: NavigationBarThemeData(
         height: 70,
         elevation: 0,
-        backgroundColor: PacificTerrainColors.cloud,
+        backgroundColor: PacificTerrainColors.navy,
         surfaceTintColor: Colors.transparent,
-        indicatorColor: PacificTerrainColors.seaGlass,
+        indicatorColor: accentWash,
         labelTextStyle: WidgetStatePropertyAll(
-          textTheme.labelSmall?.copyWith(
-            color: PacificTerrainColors.navy,
-            fontWeight: FontWeight.w700,
-          ),
+          textTheme.labelSmall?.copyWith(fontWeight: FontWeight.w700),
         ),
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: Colors.white,
+        fillColor: PacificTerrainColors.navySoft,
         contentPadding: const EdgeInsets.symmetric(
           horizontal: 16,
           vertical: 14,
         ),
         hintStyle: textTheme.bodyMedium?.copyWith(
+          color: scheme.onSurfaceVariant,
+        ),
+        labelStyle: textTheme.bodyMedium?.copyWith(
           color: scheme.onSurfaceVariant,
         ),
         border: const OutlineInputBorder(
@@ -160,15 +164,15 @@ class ClimbOnTheme {
           borderRadius: radius,
           borderSide: BorderSide(color: PacificTerrainColors.line),
         ),
-        focusedBorder: const OutlineInputBorder(
+        focusedBorder: OutlineInputBorder(
           borderRadius: radius,
-          borderSide: BorderSide(color: PacificTerrainColors.navy, width: 1.5),
+          borderSide: BorderSide(color: accent, width: 1.5),
         ),
       ),
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
-          backgroundColor: primary,
-          foregroundColor: PacificTerrainColors.cloud,
+          backgroundColor: accent,
+          foregroundColor: PacificTerrainColors.navy,
           padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
           textStyle: textTheme.labelLarge,
           shape: const RoundedRectangleBorder(borderRadius: radius),
@@ -176,14 +180,14 @@ class ClimbOnTheme {
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
-          foregroundColor: PacificTerrainColors.navy,
+          foregroundColor: PacificTerrainColors.ink,
           side: const BorderSide(color: PacificTerrainColors.line),
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
           shape: const RoundedRectangleBorder(borderRadius: radius),
         ),
       ),
       textButtonTheme: TextButtonThemeData(
-        style: TextButton.styleFrom(foregroundColor: PacificTerrainColors.navy),
+        style: TextButton.styleFrom(foregroundColor: accent),
       ),
       segmentedButtonTheme: SegmentedButtonThemeData(
         style: ButtonStyle(
@@ -193,13 +197,13 @@ class ClimbOnTheme {
           ),
           backgroundColor: WidgetStateProperty.resolveWith((states) {
             return states.contains(WidgetState.selected)
-                ? PacificTerrainColors.navy
-                : PacificTerrainColors.cloud;
+                ? accent
+                : PacificTerrainColors.navySoft;
           }),
           foregroundColor: WidgetStateProperty.resolveWith((states) {
             return states.contains(WidgetState.selected)
-                ? PacificTerrainColors.cloud
-                : PacificTerrainColors.navy;
+                ? PacificTerrainColors.navy
+                : PacificTerrainColors.ink;
           }),
           side: const WidgetStatePropertyAll(
             BorderSide(color: PacificTerrainColors.line),
@@ -211,7 +215,7 @@ class ClimbOnTheme {
       ),
       iconButtonTheme: IconButtonThemeData(
         style: IconButton.styleFrom(
-          foregroundColor: PacificTerrainColors.navy,
+          foregroundColor: accent,
           shape: const RoundedRectangleBorder(borderRadius: radius),
         ),
       ),

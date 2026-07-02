@@ -83,11 +83,15 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   final projectRoutes = _projectRoutes(climbLog, allRoutes);
                   final hardestBoulder = _hardestBoulderSend(completedRoutes);
                   final hardestSport = _hardestSportSend(completedRoutes);
-                  final boulderPyramid = _gradePyramid(
-                    completedRoutes.where(_isBoulder).toList(),
+                  final boulderProgression = _gradeProgression(
+                    climbLog.sends,
+                    allRoutes,
+                    boulder: true,
                   );
-                  final sportPyramid = _gradePyramid(
-                    completedRoutes.where(_isSport).toList(),
+                  final sportProgression = _gradeProgression(
+                    climbLog.sends,
+                    allRoutes,
+                    boulder: false,
                   );
                   final climbedAreas = _climbedAreas(
                     completedRoutes,
@@ -148,19 +152,19 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                                 child: Column(
                                   children: [
                                     _SectionCard(
-                                      title: 'Bouldering grade pyramid',
-                                      child: _GradePyramid(
-                                        grades: boulderPyramid,
+                                      title: 'Bouldering progression',
+                                      child: _GradeProgressChart(
+                                        points: boulderProgression,
                                         emptyText:
-                                            'Send boulders to build this pyramid.',
+                                            'Send boulders to chart your grade progression.',
                                       ),
                                     ),
                                     _SectionCard(
-                                      title: 'Sport climbing grade pyramid',
-                                      child: _GradePyramid(
-                                        grades: sportPyramid,
+                                      title: 'Sport progression',
+                                      child: _GradeProgressChart(
+                                        points: sportProgression,
                                         emptyText:
-                                            'Send sport climbs to build this pyramid.',
+                                            'Send sport climbs to chart your grade progression.',
                                       ),
                                     ),
                                   ],
@@ -176,18 +180,19 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                             projectCount: projectRoutes.length,
                           ),
                           _SectionCard(
-                            title: 'Bouldering grade pyramid',
-                            child: _GradePyramid(
-                              grades: boulderPyramid,
-                              emptyText: 'Send boulders to build this pyramid.',
+                            title: 'Bouldering progression',
+                            child: _GradeProgressChart(
+                              points: boulderProgression,
+                              emptyText:
+                                  'Send boulders to chart your grade progression.',
                             ),
                           ),
                           _SectionCard(
-                            title: 'Sport climbing grade pyramid',
-                            child: _GradePyramid(
-                              grades: sportPyramid,
+                            title: 'Sport progression',
+                            child: _GradeProgressChart(
+                              points: sportProgression,
                               emptyText:
-                                  'Send sport climbs to build this pyramid.',
+                                  'Send sport climbs to chart your grade progression.',
                             ),
                           ),
                         ],
@@ -323,15 +328,36 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     return sorted.first;
   }
 
-  Map<String, int> _gradePyramid(List<ClimbRoute> routes) {
-    final counts = <String, int>{};
-    for (final route in routes) {
-      counts.update(route.grade, (count) => count + 1, ifAbsent: () => 1);
-    }
+  List<_GradeProgressPoint> _gradeProgression(
+    List<Send> sends,
+    List<ClimbRoute> routes, {
+    required bool boulder,
+  }) {
+    final routesById = {for (final route in routes) route.id: route};
+    final ordered = sends.where((send) {
+      final route = routesById[send.routeId];
+      if (route == null) return false;
+      return boulder ? _isBoulder(route) : _isSport(route);
+    }).toList()..sort((a, b) => a.sentAt.compareTo(b.sentAt));
 
-    final entries = counts.entries.toList()
-      ..sort((a, b) => _gradeScore(b.key).compareTo(_gradeScore(a.key)));
-    return Map.fromEntries(entries);
+    var bestScore = -1;
+    var bestGrade = '';
+    final points = <_GradeProgressPoint>[];
+    for (final send in ordered) {
+      final score = _gradeScore(send.grade);
+      if (score > bestScore) {
+        bestScore = score;
+        bestGrade = send.grade;
+      }
+      points.add(
+        _GradeProgressPoint(
+          date: send.sentAt,
+          grade: bestGrade,
+          score: bestScore,
+        ),
+      );
+    }
+    return points;
   }
 
   List<Crag> _climbedAreas(List<ClimbRoute> routes, List<Crag> catalogCrags) {
@@ -845,7 +871,7 @@ class _ProfileHeader extends StatelessWidget {
               const SizedBox(height: 6),
               TextButton.icon(
                 style: TextButton.styleFrom(
-                  foregroundColor: PacificTerrainColors.seaGlass,
+                  foregroundColor: Theme.of(context).colorScheme.primary,
                 ),
                 onPressed: () => context.go('/profile/setup'),
                 icon: const Icon(Icons.edit_outlined),
@@ -1139,7 +1165,7 @@ class _StatTile extends StatelessWidget {
   Widget build(BuildContext context) {
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: PacificTerrainColors.sand.withValues(alpha: 0.62),
+        color: Theme.of(context).colorScheme.primaryContainer,
         borderRadius: BorderRadius.circular(12),
       ),
       child: SizedBox(
@@ -1167,60 +1193,187 @@ class _StatTile extends StatelessWidget {
   }
 }
 
-class _PyramidRow extends StatelessWidget {
-  const _PyramidRow({
+class _GradeProgressPoint {
+  const _GradeProgressPoint({
+    required this.date,
     required this.grade,
-    required this.count,
-    required this.maxCount,
+    required this.score,
   });
 
+  final DateTime date;
   final String grade;
-  final int count;
-  final int maxCount;
-
-  @override
-  Widget build(BuildContext context) {
-    final factor = maxCount == 0 ? 0.0 : count / maxCount;
-
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Row(
-        children: [
-          SizedBox(width: 54, child: Text(grade)),
-          Expanded(
-            child: LinearProgressIndicator(
-              value: factor,
-              minHeight: 12,
-              borderRadius: BorderRadius.circular(8),
-            ),
-          ),
-          const SizedBox(width: 10),
-          Text('$count'),
-        ],
-      ),
-    );
-  }
+  final int score;
 }
 
-class _GradePyramid extends StatelessWidget {
-  const _GradePyramid({required this.grades, required this.emptyText});
+class _GradeProgressChart extends StatelessWidget {
+  const _GradeProgressChart({required this.points, required this.emptyText});
 
-  final Map<String, int> grades;
+  final List<_GradeProgressPoint> points;
   final String emptyText;
 
   @override
   Widget build(BuildContext context) {
-    if (grades.isEmpty) {
+    if (points.isEmpty) {
       return _EmptyProfileState(text: emptyText);
     }
-
-    final maxCount = grades.values.reduce((a, b) => a > b ? a : b);
+    final first = points.first;
+    final latest = points.last;
+    final dateStyle = Theme.of(context).textTheme.labelSmall?.copyWith(
+      color: Theme.of(context).colorScheme.onSurfaceVariant,
+    );
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        for (final entry in grades.entries)
-          _PyramidRow(grade: entry.key, count: entry.value, maxCount: maxCount),
+        Row(
+          children: [
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  latest.grade,
+                  style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
+                ),
+                Text('CURRENT HIGH', style: dateStyle),
+              ],
+            ),
+            const Spacer(),
+            Text(
+              '${points.length} logged ${points.length == 1 ? 'send' : 'sends'}',
+              style: dateStyle,
+            ),
+          ],
+        ),
+        const SizedBox(height: 14),
+        SizedBox(
+          height: 170,
+          width: double.infinity,
+          child: CustomPaint(
+            painter: _GradeLinePainter(
+              points: points,
+              accent: Theme.of(context).colorScheme.primary,
+            ),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            Text(_chartDate(first.date), style: dateStyle),
+            const Spacer(),
+            Text(_chartDate(latest.date), style: dateStyle),
+          ],
+        ),
       ],
     );
+  }
+}
+
+String _chartDate(DateTime date) {
+  const months = [
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'May',
+    'Jun',
+    'Jul',
+    'Aug',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dec',
+  ];
+  return '${months[date.month - 1]} ${date.year}';
+}
+
+class _GradeLinePainter extends CustomPainter {
+  const _GradeLinePainter({required this.points, required this.accent});
+
+  final List<_GradeProgressPoint> points;
+  final Color accent;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    const inset = 8.0;
+    final chart = Rect.fromLTRB(
+      inset,
+      inset,
+      size.width - inset,
+      size.height - inset,
+    );
+    final grid = Paint()
+      ..color = Colors.white.withValues(alpha: 0.08)
+      ..strokeWidth = 1;
+    for (var line = 0; line <= 4; line++) {
+      final y = chart.top + chart.height * line / 4;
+      canvas.drawLine(Offset(chart.left, y), Offset(chart.right, y), grid);
+    }
+
+    var minScore = points.first.score;
+    var maxScore = points.first.score;
+    for (final point in points.skip(1)) {
+      if (point.score < minScore) minScore = point.score;
+      if (point.score > maxScore) maxScore = point.score;
+    }
+    if (minScore == maxScore) {
+      minScore -= 1;
+      maxScore += 1;
+    }
+
+    Offset offsetFor(int index) {
+      final x = points.length == 1
+          ? chart.center.dx
+          : chart.left + chart.width * index / (points.length - 1);
+      final normalized =
+          (points[index].score - minScore) / (maxScore - minScore);
+      return Offset(x, chart.bottom - chart.height * normalized);
+    }
+
+    final linePath = Path();
+    for (var index = 0; index < points.length; index++) {
+      final point = offsetFor(index);
+      if (index == 0) {
+        linePath.moveTo(point.dx, point.dy);
+      } else {
+        linePath.lineTo(point.dx, point.dy);
+      }
+    }
+    final fillPath = Path.from(linePath)
+      ..lineTo(offsetFor(points.length - 1).dx, chart.bottom)
+      ..lineTo(offsetFor(0).dx, chart.bottom)
+      ..close();
+    canvas.drawPath(
+      fillPath,
+      Paint()
+        ..shader = LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [accent.withValues(alpha: 0.22), Colors.transparent],
+        ).createShader(chart),
+    );
+    canvas.drawPath(
+      linePath,
+      Paint()
+        ..color = accent
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 3
+        ..strokeCap = StrokeCap.round
+        ..strokeJoin = StrokeJoin.round,
+    );
+    for (var index = 0; index < points.length; index++) {
+      canvas.drawCircle(offsetFor(index), 4, Paint()..color = accent);
+      canvas.drawCircle(
+        offsetFor(index),
+        2,
+        Paint()..color = PacificTerrainColors.navy,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _GradeLinePainter oldDelegate) {
+    return oldDelegate.points != points || oldDelegate.accent != accent;
   }
 }
 

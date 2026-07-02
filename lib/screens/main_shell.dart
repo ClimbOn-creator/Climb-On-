@@ -157,8 +157,8 @@ class _DesktopNavItem extends StatelessWidget {
         label: Text(destination.label),
         style: TextButton.styleFrom(
           foregroundColor: selected
-              ? PacificTerrainColors.cedar
-              : PacificTerrainColors.navy,
+              ? Theme.of(context).colorScheme.primary
+              : PacificTerrainColors.ink,
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
           shape: const RoundedRectangleBorder(
             borderRadius: BorderRadius.all(Radius.circular(10)),
@@ -219,8 +219,8 @@ class _MobileNavItem extends StatelessWidget {
   Widget build(BuildContext context) {
     final isAdd = destination.path == '/submit';
     final color = selected
-        ? PacificTerrainColors.cedar
-        : PacificTerrainColors.navySoft;
+        ? Theme.of(context).colorScheme.primary
+        : const Color(0xFF9AA5A1);
     return InkWell(
       onTap: () => context.go(destination.path),
       child: Column(
@@ -230,11 +230,15 @@ class _MobileNavItem extends StatelessWidget {
             Container(
               width: 38,
               height: 38,
-              decoration: const BoxDecoration(
-                color: PacificTerrainColors.cedar,
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.primary,
                 shape: BoxShape.circle,
               ),
-              child: const Icon(Icons.add, color: Colors.white, size: 23),
+              child: const Icon(
+                Icons.add,
+                color: PacificTerrainColors.navy,
+                size: 23,
+              ),
             )
           else
             Icon(
@@ -312,7 +316,7 @@ class _ContourPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint()
-      ..color = PacificTerrainColors.navy.withValues(alpha: 0.042)
+      ..color = Colors.white.withValues(alpha: 0.07)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1;
 

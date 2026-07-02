@@ -438,7 +438,7 @@ class _CragCard extends StatelessWidget {
                   right: 12,
                   child: DecoratedBox(
                     decoration: BoxDecoration(
-                      color: PacificTerrainColors.cloud.withValues(alpha: 0.92),
+                      color: Theme.of(context).colorScheme.primary,
                       shape: BoxShape.circle,
                     ),
                     child: const Padding(
@@ -528,9 +528,9 @@ class _CragMetric extends StatelessWidget {
             value,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: Theme.of(
-              context,
-            ).textTheme.labelMedium?.copyWith(color: PacificTerrainColors.navy),
+            style: Theme.of(context).textTheme.labelMedium?.copyWith(
+              color: Theme.of(context).colorScheme.onSurface,
+            ),
           ),
         ],
       ),

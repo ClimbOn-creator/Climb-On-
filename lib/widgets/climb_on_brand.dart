@@ -17,12 +17,12 @@ class ClimbOnLogo extends StatelessWidget {
         width: size,
         height: size,
         decoration: BoxDecoration(
-          color: PacificTerrainColors.navy,
+          color: Theme.of(context).colorScheme.primary,
           borderRadius: BorderRadius.circular(size * 0.16),
         ),
         child: Icon(
           Icons.landscape_outlined,
-          color: PacificTerrainColors.cloud,
+          color: PacificTerrainColors.navy,
           size: size * 0.66,
         ),
       ),
@@ -49,7 +49,7 @@ class ClimbOnBrand extends StatelessWidget {
             Text(
               'CLIMB ON',
               style: GoogleFonts.manrope(
-                color: PacificTerrainColors.navy,
+                color: PacificTerrainColors.ink,
                 fontSize: 19,
                 fontWeight: FontWeight.w800,
                 letterSpacing: 2.4,

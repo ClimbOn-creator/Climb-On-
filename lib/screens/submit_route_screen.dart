@@ -646,9 +646,9 @@ class _SubmissionAside extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Icon(
+            Icon(
               Icons.landscape_outlined,
-              color: PacificTerrainColors.seaGlass,
+              color: Theme.of(context).colorScheme.primary,
               size: 34,
             ),
             const SizedBox(height: 22),
@@ -711,7 +711,7 @@ class _GuideStep extends StatelessWidget {
             child: Text(
               number,
               style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                color: PacificTerrainColors.seaGlass,
+                color: Theme.of(context).colorScheme.primary,
               ),
             ),
           ),
@@ -755,14 +755,14 @@ class _SubmissionSection extends StatelessWidget {
                     width: 42,
                     height: 42,
                     alignment: Alignment.center,
-                    decoration: const BoxDecoration(
-                      color: PacificTerrainColors.seaGlass,
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.primaryContainer,
                       shape: BoxShape.circle,
                     ),
                     child: Text(
                       number,
                       style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                        color: PacificTerrainColors.navy,
+                        color: Theme.of(context).colorScheme.primary,
                       ),
                     ),
                   ),
@@ -866,7 +866,7 @@ class _PublishPanel extends StatelessWidget {
             width: double.infinity,
             child: FilledButton.icon(
               style: FilledButton.styleFrom(
-                backgroundColor: PacificTerrainColors.cedar,
+                backgroundColor: Theme.of(context).colorScheme.primary,
               ),
               onPressed: submitting ? null : onSubmit,
               icon: submitting
