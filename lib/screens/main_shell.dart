@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../state/activity_mode_state.dart';
+import '../state/app_settings_state.dart';
 import '../theme/climb_on_theme.dart';
 import '../widgets/climb_on_brand.dart';
 
@@ -19,6 +20,7 @@ class MainShell extends ConsumerWidget {
     final width = MediaQuery.sizeOf(context).width;
     final compact = width < 900;
     final mode = ref.watch(activityModeProvider);
+    final settings = ref.watch(appSettingsProvider);
 
     return Scaffold(
       backgroundColor: PacificTerrainColors.cloud,
@@ -30,11 +32,12 @@ class MainShell extends ConsumerWidget {
                 ? child
                 : Stack(
                     children: [
-                      const Positioned.fill(
-                        child: IgnorePointer(
-                          child: CustomPaint(painter: _ContourPainter()),
+                      if (settings.showTopoBackground)
+                        const Positioned.fill(
+                          child: IgnorePointer(
+                            child: CustomPaint(painter: _ContourPainter()),
+                          ),
                         ),
-                      ),
                       Positioned.fill(child: child),
                     ],
                   ),
@@ -292,17 +295,17 @@ const _destinations = [
     selectedIcon: Icons.dynamic_feed,
   ),
   _AppDestination(
+    path: '/submit',
+    label: 'Add',
+    icon: Icons.add,
+    selectedIcon: Icons.add,
+  ),
+  _AppDestination(
     path: '/crags',
     label: 'Crags',
     skiLabel: 'Tours',
     icon: Icons.landscape_outlined,
     selectedIcon: Icons.landscape,
-  ),
-  _AppDestination(
-    path: '/submit',
-    label: 'Add',
-    icon: Icons.add,
-    selectedIcon: Icons.add,
   ),
   _AppDestination(
     path: '/profile',

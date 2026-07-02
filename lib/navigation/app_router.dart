@@ -7,6 +7,7 @@ import '../screens/map_screen.dart';
 import '../screens/offline_downloads_screen.dart';
 import '../screens/profile_screen.dart';
 import '../screens/profile_setup_screen.dart';
+import '../screens/settings_screen.dart';
 import '../screens/submit_route_screen.dart';
 
 final appRouter = GoRouter(
@@ -38,6 +39,10 @@ final appRouter = GoRouter(
         GoRoute(
           path: '/profile/setup',
           builder: (context, state) => const ProfileSetupScreen(),
+        ),
+        GoRoute(
+          path: '/settings',
+          builder: (context, state) => const SettingsScreen(),
         ),
       ],
     ),

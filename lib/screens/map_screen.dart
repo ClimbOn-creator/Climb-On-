@@ -26,6 +26,7 @@ import '../models/wall.dart';
 import '../services/database_service.dart';
 import '../state/admin_state.dart';
 import '../state/activity_mode_state.dart';
+import '../state/app_settings_state.dart';
 import '../state/catalog_state.dart';
 import '../state/climb_log_state.dart';
 import '../state/map_path_state.dart';
@@ -68,6 +69,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   StreamSubscription<Position>? positionSubscription;
   Timer? recordingTimer;
   bool gpsRecording = false;
+  bool appliedInitialSettings = false;
   _PathDraftKind? recordedPathKind;
   DateTime? recordingStartedAt;
   Duration recordingElapsed = Duration.zero;
@@ -268,6 +270,11 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     final wide = width >= 860;
     final showTitleBar = width >= 1024;
     final mode = ref.watch(activityModeProvider);
+    final settings = ref.watch(appSettingsProvider);
+    if (!appliedInitialSettings && settings.loaded) {
+      appliedInitialSettings = true;
+      if (settings.prefer3d) tileStyle = _MapTileStyle.terrain3d;
+    }
     final catalog = ref.watch(catalogProvider);
     final skiCatalog =
         ref.watch(skiRouteCatalogProvider).valueOrNull ?? const <SkiRoute>[];
@@ -318,6 +325,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                     onControllerReady: (controller) {
                       mapLibreController = controller;
                     },
+                    allowRotation: settings.twoFingerRotation,
                   )
                 else
                   FlutterMap(
@@ -333,8 +341,10 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                           LatLng(bcMapBounds.north, bcMapBounds.east),
                         ),
                       ),
-                      interactionOptions: const InteractionOptions(
-                        flags: InteractiveFlag.all & ~InteractiveFlag.rotate,
+                      interactionOptions: InteractionOptions(
+                        flags: settings.twoFingerRotation
+                            ? InteractiveFlag.all
+                            : InteractiveFlag.all & ~InteractiveFlag.rotate,
                       ),
                       onTap: (_, point) => _handleMapTap(point),
                       onPositionChanged: (position, _) {
@@ -529,7 +539,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                   editingRegion: editingOfflineRegion,
                   onEditRegion: _startRegionBoundaryEditor,
                 ),
-                if (tileStyle != _MapTileStyle.terrain3d)
+                if (wide && tileStyle != _MapTileStyle.terrain3d)
                   _HeadingControl(
                     headingDegrees: currentMapRotation,
                     onHeadingChanged: _setMapHeading,
@@ -1801,6 +1811,7 @@ class _Terrain3DMap extends StatefulWidget {
     required this.onCragTap,
     required this.onSkiRouteTap,
     required this.onControllerReady,
+    required this.allowRotation,
   });
 
   final String? styleOverride;
@@ -1818,6 +1829,7 @@ class _Terrain3DMap extends StatefulWidget {
   final ValueChanged<Crag> onCragTap;
   final ValueChanged<SkiRoute> onSkiRouteTap;
   final ValueChanged<ml.MapLibreMapController> onControllerReady;
+  final bool allowRotation;
 
   @override
   State<_Terrain3DMap> createState() => _Terrain3DMapState();
@@ -1921,8 +1933,8 @@ class _Terrain3DMapState extends State<_Terrain3DMap> {
         ),
       ),
       minMaxZoomPreference: const ml.MinMaxZoomPreference(5, 19),
-      rotateGesturesEnabled: widget.enableTerrain,
-      tiltGesturesEnabled: widget.enableTerrain,
+      rotateGesturesEnabled: widget.allowRotation,
+      tiltGesturesEnabled: widget.enableTerrain && widget.allowRotation,
       compassEnabled: true,
       scaleControlEnabled: true,
       onMapCreated: (value) {
@@ -2808,9 +2820,10 @@ class _GpsRecorderTools extends StatelessWidget {
         child: Material(
           elevation: 5,
           color: Theme.of(context).colorScheme.surface,
-          borderRadius: BorderRadius.circular(8),
+          shape: hasDraft ? null : const CircleBorder(),
+          borderRadius: hasDraft ? BorderRadius.circular(8) : null,
           child: Padding(
-            padding: const EdgeInsets.all(8),
+            padding: EdgeInsets.all(hasDraft ? 8 : 2),
             child: hasDraft
                 ? Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -2866,13 +2879,15 @@ class _GpsRecorderTools extends StatelessWidget {
                       ),
                     ],
                   )
-                : FilledButton.icon(
+                : IconButton.filled(
+                    tooltip: 'Record GPS route',
                     onPressed: onStart,
+                    visualDensity: VisualDensity.compact,
                     icon: const Icon(
                       Icons.fiber_manual_record,
                       color: Colors.red,
+                      size: 20,
                     ),
-                    label: const Text('Record'),
                   ),
           ),
         ),

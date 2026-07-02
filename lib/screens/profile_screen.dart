@@ -803,13 +803,27 @@ class _ProfileHeader extends StatelessWidget {
         padding: const EdgeInsets.all(24),
         child: Column(
           children: [
-            Text(
-              'FIELD LOG · 2026',
-              style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                color: PacificTerrainColors.sand,
-                fontWeight: FontWeight.w800,
-                letterSpacing: 1.5,
-              ),
+            Row(
+              children: [
+                const SizedBox(width: 40),
+                Expanded(
+                  child: Text(
+                    'FIELD LOG · 2026',
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      color: PacificTerrainColors.sand,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 1.5,
+                    ),
+                  ),
+                ),
+                IconButton(
+                  tooltip: 'App settings',
+                  onPressed: () => context.go('/settings'),
+                  icon: const Icon(Icons.settings_outlined),
+                  color: Theme.of(context).colorScheme.primary,
+                ),
+              ],
             ),
             const SizedBox(height: 14),
             Stack(
@@ -1066,6 +1080,14 @@ class _SkiProfileHeader extends StatelessWidget {
         padding: const EdgeInsets.all(16),
         child: Column(
           children: [
+            Align(
+              alignment: Alignment.centerRight,
+              child: IconButton(
+                tooltip: 'App settings',
+                onPressed: () => context.go('/settings'),
+                icon: const Icon(Icons.settings_outlined),
+              ),
+            ),
             Stack(
               clipBehavior: Clip.none,
               children: [
