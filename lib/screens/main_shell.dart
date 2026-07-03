@@ -20,6 +20,7 @@ class MainShell extends ConsumerWidget {
     final path = GoRouterState.of(context).uri.path;
     final width = MediaQuery.sizeOf(context).width;
     final compact = width < 900;
+    final phone = width < 600;
     final mode = ref.watch(activityModeProvider);
     final settings = ref.watch(appSettingsProvider);
 
@@ -43,7 +44,8 @@ class MainShell extends ConsumerWidget {
                     ],
                   ),
           ),
-          NativeAdCard(mode: mode, compact: compact, persistent: true),
+          if (!(phone && path == '/map'))
+            NativeAdCard(mode: mode, compact: compact, persistent: true),
         ],
       ),
       bottomNavigationBar: compact

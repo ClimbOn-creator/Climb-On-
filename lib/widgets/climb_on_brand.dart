@@ -20,14 +20,69 @@ class ClimbOnLogo extends StatelessWidget {
           color: Theme.of(context).colorScheme.primary,
           borderRadius: BorderRadius.circular(size * 0.16),
         ),
-        child: Icon(
-          Icons.landscape_outlined,
-          color: PacificTerrainColors.navy,
-          size: size * 0.66,
+        child: CustomPaint(
+          painter: _ClimbOnMarkPainter(color: PacificTerrainColors.navy),
         ),
       ),
     );
   }
+}
+
+class _ClimbOnMarkPainter extends CustomPainter {
+  const _ClimbOnMarkPainter({required this.color});
+
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final stroke = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = size.shortestSide * 0.065
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+
+    final cliff = Path()
+      ..moveTo(size.width * 0.24, size.height * 0.78)
+      ..lineTo(size.width * 0.34, size.height * 0.24)
+      ..lineTo(size.width * 0.64, size.height * 0.24)
+      ..lineTo(size.width * 0.78, size.height * 0.40)
+      ..lineTo(size.width * 0.64, size.height * 0.78)
+      ..close();
+    canvas.drawPath(cliff, stroke);
+
+    final route = Path()
+      ..moveTo(size.width * 0.38, size.height * 0.69)
+      ..quadraticBezierTo(
+        size.width * 0.58,
+        size.height * 0.59,
+        size.width * 0.48,
+        size.height * 0.43,
+      )
+      ..quadraticBezierTo(
+        size.width * 0.45,
+        size.height * 0.36,
+        size.width * 0.53,
+        size.height * 0.31,
+      );
+    canvas.drawPath(route, stroke);
+
+    final bolt = Paint()..color = color;
+    canvas.drawCircle(
+      Offset(size.width * 0.48, size.height * 0.43),
+      size.shortestSide * 0.045,
+      bolt,
+    );
+    canvas.drawCircle(
+      Offset(size.width * 0.38, size.height * 0.69),
+      size.shortestSide * 0.045,
+      bolt,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _ClimbOnMarkPainter oldDelegate) =>
+      oldDelegate.color != color;
 }
 
 class ClimbOnBrand extends StatelessWidget {

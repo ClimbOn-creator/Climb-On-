@@ -316,7 +316,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                     crags: mapCrags,
                     skiRoutes: skiCatalog,
                     paths: mapPaths,
-                    regions: mapRegions,
+                    regions: wide ? mapRegions : const <OfflineBcRegion>[],
                     selectedCrag: selectedCrag,
                     selectedSkiRoute: activeSkiRoute,
                     userLocation: userLocation,
@@ -371,9 +371,10 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                       TileLayer(
                         urlTemplate: tileStyle.urlTemplate,
                         subdomains: tileStyle.subdomains,
+                        retinaMode: tileStyle == _MapTileStyle.clean,
                         userAgentPackageName: 'com.climbon.app',
                       ),
-                      if (currentZoom < 9)
+                      if (wide && currentZoom < 9)
                         PolygonLayer(
                           polygons: _offlineRegionPolygons(mapRegions),
                         ),
@@ -435,7 +436,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                       MarkerLayer(
                         rotate: false,
                         markers: [
-                          if (currentZoom >= 6.5 && currentZoom < 9)
+                          if (wide && currentZoom >= 6.5 && currentZoom < 9)
                             ..._offlineRegionMarkers(mapRegions),
                           ...(mode == ActivityMode.ski
                               ? _skiMarkers(context, skiCatalog, activeSkiRoute)
@@ -451,7 +452,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                       ),
                     ],
                   ),
-                if (!useMapLibre && currentZoom < 6.5)
+                if (wide && !useMapLibre && currentZoom < 6.5)
                   Positioned(
                     right: 12,
                     bottom: 158,
@@ -579,11 +580,12 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                 if (mode == ActivityMode.climb)
                   _MapFilters(
                     activeFilters: activeFilters,
-                    top: 12,
+                    top: 8,
+                    alignLeft: !wide,
                     onToggle: _toggleFilter,
                   )
                 else
-                  const _SkiMapLegend(top: 12),
+                  const _SkiMapLegend(top: 8),
                 if (catalog.isLoading)
                   const Positioned(
                     left: 0,
@@ -2359,17 +2361,20 @@ class _MapFilters extends StatelessWidget {
   const _MapFilters({
     required this.activeFilters,
     required this.top,
+    required this.alignLeft,
     required this.onToggle,
   });
 
   final Set<_MapRouteFilter> activeFilters;
   final double top;
+  final bool alignLeft;
   final ValueChanged<_MapRouteFilter> onToggle;
 
   @override
   Widget build(BuildContext context) {
     return Positioned(
-      right: 12,
+      left: alignLeft ? 12 : null,
+      right: alignLeft ? null : 12,
       top: top,
       child: Material(
         color: Theme.of(context).colorScheme.surface,
