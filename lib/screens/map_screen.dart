@@ -2684,7 +2684,7 @@ class _HeadingControl extends StatelessWidget {
   Widget build(BuildContext context) {
     return Positioned(
       right: 12,
-      bottom: 12,
+      bottom: 34,
       child: SafeArea(
         child: Material(
           color: Theme.of(context).colorScheme.surface,

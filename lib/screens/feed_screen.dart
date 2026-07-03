@@ -379,7 +379,7 @@ class _FeaturedStory extends StatelessWidget {
             children: [
               CachedNetworkImage(
                 imageUrl: imageUrl,
-                fit: BoxFit.cover,
+                fit: BoxFit.contain,
                 errorWidget: (_, _, _) => const ColoredBox(
                   color: PacificTerrainColors.navySoft,
                   child: Icon(
@@ -555,7 +555,7 @@ class _SkiSocialPost extends ConsumerWidget {
                 child: CachedNetworkImage(
                   imageUrl: route.imageUrl,
                   width: double.infinity,
-                  fit: BoxFit.cover,
+                  fit: BoxFit.contain,
                   errorWidget: (_, _, _) => ColoredBox(
                     color: Theme.of(context).colorScheme.primaryContainer,
                     child: const Icon(Icons.landscape_outlined, size: 56),
@@ -639,7 +639,7 @@ class _SkiTourCard extends ConsumerWidget {
                 imageUrl: route.imageUrl,
                 height: 220,
                 width: double.infinity,
-                fit: BoxFit.cover,
+                fit: BoxFit.contain,
                 errorWidget: (_, _, _) => const Icon(Icons.broken_image),
               ),
             ),
@@ -891,7 +891,7 @@ class _SocialRoutePost extends StatelessWidget {
                 child: CachedNetworkImage(
                   imageUrl: route.imageUrl,
                   width: double.infinity,
-                  fit: BoxFit.cover,
+                  fit: BoxFit.contain,
                   errorWidget: (_, _, _) => ColoredBox(
                     color: Theme.of(context).colorScheme.primaryContainer,
                     child: const Icon(Icons.landscape_outlined, size: 56),
@@ -1108,7 +1108,7 @@ class _RouteListTile extends StatelessWidget {
             height: 72,
             child: CachedNetworkImage(
               imageUrl: route.imageUrl,
-              fit: BoxFit.cover,
+              fit: BoxFit.contain,
               errorWidget: (context, error, stackTrace) => ColoredBox(
                 color: Theme.of(context).colorScheme.surfaceContainerHighest,
                 child: const Icon(Icons.terrain_outlined),

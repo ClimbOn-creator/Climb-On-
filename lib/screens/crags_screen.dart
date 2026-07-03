@@ -2,6 +2,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:latlong2/latlong.dart';
 
 import '../models/crag.dart';
 import '../models/climb_route.dart';
@@ -28,6 +29,7 @@ class CragsScreen extends ConsumerStatefulWidget {
 
 class _CragsScreenState extends ConsumerState<CragsScreen> {
   String? selectedRangeId;
+  String? selectedCityId;
   String? selectedSkiRangeId;
 
   @override
@@ -61,11 +63,22 @@ class _CragsScreenState extends ConsumerState<CragsScreen> {
             : _RangeCatalog(
                 crags: catalogCrags,
                 selectedRangeId: selectedRangeId,
+                selectedCityId: selectedCityId,
                 desktop: desktop,
                 onRangeSelected: (range) {
-                  setState(() => selectedRangeId = range.id);
+                  setState(() {
+                    selectedRangeId = range.id;
+                    selectedCityId = null;
+                  });
                 },
-                onBack: () => setState(() => selectedRangeId = null),
+                onCitySelected: (city) {
+                  setState(() => selectedCityId = city.id);
+                },
+                onBack: () => setState(() {
+                  selectedRangeId = null;
+                  selectedCityId = null;
+                }),
+                onBackToCities: () => setState(() => selectedCityId = null),
                 onCragSelected: (crag) => _openCrag(context, ref, crag),
               ),
       ),
@@ -105,17 +118,23 @@ class _RangeCatalog extends StatelessWidget {
   const _RangeCatalog({
     required this.crags,
     required this.selectedRangeId,
+    required this.selectedCityId,
     required this.desktop,
     required this.onRangeSelected,
+    required this.onCitySelected,
     required this.onBack,
+    required this.onBackToCities,
     required this.onCragSelected,
   });
 
   final List<Crag> crags;
   final String? selectedRangeId;
+  final String? selectedCityId;
   final bool desktop;
   final ValueChanged<_MountainRange> onRangeSelected;
+  final ValueChanged<_CragCityGroup> onCitySelected;
   final VoidCallback onBack;
+  final VoidCallback onBackToCities;
   final ValueChanged<Crag> onCragSelected;
 
   @override
@@ -132,16 +151,68 @@ class _RangeCatalog extends StatelessWidget {
       (range) => range.id == selectedRangeId,
       orElse: () => _mountainRanges.first,
     );
-    final visibleCrags = crags
+    final rangeCrags = crags
         .where((crag) => selected.matches(crag))
         .toList(growable: false);
 
+    final cityGroups = _groupCragsByNearestCity(rangeCrags);
+    if (selectedCityId == null) {
+      return _RangeDetailScroll(
+        range: selected,
+        count: cityGroups.length,
+        countLabel: 'AREAS',
+        description:
+            'Choose the closest city or community, then explore the crags in that area.',
+        onBack: onBack,
+        sliverBody: SliverToBoxAdapter(
+          child: Padding(
+            padding: EdgeInsets.fromLTRB(
+              desktop ? 28 : 16,
+              18,
+              desktop ? 28 : 16,
+              44,
+            ),
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final columns = constraints.maxWidth >= 700 ? 2 : 1;
+                final cardWidth = columns == 1
+                    ? constraints.maxWidth
+                    : (constraints.maxWidth - 14) / 2;
+                return Wrap(
+                  spacing: 14,
+                  runSpacing: 14,
+                  children: [
+                    for (final city in cityGroups)
+                      SizedBox(
+                        width: cardWidth,
+                        child: _CityAreaCard(
+                          city: city,
+                          range: selected,
+                          onTap: () => onCitySelected(city),
+                        ),
+                      ),
+                  ],
+                );
+              },
+            ),
+          ),
+        ),
+      );
+    }
+
+    final selectedCity = cityGroups.firstWhere(
+      (city) => city.id == selectedCityId,
+      orElse: () => cityGroups.first,
+    );
+    final visibleCrags = selectedCity.crags;
+
     return _RangeDetailScroll(
       range: selected,
+      title: selectedCity.name,
       count: visibleCrags.length,
       countLabel: 'CRAGS',
-      description: selected.description,
-      onBack: onBack,
+      description: 'Crags closest to ${selectedCity.name}.',
+      onBack: onBackToCities,
       sliverBody: SliverToBoxAdapter(
         child: Padding(
           padding: EdgeInsets.fromLTRB(
@@ -296,6 +367,7 @@ class _MountainRangeLanding extends StatelessWidget {
 class _RangeDetailScroll extends ConsumerWidget {
   const _RangeDetailScroll({
     required this.range,
+    this.title,
     required this.count,
     required this.countLabel,
     required this.description,
@@ -304,6 +376,7 @@ class _RangeDetailScroll extends ConsumerWidget {
   });
 
   final _MountainRange range;
+  final String? title;
   final int count;
   final String countLabel;
   final String description;
@@ -343,7 +416,7 @@ class _RangeDetailScroll extends ConsumerWidget {
             ],
             titlePadding: const EdgeInsets.fromLTRB(20, 0, 20, 18),
             title: Text(
-              range.name,
+              title ?? range.name,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: const TextStyle(
@@ -517,6 +590,182 @@ class _RangeCard extends ConsumerWidget {
       ),
     );
   }
+}
+
+class _CityAreaCard extends ConsumerWidget {
+  const _CityAreaCard({
+    required this.city,
+    required this.range,
+    required this.onTap,
+  });
+
+  final _CragCityGroup city;
+  final _MountainRange range;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final visuals =
+        ref.watch(appVisualsProvider).valueOrNull ?? AppVisuals.defaults;
+    final routes = [
+      for (final crag in city.crags)
+        for (final wall in crag.walls) ...wall.routes,
+    ];
+    final imageUrl = routes.isEmpty
+        ? visuals.url('range_${range.id}')
+        : routes.first.imageUrl;
+    return Card(
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: SizedBox(
+          height: 154,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              CachedNetworkImage(
+                imageUrl: imageUrl,
+                fit: BoxFit.cover,
+                errorWidget: (_, _, _) => const ColoredBox(
+                  color: PacificTerrainColors.navySoft,
+                  child: Icon(Icons.location_city, color: Colors.white),
+                ),
+              ),
+              const DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [Color(0x11000000), Color(0xDD071216)],
+                  ),
+                ),
+              ),
+              Positioned(
+                left: 16,
+                right: 14,
+                bottom: 14,
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            city.name,
+                            style: Theme.of(context).textTheme.titleLarge
+                                ?.copyWith(color: Colors.white),
+                          ),
+                          Text(
+                            '${city.crags.length} ${city.crags.length == 1 ? 'crag' : 'crags'}',
+                            style: Theme.of(context).textTheme.labelMedium
+                                ?.copyWith(color: Colors.white70),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const Icon(Icons.arrow_forward, color: Colors.white),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _CragCityGroup {
+  const _CragCityGroup({
+    required this.id,
+    required this.name,
+    required this.crags,
+  });
+
+  final String id;
+  final String name;
+  final List<Crag> crags;
+}
+
+class _CityAnchor {
+  const _CityAnchor(this.id, this.name, this.location);
+
+  final String id;
+  final String name;
+  final LatLng location;
+}
+
+const _cityAnchors = <_CityAnchor>[
+  _CityAnchor(
+    'greater-victoria',
+    'Greater Victoria Area',
+    LatLng(48.4284, -123.3656),
+  ),
+  _CityAnchor('sooke', 'Sooke Area', LatLng(48.3761, -123.7376)),
+  _CityAnchor('jordan-river', 'Jordan River Area', LatLng(48.4200, -124.0520)),
+  _CityAnchor('port-renfrew', 'Port Renfrew Area', LatLng(48.5573, -124.4004)),
+  _CityAnchor('nanaimo', 'Nanaimo Area', LatLng(49.1659, -123.9401)),
+  _CityAnchor('comox-valley', 'Comox Valley', LatLng(49.6841, -124.9904)),
+  _CityAnchor(
+    'campbell-river',
+    'Campbell River Area',
+    LatLng(50.0244, -125.2475),
+  ),
+  _CityAnchor(
+    'vancouver',
+    'Greater Vancouver Area',
+    LatLng(49.2827, -123.1207),
+  ),
+  _CityAnchor('squamish', 'Squamish Area', LatLng(49.7016, -123.1558)),
+  _CityAnchor('whistler', 'Whistler Area', LatLng(50.1163, -122.9574)),
+  _CityAnchor('kelowna', 'Kelowna Area', LatLng(49.8880, -119.4960)),
+  _CityAnchor('kamloops', 'Kamloops Area', LatLng(50.6745, -120.3273)),
+  _CityAnchor('revelstoke', 'Revelstoke Area', LatLng(50.9981, -118.1957)),
+  _CityAnchor('golden', 'Golden Area', LatLng(51.2961, -116.9631)),
+  _CityAnchor('nelson', 'Nelson Area', LatLng(49.4928, -117.2948)),
+  _CityAnchor('cranbrook', 'Cranbrook Area', LatLng(49.5120, -115.7694)),
+  _CityAnchor(
+    'canmore-banff',
+    'Canmore and Banff Area',
+    LatLng(51.0890, -115.3590),
+  ),
+  _CityAnchor('jasper', 'Jasper Area', LatLng(52.8737, -118.0814)),
+];
+
+List<_CragCityGroup> _groupCragsByNearestCity(List<Crag> crags) {
+  const distance = Distance();
+  final grouped = <String, List<Crag>>{};
+  for (final crag in crags) {
+    var nearest = _cityAnchors.first;
+    var nearestMeters = distance.as(
+      LengthUnit.Meter,
+      crag.location,
+      nearest.location,
+    );
+    for (final candidate in _cityAnchors.skip(1)) {
+      final meters = distance.as(
+        LengthUnit.Meter,
+        crag.location,
+        candidate.location,
+      );
+      if (meters < nearestMeters) {
+        nearest = candidate;
+        nearestMeters = meters;
+      }
+    }
+    grouped.putIfAbsent(nearest.id, () => []).add(crag);
+  }
+  final result = [
+    for (final anchor in _cityAnchors)
+      if (grouped[anchor.id]?.isNotEmpty == true)
+        _CragCityGroup(
+          id: anchor.id,
+          name: anchor.name,
+          crags: grouped[anchor.id]!..sort((a, b) => a.name.compareTo(b.name)),
+        ),
+  ];
+  result.sort((a, b) => a.name.compareTo(b.name));
+  return result;
 }
 
 class _CragCard extends ConsumerWidget {

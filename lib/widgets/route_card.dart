@@ -357,28 +357,28 @@ class _RouteCardState extends ConsumerState<RouteCard> {
                         ],
                       ),
                     ),
-                    if (!isAdmin) ...[
-                      const SizedBox(height: 14),
-                      SizedBox(
-                        width: double.infinity,
-                        child: OutlinedButton.icon(
-                          onPressed: uploadingPhoto
-                              ? null
-                              : () => _pickAndUploadPhoto(climbLog),
-                          icon: uploadingPhoto
-                              ? const SizedBox.square(
-                                  dimension: 18,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                  ),
-                                )
-                              : const Icon(Icons.add_photo_alternate_outlined),
-                          label: Text(
-                            uploadingPhoto ? 'Adding picture' : 'Add picture',
-                          ),
+                    const SizedBox(height: 14),
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        onPressed: uploadingPhoto
+                            ? null
+                            : () => _pickAndUploadPhoto(climbLog),
+                        icon: uploadingPhoto
+                            ? const SizedBox.square(
+                                dimension: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : const Icon(Icons.add_photo_alternate_outlined),
+                        label: Text(
+                          uploadingPhoto
+                              ? 'Adding picture'
+                              : 'Add recent picture',
                         ),
                       ),
-                    ],
+                    ),
                   ],
                 ],
               ),

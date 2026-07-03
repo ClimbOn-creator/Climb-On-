@@ -5,6 +5,7 @@ import 'models/crag.dart';
 import 'models/climb_route.dart';
 import 'state/climb_log_state.dart';
 import 'models/wall.dart';
+import 'theme/climb_on_theme.dart';
 
 class CragSidebar extends ConsumerWidget {
   const CragSidebar({
@@ -190,6 +191,11 @@ class _InfoChip extends StatelessWidget {
       avatar: Icon(icon, size: 16),
       label: Text(label),
       backgroundColor: const Color(0xFFFFF0C2),
+      labelStyle: const TextStyle(
+        color: PacificTerrainColors.navy,
+        fontWeight: FontWeight.w700,
+      ),
+      side: const BorderSide(color: Color(0xFFE8C96D)),
     );
   }
 }
