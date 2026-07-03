@@ -444,14 +444,11 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                           ..._pathEditorMarkers(),
                         ],
                       ),
-                      Padding(
-                        padding: EdgeInsets.only(bottom: wide ? 0 : 40),
-                        child: SimpleAttributionWidget(
-                          source: Text(tileStyle.attribution),
-                          backgroundColor: Theme.of(
-                            context,
-                          ).colorScheme.surface.withValues(alpha: 0.82),
-                        ),
+                      SimpleAttributionWidget(
+                        source: Text(tileStyle.attribution),
+                        backgroundColor: Theme.of(
+                          context,
+                        ).colorScheme.surface.withValues(alpha: 0.82),
                       ),
                     ],
                   ),

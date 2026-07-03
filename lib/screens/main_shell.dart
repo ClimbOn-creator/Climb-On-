@@ -268,70 +268,42 @@ class _MobileNavItem extends StatelessWidget {
         : const Color(0xFF9AA5A1);
     return InkWell(
       onTap: () => context.go(destination.path),
-      child: isAdd
-          ? Stack(
-              clipBehavior: Clip.none,
-              alignment: Alignment.center,
-              children: [
-                Positioned(
-                  top: -38,
-                  child: Container(
-                    width: 54,
-                    height: 54,
-                    decoration: BoxDecoration(
-                      color: Theme.of(context).colorScheme.primary,
-                      shape: BoxShape.circle,
-                      border: Border.all(
-                        color: PacificTerrainColors.cloud,
-                        width: 4,
-                      ),
-                      boxShadow: const [
-                        BoxShadow(
-                          color: Color(0x66000000),
-                          blurRadius: 10,
-                          offset: Offset(0, 4),
-                        ),
-                      ],
-                    ),
-                    child: const Icon(
-                      Icons.add,
-                      color: PacificTerrainColors.navy,
-                      size: 28,
-                    ),
-                  ),
-                ),
-                Positioned(
-                  bottom: 5,
-                  child: Text(
-                    destination.labelFor(mode),
-                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                      color: color,
-                      fontSize: 10,
-                      fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
-                    ),
-                  ),
-                ),
-              ],
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          if (isAdd)
+            Container(
+              width: 38,
+              height: 38,
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.primary,
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.add,
+                color: PacificTerrainColors.navy,
+                size: 23,
+              ),
             )
-          : Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(
-                  selected ? destination.selectedIcon : destination.icon,
-                  size: 21,
-                  color: color,
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  destination.labelFor(mode),
-                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                    color: color,
-                    fontSize: 10,
-                    fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
-                  ),
-                ),
-              ],
+          else
+            Icon(
+              selected ? destination.selectedIcon : destination.icon,
+              size: 21,
+              color: color,
             ),
+          if (!isAdd) ...[
+            const SizedBox(height: 3),
+            Text(
+              destination.labelFor(mode),
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                color: color,
+                fontSize: 10,
+                fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
+              ),
+            ),
+          ],
+        ],
+      ),
     );
   }
 }

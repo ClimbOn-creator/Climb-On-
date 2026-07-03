@@ -35,49 +35,59 @@ class _ClimbOnMarkPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final stroke = Paint()
+    final rope = Paint()
       ..color = color
       ..style = PaintingStyle.stroke
-      ..strokeWidth = size.shortestSide * 0.065
+      ..strokeWidth = size.shortestSide * 0.085
       ..strokeCap = StrokeCap.round
       ..strokeJoin = StrokeJoin.round;
 
-    final cliff = Path()
-      ..moveTo(size.width * 0.24, size.height * 0.78)
-      ..lineTo(size.width * 0.34, size.height * 0.24)
-      ..lineTo(size.width * 0.64, size.height * 0.24)
-      ..lineTo(size.width * 0.78, size.height * 0.40)
-      ..lineTo(size.width * 0.64, size.height * 0.78)
-      ..close();
-    canvas.drawPath(cliff, stroke);
-
-    final route = Path()
-      ..moveTo(size.width * 0.38, size.height * 0.69)
-      ..quadraticBezierTo(
-        size.width * 0.58,
-        size.height * 0.59,
-        size.width * 0.48,
-        size.height * 0.43,
+    final knot = Path()
+      ..moveTo(size.width * 0.31, size.height * 0.82)
+      ..lineTo(size.width * 0.49, size.height * 0.87)
+      ..cubicTo(
+        size.width * 0.72,
+        size.height * 0.91,
+        size.width * 0.80,
+        size.height * 0.72,
+        size.width * 0.61,
+        size.height * 0.58,
       )
-      ..quadraticBezierTo(
-        size.width * 0.45,
-        size.height * 0.36,
-        size.width * 0.53,
-        size.height * 0.31,
-      );
-    canvas.drawPath(route, stroke);
-
-    final bolt = Paint()..color = color;
-    canvas.drawCircle(
-      Offset(size.width * 0.48, size.height * 0.43),
-      size.shortestSide * 0.045,
-      bolt,
-    );
-    canvas.drawCircle(
-      Offset(size.width * 0.38, size.height * 0.69),
-      size.shortestSide * 0.045,
-      bolt,
-    );
+      ..cubicTo(
+        size.width * 0.49,
+        size.height * 0.49,
+        size.width * 0.31,
+        size.height * 0.42,
+        size.width * 0.32,
+        size.height * 0.29,
+      )
+      ..cubicTo(
+        size.width * 0.33,
+        size.height * 0.15,
+        size.width * 0.52,
+        size.height * 0.10,
+        size.width * 0.65,
+        size.height * 0.20,
+      )
+      ..cubicTo(
+        size.width * 0.80,
+        size.height * 0.32,
+        size.width * 0.69,
+        size.height * 0.45,
+        size.width * 0.52,
+        size.height * 0.55,
+      )
+      ..cubicTo(
+        size.width * 0.31,
+        size.height * 0.67,
+        size.width * 0.24,
+        size.height * 0.78,
+        size.width * 0.31,
+        size.height * 0.82,
+      )
+      ..moveTo(size.width * 0.65, size.height * 0.20)
+      ..lineTo(size.width * 0.76, size.height * 0.13);
+    canvas.drawPath(knot, rope);
   }
 
   @override
