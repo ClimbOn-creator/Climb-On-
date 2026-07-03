@@ -37,40 +37,40 @@ class _ClimbOnMarkPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final mountain = Paint()
       ..color = color
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = size.shortestSide * 0.072
-      ..strokeCap = StrokeCap.round
-      ..strokeJoin = StrokeJoin.round;
+      ..style = PaintingStyle.fill;
 
-    final peaks = Path()
-      ..moveTo(size.width * 0.13, size.height * 0.72)
-      ..lineTo(size.width * 0.37, size.height * 0.38)
-      ..lineTo(size.width * 0.48, size.height * 0.52)
-      ..lineTo(size.width * 0.64, size.height * 0.24)
-      ..lineTo(size.width * 0.88, size.height * 0.72);
-    canvas.drawPath(peaks, mountain);
-
-    final snow = Path()
-      ..moveTo(size.width * 0.55, size.height * 0.40)
-      ..lineTo(size.width * 0.64, size.height * 0.24)
-      ..lineTo(size.width * 0.72, size.height * 0.40)
-      ..lineTo(size.width * 0.67, size.height * 0.37)
-      ..lineTo(size.width * 0.63, size.height * 0.43)
-      ..lineTo(size.width * 0.59, size.height * 0.36)
+    // Three interlocking ridge ribbons keep the mark crisp at app-icon size.
+    final leftRidge = Path()
+      ..moveTo(size.width * 0.10, size.height * 0.72)
+      ..lineTo(size.width * 0.39, size.height * 0.37)
+      ..lineTo(size.width * 0.53, size.height * 0.51)
+      ..lineTo(size.width * 0.46, size.height * 0.58)
+      ..lineTo(size.width * 0.39, size.height * 0.49)
+      ..lineTo(size.width * 0.25, size.height * 0.66)
       ..close();
-    canvas.drawPath(snow, mountain);
+    canvas.drawPath(leftRidge, mountain);
 
-    final trail = Path()
-      ..moveTo(size.width * 0.24, size.height * 0.78)
-      ..cubicTo(
-        size.width * 0.43,
-        size.height * 0.67,
-        size.width * 0.57,
-        size.height * 0.88,
-        size.width * 0.79,
-        size.height * 0.72,
-      );
-    canvas.drawPath(trail, mountain);
+    final centerRidge = Path()
+      ..moveTo(size.width * 0.30, size.height * 0.70)
+      ..lineTo(size.width * 0.63, size.height * 0.24)
+      ..lineTo(size.width * 0.87, size.height * 0.68)
+      ..lineTo(size.width * 0.70, size.height * 0.55)
+      ..lineTo(size.width * 0.63, size.height * 0.61)
+      ..lineTo(size.width * 0.53, size.height * 0.49)
+      ..lineTo(size.width * 0.39, size.height * 0.66)
+      ..close();
+    canvas.drawPath(centerRidge, mountain);
+
+    final rightRidge = Path()
+      ..moveTo(size.width * 0.56, size.height * 0.53)
+      ..lineTo(size.width * 0.67, size.height * 0.40)
+      ..lineTo(size.width * 0.74, size.height * 0.50)
+      ..lineTo(size.width * 0.79, size.height * 0.45)
+      ..lineTo(size.width * 0.91, size.height * 0.70)
+      ..lineTo(size.width * 0.73, size.height * 0.58)
+      ..lineTo(size.width * 0.65, size.height * 0.64)
+      ..close();
+    canvas.drawPath(rightRidge, mountain);
   }
 
   @override
