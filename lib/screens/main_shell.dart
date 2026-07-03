@@ -10,17 +10,28 @@ import '../theme/climb_on_theme.dart';
 import '../widgets/climb_on_brand.dart';
 import '../widgets/native_ad_card.dart';
 
-class MainShell extends ConsumerWidget {
+class MainShell extends ConsumerStatefulWidget {
   const MainShell({super.key, required this.child});
 
   final Widget child;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<MainShell> createState() => _MainShellState();
+}
+
+class _MainShellState extends ConsumerState<MainShell> {
+  bool showSponsoredFooter = false;
+  String currentPath = '';
+
+  @override
+  Widget build(BuildContext context) {
     final path = GoRouterState.of(context).uri.path;
+    if (currentPath != path) {
+      currentPath = path;
+      showSponsoredFooter = false;
+    }
     final width = MediaQuery.sizeOf(context).width;
     final compact = width < 900;
-    final phone = width < 600;
     final mode = ref.watch(activityModeProvider);
     final settings = ref.watch(appSettingsProvider);
 
@@ -31,20 +42,32 @@ class MainShell extends ConsumerWidget {
           _AppHeader(compact: compact, mode: mode, path: path),
           Expanded(
             child: path == '/map'
-                ? child
-                : Stack(
-                    children: [
-                      if (settings.showTopoBackground)
-                        const Positioned.fill(
-                          child: IgnorePointer(
-                            child: CustomPaint(painter: _ContourPainter()),
+                ? widget.child
+                : NotificationListener<ScrollNotification>(
+                    onNotification: (notification) {
+                      if (notification.metrics.axis != Axis.vertical) {
+                        return false;
+                      }
+                      final atBottom = notification.metrics.extentAfter <= 12;
+                      if (atBottom != showSponsoredFooter) {
+                        setState(() => showSponsoredFooter = atBottom);
+                      }
+                      return false;
+                    },
+                    child: Stack(
+                      children: [
+                        if (settings.showTopoBackground)
+                          const Positioned.fill(
+                            child: IgnorePointer(
+                              child: CustomPaint(painter: _ContourPainter()),
+                            ),
                           ),
-                        ),
-                      Positioned.fill(child: child),
-                    ],
+                        Positioned.fill(child: widget.child),
+                      ],
+                    ),
                   ),
           ),
-          if (!(phone && path == '/map'))
+          if (path != '/map' && showSponsoredFooter)
             NativeAdCard(mode: mode, compact: compact, persistent: true),
         ],
       ),
@@ -245,42 +268,70 @@ class _MobileNavItem extends StatelessWidget {
         : const Color(0xFF9AA5A1);
     return InkWell(
       onTap: () => context.go(destination.path),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          if (isAdd)
-            Container(
-              width: 38,
-              height: 38,
-              decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.primary,
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(
-                Icons.add,
-                color: PacificTerrainColors.navy,
-                size: 23,
-              ),
+      child: isAdd
+          ? Stack(
+              clipBehavior: Clip.none,
+              alignment: Alignment.center,
+              children: [
+                Positioned(
+                  top: -38,
+                  child: Container(
+                    width: 54,
+                    height: 54,
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.primary,
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: PacificTerrainColors.cloud,
+                        width: 4,
+                      ),
+                      boxShadow: const [
+                        BoxShadow(
+                          color: Color(0x66000000),
+                          blurRadius: 10,
+                          offset: Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    child: const Icon(
+                      Icons.add,
+                      color: PacificTerrainColors.navy,
+                      size: 28,
+                    ),
+                  ),
+                ),
+                Positioned(
+                  bottom: 5,
+                  child: Text(
+                    destination.labelFor(mode),
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      color: color,
+                      fontSize: 10,
+                      fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
             )
-          else
-            Icon(
-              selected ? destination.selectedIcon : destination.icon,
-              size: 21,
-              color: color,
+          : Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  selected ? destination.selectedIcon : destination.icon,
+                  size: 21,
+                  color: color,
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  destination.labelFor(mode),
+                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                    color: color,
+                    fontSize: 10,
+                    fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
+                  ),
+                ),
+              ],
             ),
-          if (!isAdd) ...[
-            const SizedBox(height: 3),
-            Text(
-              destination.labelFor(mode),
-              style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                color: color,
-                fontSize: 10,
-                fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
-              ),
-            ),
-          ],
-        ],
-      ),
     );
   }
 }

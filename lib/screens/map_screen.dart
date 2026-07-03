@@ -316,7 +316,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                     crags: mapCrags,
                     skiRoutes: skiCatalog,
                     paths: mapPaths,
-                    regions: wide ? mapRegions : const <OfflineBcRegion>[],
+                    regions: mapRegions,
                     selectedCrag: selectedCrag,
                     selectedSkiRoute: activeSkiRoute,
                     userLocation: userLocation,
@@ -374,7 +374,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                         retinaMode: tileStyle == _MapTileStyle.clean,
                         userAgentPackageName: 'com.climbon.app',
                       ),
-                      if (wide && currentZoom < 9)
+                      if (currentZoom < 9)
                         PolygonLayer(
                           polygons: _offlineRegionPolygons(mapRegions),
                         ),
@@ -444,11 +444,14 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                           ..._pathEditorMarkers(),
                         ],
                       ),
-                      SimpleAttributionWidget(
-                        source: Text(tileStyle.attribution),
-                        backgroundColor: Theme.of(
-                          context,
-                        ).colorScheme.surface.withValues(alpha: 0.82),
+                      Padding(
+                        padding: EdgeInsets.only(bottom: wide ? 0 : 40),
+                        child: SimpleAttributionWidget(
+                          source: Text(tileStyle.attribution),
+                          backgroundColor: Theme.of(
+                            context,
+                          ).colorScheme.surface.withValues(alpha: 0.82),
+                        ),
                       ),
                     ],
                   ),
@@ -485,6 +488,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                   ),
                 _MapLayerSwitcher(
                   selected: tileStyle,
+                  compact: !wide,
                   terrainAvailable:
                       kIsWeb || OfflineMapConfig.terrainConfigured,
                   onChanged: (style) {
@@ -581,7 +585,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                   _MapFilters(
                     activeFilters: activeFilters,
                     top: 8,
-                    alignLeft: !wide,
+                    alignLeft: false,
                     onToggle: _toggleFilter,
                   )
                 else
@@ -2416,12 +2420,14 @@ class _MapFilters extends StatelessWidget {
 class _MapLayerSwitcher extends StatelessWidget {
   const _MapLayerSwitcher({
     required this.selected,
+    required this.compact,
     required this.terrainAvailable,
     required this.onChanged,
     required this.onTerrainChanged,
   });
 
   final _MapTileStyle selected;
+  final bool compact;
   final bool terrainAvailable;
   final ValueChanged<_MapTileStyle> onChanged;
   final ValueChanged<bool> onTerrainChanged;
@@ -2436,8 +2442,14 @@ class _MapLayerSwitcher extends StatelessWidget {
         : selected;
 
     return Positioned(
-      right: 12,
-      bottom: selected == _MapTileStyle.terrain3d ? 12 : 96,
+      left: compact ? 12 : null,
+      right: compact ? null : 12,
+      top: compact ? 8 : null,
+      bottom: compact
+          ? null
+          : selected == _MapTileStyle.terrain3d
+          ? 12
+          : 96,
       child: SafeArea(
         child: Material(
           color: Theme.of(context).colorScheme.surface,
