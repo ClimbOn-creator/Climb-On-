@@ -106,7 +106,6 @@ class _SubmitRouteScreenState extends ConsumerState<SubmitRouteScreen> {
       backgroundColor: Colors.transparent,
       body: SideBannerLayout(
         maxContentWidth: 1180,
-        showCompactBanners: true,
         child: LayoutBuilder(
           builder: (context, constraints) {
             final form = Form(

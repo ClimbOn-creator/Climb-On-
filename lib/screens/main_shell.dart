@@ -67,7 +67,9 @@ class _MainShellState extends ConsumerState<MainShell> {
                     ),
                   ),
           ),
-          if (path != '/map' && showSponsoredFooter)
+          if (path != '/map' &&
+              !(compact && path == '/submit') &&
+              showSponsoredFooter)
             NativeAdCard(mode: mode, compact: compact, persistent: true),
         ],
       ),
@@ -230,7 +232,7 @@ class _MobileNavigation extends StatelessWidget {
       child: SafeArea(
         top: false,
         child: SizedBox(
-          height: 68,
+          height: 74,
           child: Row(
             children: [
               for (final destination in _destinations)
@@ -273,8 +275,8 @@ class _MobileNavItem extends StatelessWidget {
         children: [
           if (isAdd)
             Container(
-              width: 38,
-              height: 38,
+              width: 44,
+              height: 44,
               decoration: BoxDecoration(
                 color: Theme.of(context).colorScheme.primary,
                 shape: BoxShape.circle,
@@ -282,22 +284,22 @@ class _MobileNavItem extends StatelessWidget {
               child: const Icon(
                 Icons.add,
                 color: PacificTerrainColors.navy,
-                size: 23,
+                size: 27,
               ),
             )
           else
             Icon(
               selected ? destination.selectedIcon : destination.icon,
-              size: 21,
+              size: 24,
               color: color,
             ),
           if (!isAdd) ...[
-            const SizedBox(height: 3),
+            const SizedBox(height: 4),
             Text(
               destination.labelFor(mode),
               style: Theme.of(context).textTheme.labelSmall?.copyWith(
                 color: color,
-                fontSize: 10,
+                fontSize: 11,
                 fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
               ),
             ),

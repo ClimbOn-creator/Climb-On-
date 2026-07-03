@@ -485,7 +485,6 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                   ),
                 _MapLayerSwitcher(
                   selected: tileStyle,
-                  compact: !wide,
                   terrainAvailable:
                       kIsWeb || OfflineMapConfig.terrainConfigured,
                   onChanged: (style) {
@@ -2417,14 +2416,12 @@ class _MapFilters extends StatelessWidget {
 class _MapLayerSwitcher extends StatelessWidget {
   const _MapLayerSwitcher({
     required this.selected,
-    required this.compact,
     required this.terrainAvailable,
     required this.onChanged,
     required this.onTerrainChanged,
   });
 
   final _MapTileStyle selected;
-  final bool compact;
   final bool terrainAvailable;
   final ValueChanged<_MapTileStyle> onChanged;
   final ValueChanged<bool> onTerrainChanged;
@@ -2439,14 +2436,8 @@ class _MapLayerSwitcher extends StatelessWidget {
         : selected;
 
     return Positioned(
-      left: compact ? 12 : null,
-      right: compact ? null : 12,
-      top: compact ? 8 : null,
-      bottom: compact
-          ? null
-          : selected == _MapTileStyle.terrain3d
-          ? 12
-          : 96,
+      left: 12,
+      top: 8,
       child: SafeArea(
         child: Material(
           color: Theme.of(context).colorScheme.surface,

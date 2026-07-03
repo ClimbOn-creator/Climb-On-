@@ -35,59 +35,42 @@ class _ClimbOnMarkPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final rope = Paint()
+    final mountain = Paint()
       ..color = color
       ..style = PaintingStyle.stroke
-      ..strokeWidth = size.shortestSide * 0.085
+      ..strokeWidth = size.shortestSide * 0.072
       ..strokeCap = StrokeCap.round
       ..strokeJoin = StrokeJoin.round;
 
-    final knot = Path()
-      ..moveTo(size.width * 0.31, size.height * 0.82)
-      ..lineTo(size.width * 0.49, size.height * 0.87)
+    final peaks = Path()
+      ..moveTo(size.width * 0.13, size.height * 0.72)
+      ..lineTo(size.width * 0.37, size.height * 0.38)
+      ..lineTo(size.width * 0.48, size.height * 0.52)
+      ..lineTo(size.width * 0.64, size.height * 0.24)
+      ..lineTo(size.width * 0.88, size.height * 0.72);
+    canvas.drawPath(peaks, mountain);
+
+    final snow = Path()
+      ..moveTo(size.width * 0.55, size.height * 0.40)
+      ..lineTo(size.width * 0.64, size.height * 0.24)
+      ..lineTo(size.width * 0.72, size.height * 0.40)
+      ..lineTo(size.width * 0.67, size.height * 0.37)
+      ..lineTo(size.width * 0.63, size.height * 0.43)
+      ..lineTo(size.width * 0.59, size.height * 0.36)
+      ..close();
+    canvas.drawPath(snow, mountain);
+
+    final trail = Path()
+      ..moveTo(size.width * 0.24, size.height * 0.78)
       ..cubicTo(
-        size.width * 0.72,
-        size.height * 0.91,
-        size.width * 0.80,
-        size.height * 0.72,
-        size.width * 0.61,
-        size.height * 0.58,
-      )
-      ..cubicTo(
-        size.width * 0.49,
-        size.height * 0.49,
-        size.width * 0.31,
-        size.height * 0.42,
-        size.width * 0.32,
-        size.height * 0.29,
-      )
-      ..cubicTo(
-        size.width * 0.33,
-        size.height * 0.15,
-        size.width * 0.52,
-        size.height * 0.10,
-        size.width * 0.65,
-        size.height * 0.20,
-      )
-      ..cubicTo(
-        size.width * 0.80,
-        size.height * 0.32,
-        size.width * 0.69,
-        size.height * 0.45,
-        size.width * 0.52,
-        size.height * 0.55,
-      )
-      ..cubicTo(
-        size.width * 0.31,
+        size.width * 0.43,
         size.height * 0.67,
-        size.width * 0.24,
-        size.height * 0.78,
-        size.width * 0.31,
-        size.height * 0.82,
-      )
-      ..moveTo(size.width * 0.65, size.height * 0.20)
-      ..lineTo(size.width * 0.76, size.height * 0.13);
-    canvas.drawPath(knot, rope);
+        size.width * 0.57,
+        size.height * 0.88,
+        size.width * 0.79,
+        size.height * 0.72,
+      );
+    canvas.drawPath(trail, mountain);
   }
 
   @override
