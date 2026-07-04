@@ -12,6 +12,7 @@ import '../state/climb_log_state.dart';
 import '../state/ski_log_state.dart';
 import '../state/ski_route_state.dart';
 import '../theme/climb_on_theme.dart';
+import '../utils/climb_grade_search.dart';
 import '../widgets/route_card.dart';
 import '../widgets/side_banner_layout.dart';
 
@@ -152,24 +153,32 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
                     onTap: _openRouteDetails,
                   ),
                 ],
-                _SectionHeading(
-                  title: 'Routes by crag',
-                  subtitle: climbResults.isEmpty
-                      ? 'No lines match those filters.'
-                      : '${climbResults.length} lines, grouped by where you will actually climb.',
-                ),
-                if (climbResults.isEmpty)
+                if (query.trim().isEmpty &&
+                    climbFilter == _ClimbGuideFilter.all)
                   const _EmptyGuideState(
-                    icon: Icons.search_off,
-                    text: 'Try another grade, style, or crag name.',
+                    icon: Icons.search,
+                    text: 'Search for a route, crag, grade, or climbing style.',
                   )
-                else
-                  for (final group in _groupClimbs(climbResults))
-                    _CragGuideGroup(
-                      group: group,
-                      climbLog: climbLog,
-                      onRouteTap: _openRouteDetails,
-                    ),
+                else ...[
+                  _SectionHeading(
+                    title: 'Routes by crag',
+                    subtitle: climbResults.isEmpty
+                        ? 'No lines match those filters.'
+                        : '${climbResults.length} lines, grouped by where you will actually climb.',
+                  ),
+                  if (climbResults.isEmpty)
+                    const _EmptyGuideState(
+                      icon: Icons.search_off,
+                      text: 'Try another grade, style, or crag name.',
+                    )
+                  else
+                    for (final group in _groupClimbs(climbResults))
+                      _CragGuideGroup(
+                        group: group,
+                        climbLog: climbLog,
+                        onRouteTap: _openRouteDetails,
+                      ),
+                ],
               ] else ...[
                 if (skiCatalog.isLoading)
                   const LinearProgressIndicator(minHeight: 3),
@@ -221,17 +230,23 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
     ClimbLogState log,
   ) {
     final needle = query.trim().toLowerCase();
+    if (needle.isEmpty && climbFilter == _ClimbGuideFilter.all) {
+      return const [];
+    }
+    final gradeQuery = isClimbGradeQuery(needle);
     return entries
         .where((entry) {
           final route = entry.route;
           final matchesQuery =
               needle.isEmpty ||
-              route.name.toLowerCase().contains(needle) ||
-              route.grade.toLowerCase().contains(needle) ||
-              route.typeLabel.toLowerCase().contains(needle) ||
-              route.pitchLabel.toLowerCase().contains(needle) ||
-              entry.crag.name.toLowerCase().contains(needle) ||
-              entry.wallName.toLowerCase().contains(needle);
+              (gradeQuery
+                  ? climbGradeMatchesQuery(route.grade, needle)
+                  : route.name.toLowerCase().contains(needle) ||
+                        route.grade.toLowerCase().contains(needle) ||
+                        route.typeLabel.toLowerCase().contains(needle) ||
+                        route.pitchLabel.toLowerCase().contains(needle) ||
+                        entry.crag.name.toLowerCase().contains(needle) ||
+                        entry.wallName.toLowerCase().contains(needle));
           if (!matchesQuery) return false;
           return switch (climbFilter) {
             _ClimbGuideFilter.all => true,
@@ -358,9 +373,10 @@ class _GuideHero extends StatelessWidget {
       child: Padding(
         padding: const EdgeInsets.all(22),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             Row(
+              mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Icon(
                   ski ? Icons.downhill_skiing : Icons.menu_book_outlined,
@@ -380,6 +396,7 @@ class _GuideHero extends StatelessWidget {
             const SizedBox(height: 12),
             Text(
               ski ? 'Plan an objective.' : 'Choose a line. Go climb.',
+              textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.headlineLarge?.copyWith(
                 color: Colors.white,
                 height: 1.05,
@@ -390,12 +407,14 @@ class _GuideHero extends StatelessWidget {
               ski
                   ? 'Tour details, terrain context, and your shortlist—without the noise.'
                   : 'Routes, access beta, and your projects—organized for a day outside.',
+              textAlign: TextAlign.center,
               style: Theme.of(
                 context,
               ).textTheme.bodyLarge?.copyWith(color: Colors.white70),
             ),
             const SizedBox(height: 18),
             Wrap(
+              alignment: WrapAlignment.center,
               spacing: 10,
               runSpacing: 10,
               children: [
@@ -430,7 +449,7 @@ class _HeroStat extends StatelessWidget {
         borderRadius: BorderRadius.circular(12),
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           Text(
             value,
@@ -707,18 +726,6 @@ class _CragGuideGroup extends StatelessWidget {
           '${group.crag.region} · ${group.entries.length} ${group.entries.length == 1 ? 'route' : 'routes'}',
         ),
         children: [
-          if (group.crag.accessNotes.trim().isNotEmpty)
-            _PlaceNote(
-              icon: Icons.directions_walk,
-              label: 'Access',
-              text: group.crag.accessNotes,
-            ),
-          if (group.crag.dangerInfo.trim().isNotEmpty)
-            _PlaceNote(
-              icon: Icons.warning_amber,
-              label: 'Heads up',
-              text: group.crag.dangerInfo,
-            ),
           for (final entry in group.entries)
             _ClimbRouteRow(
               entry: entry,
@@ -1078,50 +1085,6 @@ class _DetailSection extends StatelessWidget {
           ),
           const SizedBox(height: 5),
           Text(text),
-        ],
-      ),
-    );
-  }
-}
-
-class _PlaceNote extends StatelessWidget {
-  const _PlaceNote({
-    required this.icon,
-    required this.label,
-    required this.text,
-  });
-
-  final IconData icon;
-  final String label;
-  final String text;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      margin: const EdgeInsets.only(top: 8),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.primaryContainer,
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(icon, size: 19),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  label,
-                  style: const TextStyle(fontWeight: FontWeight.w900),
-                ),
-                Text(text, maxLines: 3, overflow: TextOverflow.ellipsis),
-              ],
-            ),
-          ),
         ],
       ),
     );
