@@ -319,9 +319,9 @@ const _destinations = [
   ),
   _AppDestination(
     path: '/feed',
-    label: 'Feed',
-    icon: Icons.dynamic_feed_outlined,
-    selectedIcon: Icons.dynamic_feed,
+    label: 'Guide',
+    icon: Icons.menu_book_outlined,
+    selectedIcon: Icons.menu_book,
   ),
   _AppDestination(
     path: '/submit',
