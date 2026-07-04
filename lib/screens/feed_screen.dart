@@ -35,6 +35,11 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
     super.dispose();
   }
 
+  void _submitSearch() {
+    setState(() => query = searchController.text);
+    FocusScope.of(context).unfocus();
+  }
+
   @override
   Widget build(BuildContext context) {
     final mode = ref.watch(activityModeProvider);
@@ -84,27 +89,6 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
                           .length,
               ),
               const SizedBox(height: 18),
-              TextField(
-                controller: searchController,
-                onChanged: (value) => setState(() => query = value),
-                decoration: InputDecoration(
-                  prefixIcon: const Icon(Icons.search),
-                  hintText: mode == ActivityMode.ski
-                      ? 'Find a tour, area, difficulty, or aspect'
-                      : 'Find a route, crag, grade, or climbing style',
-                  suffixIcon: query.isEmpty
-                      ? null
-                      : IconButton(
-                          tooltip: 'Clear search',
-                          onPressed: () {
-                            searchController.clear();
-                            setState(() => query = '');
-                          },
-                          icon: const Icon(Icons.close),
-                        ),
-                ),
-              ),
-              const SizedBox(height: 12),
               if (mode == ActivityMode.ski)
                 _FilterBar<_SkiGuideFilter>(
                   values: _SkiGuideFilter.values,
@@ -119,6 +103,38 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
                   labelFor: (filter) => filter.label,
                   onSelected: (filter) => setState(() => climbFilter = filter),
                 ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: searchController,
+                onChanged: (value) => setState(() => query = value),
+                onSubmitted: (_) => _submitSearch(),
+                textInputAction: TextInputAction.search,
+                decoration: InputDecoration(
+                  prefixIcon: const Icon(Icons.search),
+                  hintText: mode == ActivityMode.ski
+                      ? 'Find a tour, area, difficulty, or aspect'
+                      : 'Find a route, crag, grade, or climbing style',
+                  suffixIcon: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (query.isNotEmpty)
+                        IconButton(
+                          tooltip: 'Clear search',
+                          onPressed: () {
+                            searchController.clear();
+                            setState(() => query = '');
+                          },
+                          icon: const Icon(Icons.close),
+                        ),
+                      IconButton(
+                        tooltip: 'Search',
+                        onPressed: _submitSearch,
+                        icon: const Icon(Icons.arrow_forward),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
               const SizedBox(height: 22),
               if (mode == ActivityMode.climb && focusedRoute != null) ...[
                 _SectionHeading(
@@ -153,13 +169,8 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
                     onTap: _openRouteDetails,
                   ),
                 ],
-                if (query.trim().isEmpty &&
-                    climbFilter == _ClimbGuideFilter.all)
-                  const _EmptyGuideState(
-                    icon: Icons.search,
-                    text: 'Search for a route, crag, grade, or climbing style.',
-                  )
-                else ...[
+                if (query.trim().isNotEmpty ||
+                    climbFilter != _ClimbGuideFilter.all) ...[
                   _SectionHeading(
                     title: 'Routes by crag',
                     subtitle: climbResults.isEmpty
@@ -487,20 +498,24 @@ class _FilterBar<T> extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: Row(
-        children: [
-          for (final value in values)
-            Padding(
-              padding: const EdgeInsets.only(right: 8),
-              child: ChoiceChip(
-                label: Text(labelFor(value)),
-                selected: value == selected,
-                onSelected: (_) => onSelected(value),
-              ),
-            ),
-        ],
+    return LayoutBuilder(
+      builder: (context, constraints) => SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: ConstrainedBox(
+          constraints: BoxConstraints(minWidth: constraints.maxWidth),
+          child: Wrap(
+            alignment: WrapAlignment.center,
+            spacing: 8,
+            children: [
+              for (final value in values)
+                ChoiceChip(
+                  label: Text(labelFor(value)),
+                  selected: value == selected,
+                  onSelected: (_) => onSelected(value),
+                ),
+            ],
+          ),
+        ),
       ),
     );
   }
