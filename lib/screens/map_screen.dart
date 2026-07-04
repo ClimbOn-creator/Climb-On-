@@ -21,6 +21,7 @@ import '../models/climb_route.dart';
 import '../models/crag.dart';
 import '../models/map_path_catalog.dart';
 import '../models/offline_bc_region.dart';
+import '../models/saved_trail.dart';
 import '../models/ski_route.dart';
 import '../models/wall.dart';
 import '../services/database_service.dart';
@@ -32,6 +33,7 @@ import '../state/climb_log_state.dart';
 import '../state/map_path_state.dart';
 import '../state/offline_region_state.dart';
 import '../state/ski_route_state.dart';
+import '../state/trail_library_state.dart';
 import '../utils/number_parser.dart';
 import '../widgets/pulsing_user_marker.dart';
 
@@ -58,6 +60,8 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   bool editMode = false;
   bool pathEditMode = false;
   _PathDraftKind? pathDraftKind;
+  int pathDraftColorValue = savedTrailColors.first;
+  int traceColorIndex = 0;
   int? selectedPathPointIndex;
   List<LatLng> pathDraft = [];
   OfflineBcRegion? editingOfflineRegion;
@@ -74,8 +78,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   DateTime? recordingStartedAt;
   Duration recordingElapsed = Duration.zero;
   List<_RecordedTrackPoint> recordedTrack = [];
-  String? recordedCragId;
-  String? recordedSkiRouteName;
+  int recordedColorValue = savedTrailColors.first;
 
   List<LatLng> get recordedPath => [
     for (final point in recordedTrack) point.location,
@@ -281,6 +284,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     final activeSkiRoute = _activeSkiRoute(skiCatalog);
     final mapPaths =
         ref.watch(mapPathCatalogProvider).valueOrNull ?? const MapPathCatalog();
+    final savedTrails = ref.watch(trailLibraryProvider).trails;
     final mapRegions =
         ref.watch(offlineRegionCatalogProvider).valueOrNull ?? offlineBcRegions;
     final catalogCrags = catalog.valueOrNull ?? const <Crag>[];
@@ -316,6 +320,9 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                     crags: mapCrags,
                     skiRoutes: skiCatalog,
                     paths: mapPaths,
+                    savedTrails: savedTrails,
+                    recordedPath: recordedPath,
+                    recordedColorValue: recordedColorValue,
                     regions: mapRegions,
                     selectedCrag: selectedCrag,
                     selectedSkiRoute: activeSkiRoute,
@@ -388,6 +395,14 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                         ),
                       PolylineLayer(
                         polylines: [
+                          for (final trail in savedTrails)
+                            Polyline(
+                              points: trail.points,
+                              color: trail.color,
+                              strokeWidth: 5,
+                              borderColor: Colors.white,
+                              borderStrokeWidth: 1,
+                            ),
                           ...(mode == ActivityMode.ski
                               ? currentZoom >= _minimumDataZoom
                                     ? _skiLines(mapPaths, skiCatalog)
@@ -399,16 +414,13 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                                   pathDraftKind == _PathDraftKind.regionBoundary
                                   ? [...pathDraft, pathDraft.first]
                                   : pathDraft,
-                              color:
-                                  pathDraftKind?.color ??
-                                  _PathDraftKind.cragApproach.color,
+                              color: Color(pathDraftColorValue),
                               strokeWidth: 5,
                             ),
                           if (recordedPath.length >= 2)
                             Polyline(
                               points: recordedPath,
-                              color:
-                                  recordedPathKind?.color ?? Colors.deepPurple,
+                              color: Color(recordedColorValue),
                               strokeWidth: 6,
                               borderColor: Colors.white,
                               borderStrokeWidth: 2,
@@ -567,14 +579,14 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                     recording: gpsRecording,
                     elapsed: recordingElapsed,
                     hasDraft: recordedTrack.isNotEmpty,
-                    kind: recordedPathKind,
+                    color: Color(recordedColorValue),
                     pointCount: recordedTrack.length,
                     lengthMeters: _pathLength(recordedPath),
                     ascentMeters: _verticalMeters(recordedTrack).ascent,
                     descentMeters: _verticalMeters(recordedTrack).descent,
-                    onStart: () => _chooseAndStartRecording(mode),
+                    onStart: _startRecording,
                     onStop: _stopGpsRecording,
-                    onSubmit: _submitGpsRecording,
+                    onSave: _saveGpsRecording,
                     onDiscard: _discardGpsRecording,
                   ),
                 if (mode == ActivityMode.climb)
@@ -1073,6 +1085,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       final saved = mapPaths.cragPath(crag.id);
       final destination = selectedWall?.location ?? crag.location;
       setState(() {
+        pathDraftColorValue = _nextTraceColor();
         pathDraftKind = kind;
         pathDraft = saved.length >= 2
             ? [...saved]
@@ -1092,6 +1105,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         ? mapPaths.skiAscent(route.name)
         : mapPaths.skiDescent(route.name);
     setState(() {
+      pathDraftColorValue = _nextTraceColor();
       selectedSkiRoute = route;
       selectedSkiRouteId = route.id;
       pathDraftKind = kind;
@@ -1108,6 +1122,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   void _startNewSkiRoutePath() {
     final center = currentMapCenter ?? userLocation;
     setState(() {
+      pathDraftColorValue = _nextTraceColor();
       selectedSkiRoute = null;
       selectedSkiRouteId = null;
       selectedCrag = null;
@@ -1123,6 +1138,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
 
   void _startRegionBoundaryEditor(OfflineBcRegion region) {
     setState(() {
+      pathDraftColorValue = _nextTraceColor();
       selectedCrag = null;
       selectedWall = null;
       selectedSkiRoute = null;
@@ -1151,7 +1167,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
 
   List<Marker> _pathEditorMarkers() {
     if (!pathEditMode) return const [];
-    final pathColor = pathDraftKind?.color ?? _PathDraftKind.cragApproach.color;
+    final pathColor = Color(pathDraftColorValue);
 
     return [
       for (var index = 0; index < pathDraft.length; index++)
@@ -1195,6 +1211,13 @@ class _MapScreenState extends ConsumerState<MapScreen> {
           ),
         ),
     ];
+  }
+
+  int _nextTraceColor() {
+    final libraryCount = ref.read(trailLibraryProvider).trails.length;
+    final color = savedTrailColorFor(libraryCount + traceColorIndex);
+    traceColorIndex += 1;
+    return color;
   }
 
   void _undoPathPoint() {
@@ -1363,54 +1386,17 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     return _VerticalMeters(ascent: ascent, descent: descent);
   }
 
-  Future<void> _chooseAndStartRecording(ActivityMode mode) async {
+  void _startRecording() {
     if (userLocation == null) {
       _showMapMessage('Waiting for a GPS location');
       return;
     }
 
-    _PathDraftKind? kind;
-    if (mode == ActivityMode.climb) {
-      if (selectedCrag == null) {
-        _showMapMessage('Select the crag this approach belongs to first');
-        return;
-      }
-      kind = _PathDraftKind.cragApproach;
-    } else {
-      if (selectedSkiRoute == null) {
-        _showMapMessage('Select the ski tour this recording belongs to first');
-        return;
-      }
-      kind = await showModalBottomSheet<_PathDraftKind>(
-        context: context,
-        showDragHandle: true,
-        builder: (context) => SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                ListTile(
-                  leading: const Icon(Icons.north_east),
-                  title: const Text('Record ascent'),
-                  onTap: () => Navigator.pop(context, _PathDraftKind.skiAscent),
-                ),
-                ListTile(
-                  leading: const Icon(Icons.south_east),
-                  title: const Text('Record descent'),
-                  onTap: () =>
-                      Navigator.pop(context, _PathDraftKind.skiDescent),
-                ),
-              ],
-            ),
-          ),
-        ),
-      );
-    }
-    if (kind == null || !mounted) return;
     final now = DateTime.now();
+    final colorValue = _nextTraceColor();
     setState(() {
-      recordedPathKind = kind;
+      recordedPathKind = _PathDraftKind.cragApproach;
+      recordedColorValue = colorValue;
       recordingStartedAt = now;
       recordingElapsed = Duration.zero;
       recordedTrack = [
@@ -1420,12 +1406,6 @@ class _MapScreenState extends ConsumerState<MapScreen> {
           recordedAt: now,
         ),
       ];
-      recordedCragId = kind == _PathDraftKind.cragApproach
-          ? selectedCrag?.id
-          : null;
-      recordedSkiRouteName = kind == _PathDraftKind.cragApproach
-          ? null
-          : selectedSkiRoute?.name;
       gpsRecording = true;
     });
     unawaited(_persistRecordedDraft());
@@ -1443,7 +1423,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     recordingTimer?.cancel();
     setState(() => gpsRecording = false);
     unawaited(_persistRecordedDraft());
-    _showMapMessage('Recording stopped. Review the line, then submit it.');
+    _showMapMessage('Recording stopped. Review the line, then save it.');
   }
 
   void _discardGpsRecording() {
@@ -1454,30 +1434,26 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       recordingStartedAt = null;
       recordingElapsed = Duration.zero;
       recordedTrack = [];
-      recordedCragId = null;
-      recordedSkiRouteName = null;
     });
     unawaited(_clearRecordedDraft());
   }
 
-  Future<void> _submitGpsRecording() async {
-    final kind = recordedPathKind;
-    if (kind == null || recordedPath.length < 2) {
-      _showMapMessage('Record a longer trail before submitting');
+  Future<void> _saveGpsRecording() async {
+    if (recordedPathKind == null || recordedPath.length < 2) {
+      _showMapMessage('Record a longer trail before saving');
       return;
     }
-    final defaultName = kind == _PathDraftKind.cragApproach
-        ? '${selectedCrag?.name ?? 'Crag'} approach'
-        : '${recordedSkiRouteName ?? selectedSkiRoute?.name ?? 'Ski tour'} ${kind == _PathDraftKind.skiAscent ? 'ascent' : 'descent'}';
+    final now = DateTime.now();
+    final defaultName = 'Trail ${now.month}/${now.day}/${now.year}';
     final controller = TextEditingController(text: defaultName);
     final name = await showDialog<String>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Submit GPS recording'),
+        title: const Text('Save trail to your Library'),
         content: TextField(
           controller: controller,
           autofocus: true,
-          decoration: const InputDecoration(labelText: 'Recording name'),
+          decoration: const InputDecoration(labelText: 'Trail name'),
         ),
         actions: [
           TextButton(
@@ -1486,7 +1462,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
           ),
           FilledButton(
             onPressed: () => Navigator.pop(context, controller.text.trim()),
-            child: const Text('Submit for review'),
+            child: const Text('Save to Library'),
           ),
         ],
       ),
@@ -1494,34 +1470,24 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     controller.dispose();
     if (name == null || name.isEmpty || !mounted) return;
 
-    try {
-      await const DatabaseService().submitRecordedPath(
-        name: name,
-        kind: switch (kind) {
-          _PathDraftKind.cragApproach => 'climb_approach',
-          _PathDraftKind.skiAscent => 'ski_ascent',
-          _PathDraftKind.skiDescent => 'ski_descent',
-          _PathDraftKind.regionBoundary => throw StateError(
-            'Download boundaries are saved through the admin editor.',
+    final vertical = _verticalMeters(recordedTrack);
+    await ref
+        .read(trailLibraryProvider)
+        .add(
+          SavedTrail(
+            id: now.microsecondsSinceEpoch.toString(),
+            name: name,
+            createdAt: now,
+            points: [...recordedPath],
+            distanceMeters: _pathLength(recordedPath),
+            ascentMeters: vertical.ascent,
+            descentMeters: vertical.descent,
+            durationSeconds: recordingElapsed.inSeconds,
+            colorValue: recordedColorValue,
           ),
-        },
-        points: recordedPath,
-        distanceMeters: _pathLength(recordedPath),
-        cragId: kind == _PathDraftKind.cragApproach
-            ? recordedCragId ?? selectedCrag?.id
-            : null,
-        skiRouteName: kind == _PathDraftKind.cragApproach
-            ? null
-            : recordedSkiRouteName ?? selectedSkiRoute?.name,
-      );
-      _discardGpsRecording();
-      _showMapMessage('GPS trail submitted for review');
-    } catch (error) {
-      await _persistRecordedDraft();
-      _showMapMessage(
-        'Recording saved on this device. Submit it when you are back online.',
-      );
-    }
+        );
+    _discardGpsRecording();
+    _showMapMessage('Trail saved to your Library');
   }
 
   Future<void> _restoreRecordedDraft() async {
@@ -1556,8 +1522,8 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       setState(() {
         recordedTrack = points;
         recordedPathKind = kind.first;
-        recordedCragId = json['cragId']?.toString();
-        recordedSkiRouteName = json['skiRouteName']?.toString();
+        recordedColorValue =
+            (json['colorValue'] as num?)?.toInt() ?? savedTrailColors.first;
         recordingStartedAt = points.first.recordedAt;
         recordingElapsed = points.last.recordedAt.difference(
           points.first.recordedAt,
@@ -1576,8 +1542,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       _recordingDraftKey,
       jsonEncode({
         'kind': recordedPathKind!.name,
-        'cragId': recordedCragId,
-        'skiRouteName': recordedSkiRouteName,
+        'colorValue': recordedColorValue,
         'points': [
           for (final point in recordedTrack)
             {
@@ -1808,6 +1773,9 @@ class _Terrain3DMap extends StatefulWidget {
     required this.crags,
     required this.skiRoutes,
     required this.paths,
+    required this.savedTrails,
+    required this.recordedPath,
+    required this.recordedColorValue,
     required this.regions,
     required this.selectedCrag,
     required this.selectedSkiRoute,
@@ -1826,6 +1794,9 @@ class _Terrain3DMap extends StatefulWidget {
   final List<Crag> crags;
   final List<SkiRoute> skiRoutes;
   final MapPathCatalog paths;
+  final List<SavedTrail> savedTrails;
+  final List<LatLng> recordedPath;
+  final int recordedColorValue;
   final List<OfflineBcRegion> regions;
   final Crag? selectedCrag;
   final SkiRoute? selectedSkiRoute;
@@ -1925,6 +1896,8 @@ class _Terrain3DMapState extends State<_Terrain3DMap> {
     if (styleLoaded &&
         (oldWidget.mode != widget.mode ||
             oldWidget.paths != widget.paths ||
+            oldWidget.savedTrails != widget.savedTrails ||
+            oldWidget.recordedPath != widget.recordedPath ||
             oldWidget.regions != widget.regions ||
             oldWidget.selectedCrag != widget.selectedCrag ||
             oldWidget.selectedSkiRoute != widget.selectedSkiRoute)) {
@@ -2091,6 +2064,27 @@ class _Terrain3DMapState extends State<_Terrain3DMap> {
         }
       }
 
+      for (final trail in widget.savedTrails) {
+        lines.add(
+          ml.LineOptions(
+            geometry: trail.points.map(_point).toList(growable: false),
+            lineColor: _hexColor(trail.colorValue),
+            lineWidth: 5,
+            lineOpacity: 0.96,
+          ),
+        );
+      }
+      if (widget.recordedPath.length >= 2) {
+        lines.add(
+          ml.LineOptions(
+            geometry: widget.recordedPath.map(_point).toList(growable: false),
+            lineColor: _hexColor(widget.recordedColorValue),
+            lineWidth: 6,
+            lineOpacity: 1,
+          ),
+        );
+      }
+
       final location = widget.userLocation;
       if (location != null) {
         circles.add(
@@ -2115,6 +2109,10 @@ class _Terrain3DMapState extends State<_Terrain3DMap> {
 
   ml.LatLng _point(LatLng point) {
     return ml.LatLng(point.latitude, point.longitude);
+  }
+
+  String _hexColor(int value) {
+    return '#${(value & 0xFFFFFF).toRadixString(16).padLeft(6, '0')}';
   }
 
   ml.SymbolOptions _labelSymbol(
@@ -2769,14 +2767,14 @@ class _GpsRecorderTools extends StatelessWidget {
     required this.recording,
     required this.elapsed,
     required this.hasDraft,
-    required this.kind,
+    required this.color,
     required this.pointCount,
     required this.lengthMeters,
     required this.ascentMeters,
     required this.descentMeters,
     required this.onStart,
     required this.onStop,
-    required this.onSubmit,
+    required this.onSave,
     required this.onDiscard,
   });
 
@@ -2784,14 +2782,14 @@ class _GpsRecorderTools extends StatelessWidget {
   final bool recording;
   final Duration elapsed;
   final bool hasDraft;
-  final _PathDraftKind? kind;
+  final Color color;
   final int pointCount;
   final double lengthMeters;
   final double ascentMeters;
   final double descentMeters;
   final VoidCallback onStart;
   final VoidCallback onStop;
-  final VoidCallback onSubmit;
+  final VoidCallback onSave;
   final VoidCallback onDiscard;
 
   @override
@@ -2820,7 +2818,7 @@ class _GpsRecorderTools extends StatelessWidget {
                         children: [
                           Icon(
                             recording ? Icons.fiber_manual_record : Icons.route,
-                            color: recording ? Colors.red : kind?.color,
+                            color: recording ? Colors.red : color,
                             size: 20,
                           ),
                           const SizedBox(width: 7),
@@ -2853,9 +2851,9 @@ class _GpsRecorderTools extends StatelessWidget {
                             )
                           else
                             FilledButton.icon(
-                              onPressed: pointCount < 2 ? null : onSubmit,
-                              icon: const Icon(Icons.cloud_upload, size: 18),
-                              label: const Text('Submit'),
+                              onPressed: pointCount < 2 ? null : onSave,
+                              icon: const Icon(Icons.bookmark_add, size: 18),
+                              label: const Text('Save'),
                             ),
                           TextButton(
                             onPressed: onDiscard,

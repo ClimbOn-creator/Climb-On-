@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../config/supabase_config.dart';
 import '../models/climb_route.dart';
 import '../models/crag.dart';
+import '../models/saved_trail.dart';
 import '../models/ski_route.dart';
 import '../models/user_profile.dart';
 import '../models/social.dart';
@@ -17,6 +18,7 @@ import '../state/profile_state.dart';
 import '../state/ski_log_state.dart';
 import '../state/ski_route_state.dart';
 import '../state/social_state.dart';
+import '../state/trail_library_state.dart';
 import '../theme/climb_on_theme.dart';
 import '../widgets/side_banner_layout.dart';
 
@@ -138,11 +140,18 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Expanded(
-                                child: _BestSendsPanel(
-                                  hardestBoulder: hardestBoulder,
-                                  hardestSport: hardestSport,
-                                  completedCount: completedRoutes.length,
-                                  projectCount: projectRoutes.length,
+                                child: Column(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.stretch,
+                                  children: [
+                                    _BestSendsPanel(
+                                      hardestBoulder: hardestBoulder,
+                                      hardestSport: hardestSport,
+                                      completedCount: completedRoutes.length,
+                                      projectCount: projectRoutes.length,
+                                    ),
+                                    const _TrailLibraryPanel(),
+                                  ],
                                 ),
                               ),
                               const SizedBox(width: 16),
@@ -177,6 +186,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                             completedCount: completedRoutes.length,
                             projectCount: projectRoutes.length,
                           ),
+                          const _TrailLibraryPanel(),
                           _SectionCard(
                             title: 'Bouldering progression',
                             child: _GradeProgressChart(
@@ -508,6 +518,7 @@ class _SkiProfileBody extends StatelessWidget {
             ],
           ),
         ),
+        const _TrailLibraryPanel(),
         _SectionCard(
           title: 'Recent ski routes',
           child: skiLog.sends.isEmpty
@@ -937,6 +948,109 @@ class _BestSendsPanel extends StatelessWidget {
             ],
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _TrailLibraryPanel extends ConsumerWidget {
+  const _TrailLibraryPanel();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final library = ref.watch(trailLibraryProvider);
+    return _SectionCard(
+      title: 'Your Library',
+      child: !library.loaded
+          ? const Center(child: CircularProgressIndicator())
+          : library.trails.isEmpty
+          ? const _EmptyProfileState(
+              text: 'Recorded trails you save will appear here.',
+            )
+          : Column(
+              children: [
+                for (final trail in library.trails)
+                  _SavedTrailTile(trail: trail),
+              ],
+            ),
+    );
+  }
+}
+
+class _SavedTrailTile extends ConsumerWidget {
+  const _SavedTrailTile({required this.trail});
+
+  final SavedTrail trail;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final distance = trail.distanceMeters >= 1000
+        ? '${(trail.distanceMeters / 1000).toStringAsFixed(2)} km'
+        : '${trail.distanceMeters.round()} m';
+    final minutes = (trail.durationSeconds / 60).round();
+    final date = trail.createdAt.toLocal();
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surfaceContainerHighest,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: PacificTerrainColors.line),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: 6,
+                    height: 42,
+                    decoration: BoxDecoration(
+                      color: trail.color,
+                      borderRadius: BorderRadius.circular(99),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          trail.name,
+                          style: Theme.of(context).textTheme.titleMedium
+                              ?.copyWith(fontWeight: FontWeight.w900),
+                        ),
+                        Text(
+                          '$distance · ↑${trail.ascentMeters.round()} m · '
+                          '↓${trail.descentMeters.round()} m · $minutes min',
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Saved privately on ${date.month}/${date.day}/${date.year}',
+                style: Theme.of(context).textTheme.labelSmall,
+              ),
+              const SizedBox(height: 8),
+              OutlinedButton.icon(
+                onPressed: () {
+                  ref.read(selectedLibraryTrailProvider.notifier).state = trail;
+                  ref.read(activityModeProvider.notifier).state =
+                      ActivityMode.climb;
+                  context.go('/submit');
+                },
+                icon: const Icon(Icons.public, size: 18),
+                label: const Text('Create public crag'),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

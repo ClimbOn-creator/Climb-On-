@@ -9,6 +9,7 @@ import '../state/catalog_state.dart';
 import '../state/admin_state.dart';
 import '../state/map_path_state.dart';
 import '../state/ski_route_state.dart';
+import '../state/trail_library_state.dart';
 import '../theme/climb_on_theme.dart';
 import '../utils/number_parser.dart';
 import '../utils/picked_upload_image.dart';
@@ -61,6 +62,21 @@ class _SubmitRouteScreenState extends ConsumerState<SubmitRouteScreen> {
   String? selectedWallId;
 
   @override
+  void initState() {
+    super.initState();
+    final trail = ref.read(selectedLibraryTrailProvider);
+    if (trail == null || trail.points.isEmpty) return;
+    final cragPoint = trail.points.last;
+    cragName.text = trail.name;
+    wallName.text = 'Main';
+    latitude.text = cragPoint.latitude.toStringAsFixed(6);
+    longitude.text = cragPoint.longitude.toStringAsFixed(6);
+    approachNotes.text =
+        'Approach recorded as “${trail.name}” '
+        '(${trail.distanceMeters.round()} m).';
+  }
+
+  @override
   void dispose() {
     for (final controller in [
       submitterName,
@@ -101,6 +117,7 @@ class _SubmitRouteScreenState extends ConsumerState<SubmitRouteScreen> {
     final isAdmin = ref.watch(isMapAdminProvider).valueOrNull == true;
     final isOwnerAccount = ref.watch(isOwnerAccountProvider);
     final isSki = mode == ActivityMode.ski;
+    final sourceTrail = ref.watch(selectedLibraryTrailProvider);
 
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -118,6 +135,30 @@ class _SubmitRouteScreenState extends ConsumerState<SubmitRouteScreen> {
                   44,
                 ),
                 children: [
+                  if (sourceTrail != null && !isSki) ...[
+                    Card(
+                      color: Theme.of(context).colorScheme.primaryContainer,
+                      child: ListTile(
+                        leading: Icon(Icons.route, color: sourceTrail.color),
+                        title: Text('Using “${sourceTrail.name}”'),
+                        subtitle: const Text(
+                          'The saved trail will be included with this new public crag submission.',
+                        ),
+                        trailing: IconButton(
+                          tooltip: 'Remove saved trail',
+                          onPressed: () =>
+                              ref
+                                      .read(
+                                        selectedLibraryTrailProvider.notifier,
+                                      )
+                                      .state =
+                                  null,
+                          icon: const Icon(Icons.close),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                  ],
                   Text(
                     isSki ? 'CONTRIBUTE A WINTER LINE' : 'CONTRIBUTE A CLIMB',
                     style: Theme.of(context).textTheme.labelSmall?.copyWith(
@@ -427,6 +468,7 @@ class _SubmitRouteScreenState extends ConsumerState<SubmitRouteScreen> {
   Future<void> submit(bool isAdmin) async {
     if (!formKey.currentState!.validate()) return;
     final mode = ref.read(activityModeProvider);
+    final sourceTrail = ref.read(selectedLibraryTrailProvider);
     if (mode == ActivityMode.ski) {
       final trailhead = LatLng(
         parseNumberWithUnits(trailheadLatitude.text)!,
@@ -541,6 +583,13 @@ class _SubmitRouteScreenState extends ConsumerState<SubmitRouteScreen> {
           'descent_notes': descentNotes.text.trim(),
           'danger_info': dangerInfo.text.trim(),
           'gear_notes': gearNotes.text.trim(),
+          if (sourceTrail != null && selectedCragId == null) ...{
+            'approach_path_points': [
+              for (final point in sourceTrail.points)
+                [point.latitude, point.longitude],
+            ],
+            'approach_distance_meters': sourceTrail.distanceMeters,
+          },
         };
         if (isAdmin) {
           final service = const DatabaseService();
@@ -595,6 +644,7 @@ class _SubmitRouteScreenState extends ConsumerState<SubmitRouteScreen> {
         selectedCragId = null;
         selectedWallId = null;
       });
+      ref.read(selectedLibraryTrailProvider.notifier).state = null;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
