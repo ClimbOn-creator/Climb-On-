@@ -3,9 +3,39 @@ import 'package:latlong2/latlong.dart';
 import 'comment.dart';
 import 'route_photo.dart';
 
-enum ClimbRouteType { sport, trad, topRope, boulder, ice, mixed }
+enum ClimbRouteType {
+  sport,
+  trad,
+  topRope,
+  boulder,
+  deepWaterSolo,
+  aid,
+  ice,
+  mixed,
+}
 
 enum PitchType { boulder, singlePitch, multiPitch }
+
+String routeTypeValueLabel(String value) {
+  return switch (value) {
+    'top_rope' => 'Top Rope',
+    'deep_water_solo' => 'Deep Water Solo',
+    'aid' => 'Aid',
+    'trad' => 'Trad',
+    'boulder' => 'Boulder',
+    'ice' => 'Ice',
+    'mixed' => 'Mixed',
+    _ =>
+      value
+          .split('_')
+          .map(
+            (word) => word.isEmpty
+                ? word
+                : '${word[0].toUpperCase()}${word.substring(1)}',
+          )
+          .join(' '),
+  };
+}
 
 class ClimbRoute {
   const ClimbRoute({
@@ -69,6 +99,8 @@ class ClimbRoute {
       ClimbRouteType.trad => 'Trad',
       ClimbRouteType.topRope => 'Top Rope',
       ClimbRouteType.boulder => 'Boulder',
+      ClimbRouteType.deepWaterSolo => 'Deep Water Solo',
+      ClimbRouteType.aid => 'Aid',
       ClimbRouteType.ice => 'Ice',
       ClimbRouteType.mixed => 'Mixed',
     };

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../models/crag.dart';
+import '../models/climb_route.dart';
 import '../services/database_service.dart';
 import '../state/activity_mode_state.dart';
 import '../state/catalog_state.dart';
@@ -365,7 +366,16 @@ class _SubmitRouteScreenState extends ConsumerState<SubmitRouteScreen> {
       _MenuField(
         label: 'Route type',
         value: routeType,
-        values: const ['sport', 'trad', 'top_rope', 'boulder', 'mixed', 'ice'],
+        values: const [
+          'sport',
+          'trad',
+          'top_rope',
+          'boulder',
+          'deep_water_solo',
+          'aid',
+          'mixed',
+          'ice',
+        ],
         onChanged: (value) => setState(() {
           routeType = value;
           if (value == 'top_rope') topRope = true;
@@ -1123,7 +1133,7 @@ class _MenuField extends StatelessWidget {
           for (final item in values)
             DropdownMenuItem(
               value: item,
-              child: Text(item == 'top_rope' ? 'Top Rope' : item),
+              child: Text(routeTypeValueLabel(item)),
             ),
         ],
         onChanged: (value) {

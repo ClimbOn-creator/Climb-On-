@@ -1269,6 +1269,11 @@ class DatabaseService {
       'trad' => ClimbRouteType.trad,
       'top_rope' || 'top rope' || 'top-rope' => ClimbRouteType.topRope,
       'boulder' => ClimbRouteType.boulder,
+      'deep_water_solo' ||
+      'deep water solo' ||
+      'deep-water-solo' ||
+      'dws' => ClimbRouteType.deepWaterSolo,
+      'aid' => ClimbRouteType.aid,
       'ice' => ClimbRouteType.ice,
       'mixed' => ClimbRouteType.mixed,
       _ => ClimbRouteType.sport,

@@ -63,6 +63,7 @@ class _AdminRouteEditorState extends State<AdminRouteEditor> {
     };
     routeType = switch (route?.type) {
       ClimbRouteType.topRope => 'top_rope',
+      ClimbRouteType.deepWaterSolo => 'deep_water_solo',
       final type? => type.name,
       null => 'sport',
     };
@@ -121,6 +122,8 @@ class _AdminRouteEditorState extends State<AdminRouteEditor> {
               'trad',
               'top_rope',
               'boulder',
+              'deep_water_solo',
+              'aid',
               'ice',
               'mixed',
             ], (value) => setState(() => routeType = value)),
@@ -281,9 +284,7 @@ class _AdminRouteEditorState extends State<AdminRouteEditor> {
           for (final item in values)
             DropdownMenuItem(
               value: item,
-              child: Text(
-                item == 'top_rope' ? 'Top Rope' : item.replaceAll('_', ' '),
-              ),
+              child: Text(routeTypeValueLabel(item)),
             ),
         ],
         onChanged: (next) {

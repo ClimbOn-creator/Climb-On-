@@ -24,25 +24,38 @@ class FeedScreen extends ConsumerStatefulWidget {
 }
 
 class _FeedScreenState extends ConsumerState<FeedScreen> {
-  final searchController = TextEditingController();
-  String query = '';
+  final climbSearchController = TextEditingController();
+  final skiSearchController = TextEditingController();
+  String climbQuery = '';
+  String skiQuery = '';
   _ClimbGuideFilter climbFilter = _ClimbGuideFilter.all;
   _SkiGuideFilter skiFilter = _SkiGuideFilter.all;
 
   @override
   void dispose() {
-    searchController.dispose();
+    climbSearchController.dispose();
+    skiSearchController.dispose();
     super.dispose();
   }
 
-  void _submitSearch() {
-    setState(() => query = searchController.text);
+  void _submitSearch(ActivityMode mode) {
+    setState(() {
+      if (mode == ActivityMode.ski) {
+        skiQuery = skiSearchController.text.trim();
+      } else {
+        climbQuery = climbSearchController.text.trim();
+      }
+    });
     FocusScope.of(context).unfocus();
   }
 
   @override
   Widget build(BuildContext context) {
     final mode = ref.watch(activityModeProvider);
+    final searchController = mode == ActivityMode.ski
+        ? skiSearchController
+        : climbSearchController;
+    final query = mode == ActivityMode.ski ? skiQuery : climbQuery;
     final desktop = MediaQuery.sizeOf(context).width >= 900;
     final catalog = ref.watch(catalogProvider);
     final crags = catalog.valueOrNull ?? const <Crag>[];
@@ -106,8 +119,8 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
               const SizedBox(height: 12),
               TextField(
                 controller: searchController,
-                onChanged: (value) => setState(() => query = value),
-                onSubmitted: (_) => _submitSearch(),
+                onChanged: (_) => setState(() {}),
+                onSubmitted: (_) => _submitSearch(mode),
                 textInputAction: TextInputAction.search,
                 decoration: InputDecoration(
                   prefixIcon: const Icon(Icons.search),
@@ -117,18 +130,24 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
                   suffixIcon: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      if (query.isNotEmpty)
+                      if (searchController.text.isNotEmpty)
                         IconButton(
                           tooltip: 'Clear search',
                           onPressed: () {
                             searchController.clear();
-                            setState(() => query = '');
+                            setState(() {
+                              if (mode == ActivityMode.ski) {
+                                skiQuery = '';
+                              } else {
+                                climbQuery = '';
+                              }
+                            });
                           },
                           icon: const Icon(Icons.close),
                         ),
                       IconButton(
                         tooltip: 'Search',
-                        onPressed: _submitSearch,
+                        onPressed: () => _submitSearch(mode),
                         icon: const Icon(Icons.arrow_forward),
                       ),
                     ],
@@ -201,24 +220,27 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
                       : const [],
                   onTap: _openSkiDetails,
                 ),
-                _SectionHeading(
-                  title: 'Tours by area',
-                  subtitle: skiResults.isEmpty
-                      ? 'No objectives match those filters.'
-                      : '${skiResults.length} objectives with the planning details up front.',
-                ),
-                if (skiResults.isEmpty)
-                  const _EmptyGuideState(
-                    icon: Icons.search_off,
-                    text: 'Try another area, difficulty, or aspect.',
-                  )
-                else
-                  for (final group in _groupSkiRoutes(skiResults))
-                    _SkiAreaGroup(
-                      group: group,
-                      skiLog: skiLog,
-                      onRouteTap: _openSkiDetails,
-                    ),
+                if (query.trim().isNotEmpty ||
+                    skiFilter != _SkiGuideFilter.all) ...[
+                  _SectionHeading(
+                    title: 'Tours by area',
+                    subtitle: skiResults.isEmpty
+                        ? 'No objectives match those filters.'
+                        : '${skiResults.length} objectives with the planning details up front.',
+                  ),
+                  if (skiResults.isEmpty)
+                    const _EmptyGuideState(
+                      icon: Icons.search_off,
+                      text: 'Try another area, difficulty, or aspect.',
+                    )
+                  else
+                    for (final group in _groupSkiRoutes(skiResults))
+                      _SkiAreaGroup(
+                        group: group,
+                        skiLog: skiLog,
+                        onRouteTap: _openSkiDetails,
+                      ),
+                ],
               ],
             ],
           ),
@@ -240,7 +262,7 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
     List<_ClimbEntry> entries,
     ClimbLogState log,
   ) {
-    final needle = query.trim().toLowerCase();
+    final needle = climbQuery.trim().toLowerCase();
     if (needle.isEmpty && climbFilter == _ClimbGuideFilter.all) {
       return const [];
     }
@@ -267,6 +289,9 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
                   route.pitchType == PitchType.boulder,
             _ClimbGuideFilter.sport => route.type == ClimbRouteType.sport,
             _ClimbGuideFilter.trad => route.type == ClimbRouteType.trad,
+            _ClimbGuideFilter.deepWaterSolo =>
+              route.type == ClimbRouteType.deepWaterSolo,
+            _ClimbGuideFilter.aid => route.type == ClimbRouteType.aid,
             _ClimbGuideFilter.multiPitch =>
               route.pitchType == PitchType.multiPitch,
           };
@@ -275,7 +300,10 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
   }
 
   List<SkiRoute> _filterSkiRoutes(List<SkiRoute> routes, SkiLogState log) {
-    final needle = query.trim().toLowerCase();
+    final needle = skiQuery.trim().toLowerCase();
+    if (needle.isEmpty && skiFilter == _SkiGuideFilter.all) {
+      return const [];
+    }
     return routes
         .where((route) {
           final matchesQuery =
@@ -1192,6 +1220,8 @@ enum _ClimbGuideFilter {
   boulder('Boulder'),
   sport('Sport'),
   trad('Trad'),
+  deepWaterSolo('Deep Water Solo'),
+  aid('Aid'),
   multiPitch('Multipitch');
 
   const _ClimbGuideFilter(this.label);

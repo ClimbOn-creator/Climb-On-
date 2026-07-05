@@ -65,6 +65,27 @@ void main() {
     expect(route.typeLabel, 'Top Rope');
   });
 
+  test('Deep Water Solo and Aid are available climbing types', () {
+    const deepWaterSolo = ClimbRoute(
+      id: 'ocean-line',
+      name: 'Ocean Line',
+      grade: '5.11a',
+      rating: 4.5,
+      type: ClimbRouteType.deepWaterSolo,
+    );
+    const aid = ClimbRoute(
+      id: 'aid-line',
+      name: 'Aid Line',
+      grade: 'A2',
+      rating: 4.0,
+      type: ClimbRouteType.aid,
+    );
+
+    expect(deepWaterSolo.typeLabel, 'Deep Water Solo');
+    expect(aid.typeLabel, 'Aid');
+    expect(routeTypeValueLabel('deep_water_solo'), 'Deep Water Solo');
+  });
+
   test('Measurement fields accept common units', () {
     expect(parseWholeNumberWithUnits('4m'), 4);
     expect(parseWholeNumberWithUnits('60 m'), 60);

@@ -67,10 +67,22 @@ class _MainShellState extends ConsumerState<MainShell> {
                     ),
                   ),
           ),
-          if (path != '/map' &&
-              !(compact && path == '/submit') &&
-              showSponsoredFooter)
-            NativeAdCard(mode: mode, compact: compact, persistent: true),
+          if (path != '/map' && !(compact && path == '/submit'))
+            SizedBox(
+              height: compact ? 74 : 82,
+              child: IgnorePointer(
+                ignoring: !showSponsoredFooter,
+                child: AnimatedOpacity(
+                  opacity: showSponsoredFooter ? 1 : 0,
+                  duration: const Duration(milliseconds: 180),
+                  child: NativeAdCard(
+                    mode: mode,
+                    compact: compact,
+                    persistent: true,
+                  ),
+                ),
+              ),
+            ),
         ],
       ),
       bottomNavigationBar: compact

@@ -1642,7 +1642,10 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     if (activeFilters.isEmpty) return true;
 
     final typeFilters = activeFilters.where((filter) {
-      return filter == _MapRouteFilter.trad || filter == _MapRouteFilter.sport;
+      return filter == _MapRouteFilter.trad ||
+          filter == _MapRouteFilter.sport ||
+          filter == _MapRouteFilter.deepWaterSolo ||
+          filter == _MapRouteFilter.aid;
     }).toSet();
     final pitchFilters = activeFilters.difference(typeFilters);
 
@@ -1652,6 +1655,9 @@ class _MapScreenState extends ConsumerState<MapScreen> {
           return switch (filter) {
             _MapRouteFilter.trad => route.type == ClimbRouteType.trad,
             _MapRouteFilter.sport => route.type == ClimbRouteType.sport,
+            _MapRouteFilter.deepWaterSolo =>
+              route.type == ClimbRouteType.deepWaterSolo,
+            _MapRouteFilter.aid => route.type == ClimbRouteType.aid,
             _ => false,
           };
         });
@@ -2181,6 +2187,8 @@ enum _MapRouteFilter {
   multiPitch,
   trad,
   sport,
+  deepWaterSolo,
+  aid,
   singlePitch;
 
   String get label => switch (this) {
@@ -2188,6 +2196,8 @@ enum _MapRouteFilter {
     multiPitch => 'Multipitch',
     trad => 'Trad',
     sport => 'Sport',
+    deepWaterSolo => 'Deep Water Solo',
+    aid => 'Aid',
     singlePitch => 'Single pitch',
   };
 }
