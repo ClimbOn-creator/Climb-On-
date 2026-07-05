@@ -1183,6 +1183,7 @@ class DatabaseService {
       difficulty: _string(json['difficulty'], 'Intermediate'),
       aspect: _string(json['aspect'], 'North'),
       avalancheTerrain: _string(json['avalancheTerrain'], 'Challenging'),
+      maxSlopeAngleDegrees: _int(json['maxSlopeAngleDegrees']),
       season: _string(json['season']),
       description: _string(json['description']),
       approachNotes: _string(json['approachNotes']),

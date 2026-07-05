@@ -28,8 +28,8 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
   final skiSearchController = TextEditingController();
   String climbQuery = '';
   String skiQuery = '';
-  _ClimbGuideFilter climbFilter = _ClimbGuideFilter.all;
-  _SkiGuideFilter skiFilter = _SkiGuideFilter.all;
+  final Set<_ClimbGuideFilter> climbFilters = {};
+  final Set<_SkiGuideFilter> skiFilters = {};
 
   @override
   void dispose() {
@@ -66,7 +66,7 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
     final focusedRoute = ref.watch(focusedRouteProvider);
 
     final entries = _climbEntries(crags);
-    final climbResults = _filterClimbs(entries, climbLog);
+    final climbResults = _filterClimbs(entries);
     final skiResults = _filterSkiRoutes(skiRoutes, skiLog);
 
     return Scaffold(
@@ -105,16 +105,30 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
               if (mode == ActivityMode.ski)
                 _FilterBar<_SkiGuideFilter>(
                   values: _SkiGuideFilter.values,
-                  selected: skiFilter,
+                  selectedValues: skiFilters,
+                  allValue: _SkiGuideFilter.all,
                   labelFor: (filter) => filter.label,
-                  onSelected: (filter) => setState(() => skiFilter = filter),
+                  onSelected: (filter) => setState(() {
+                    if (filter == _SkiGuideFilter.all) {
+                      skiFilters.clear();
+                    } else if (!skiFilters.remove(filter)) {
+                      skiFilters.add(filter);
+                    }
+                  }),
                 )
               else
                 _FilterBar<_ClimbGuideFilter>(
                   values: _ClimbGuideFilter.values,
-                  selected: climbFilter,
+                  selectedValues: climbFilters,
+                  allValue: _ClimbGuideFilter.all,
                   labelFor: (filter) => filter.label,
-                  onSelected: (filter) => setState(() => climbFilter = filter),
+                  onSelected: (filter) => setState(() {
+                    if (filter == _ClimbGuideFilter.all) {
+                      climbFilters.clear();
+                    } else if (!climbFilters.remove(filter)) {
+                      climbFilters.add(filter);
+                    }
+                  }),
                 ),
               const SizedBox(height: 12),
               TextField(
@@ -180,7 +194,7 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
                     icon: Icons.offline_bolt_outlined,
                     text: 'Showing saved field-guide data while reconnecting.',
                   ),
-                if (query.isEmpty && climbFilter == _ClimbGuideFilter.all) ...[
+                if (query.isEmpty && climbFilters.isEmpty) ...[
                   _ProjectShelf(
                     entries: entries
                         .where((entry) => climbLog.isProject(entry.route))
@@ -188,8 +202,7 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
                     onTap: _openRouteDetails,
                   ),
                 ],
-                if (query.trim().isNotEmpty ||
-                    climbFilter != _ClimbGuideFilter.all) ...[
+                if (query.trim().isNotEmpty || climbFilters.isNotEmpty) ...[
                   _SectionHeading(
                     title: 'Routes by crag',
                     subtitle: climbResults.isEmpty
@@ -213,15 +226,14 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
                 if (skiCatalog.isLoading)
                   const LinearProgressIndicator(minHeight: 3),
                 _SkiProjectShelf(
-                  routes: query.isEmpty && skiFilter == _SkiGuideFilter.all
+                  routes: query.isEmpty && skiFilters.isEmpty
                       ? skiRoutes
                             .where(skiLog.isProject)
                             .toList(growable: false)
                       : const [],
                   onTap: _openSkiDetails,
                 ),
-                if (query.trim().isNotEmpty ||
-                    skiFilter != _SkiGuideFilter.all) ...[
+                if (query.trim().isNotEmpty || skiFilters.isNotEmpty) ...[
                   _SectionHeading(
                     title: 'Tours by area',
                     subtitle: skiResults.isEmpty
@@ -258,14 +270,17 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
     ];
   }
 
-  List<_ClimbEntry> _filterClimbs(
-    List<_ClimbEntry> entries,
-    ClimbLogState log,
-  ) {
+  List<_ClimbEntry> _filterClimbs(List<_ClimbEntry> entries) {
     final needle = climbQuery.trim().toLowerCase();
-    if (needle.isEmpty && climbFilter == _ClimbGuideFilter.all) {
+    if (needle.isEmpty && climbFilters.isEmpty) {
       return const [];
     }
+    final typeFilters = climbFilters.where(
+      (filter) => filter != _ClimbGuideFilter.multiPitch,
+    );
+    final requiresMultiPitch = climbFilters.contains(
+      _ClimbGuideFilter.multiPitch,
+    );
     final gradeQuery = isClimbGradeQuery(needle);
     return entries
         .where((entry) {
@@ -281,29 +296,36 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
                         entry.crag.name.toLowerCase().contains(needle) ||
                         entry.wallName.toLowerCase().contains(needle));
           if (!matchesQuery) return false;
-          return switch (climbFilter) {
-            _ClimbGuideFilter.all => true,
-            _ClimbGuideFilter.projects => log.isProject(route),
-            _ClimbGuideFilter.boulder =>
-              route.type == ClimbRouteType.boulder ||
-                  route.pitchType == PitchType.boulder,
-            _ClimbGuideFilter.sport => route.type == ClimbRouteType.sport,
-            _ClimbGuideFilter.trad => route.type == ClimbRouteType.trad,
-            _ClimbGuideFilter.deepWaterSolo =>
-              route.type == ClimbRouteType.deepWaterSolo,
-            _ClimbGuideFilter.aid => route.type == ClimbRouteType.aid,
-            _ClimbGuideFilter.multiPitch =>
-              route.pitchType == PitchType.multiPitch,
-          };
+          final matchesType =
+              typeFilters.isEmpty ||
+              typeFilters.any(
+                (filter) => switch (filter) {
+                  _ClimbGuideFilter.boulder =>
+                    route.type == ClimbRouteType.boulder ||
+                        route.pitchType == PitchType.boulder,
+                  _ClimbGuideFilter.sport => route.type == ClimbRouteType.sport,
+                  _ClimbGuideFilter.trad => route.type == ClimbRouteType.trad,
+                  _ClimbGuideFilter.deepWaterSolo =>
+                    route.type == ClimbRouteType.deepWaterSolo,
+                  _ClimbGuideFilter.aid => route.type == ClimbRouteType.aid,
+                  _ => false,
+                },
+              );
+          final matchesPitch =
+              !requiresMultiPitch || route.pitchType == PitchType.multiPitch;
+          return matchesType && matchesPitch;
         })
         .toList(growable: false);
   }
 
   List<SkiRoute> _filterSkiRoutes(List<SkiRoute> routes, SkiLogState log) {
     final needle = skiQuery.trim().toLowerCase();
-    if (needle.isEmpty && skiFilter == _SkiGuideFilter.all) {
+    if (needle.isEmpty && skiFilters.isEmpty) {
       return const [];
     }
+    final difficultyFilters = skiFilters.where(
+      (filter) => filter != _SkiGuideFilter.saved,
+    );
     return routes
         .where((route) {
           final matchesQuery =
@@ -312,20 +334,27 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
               route.area.toLowerCase().contains(needle) ||
               route.region.toLowerCase().contains(needle) ||
               route.difficulty.toLowerCase().contains(needle) ||
-              route.aspect.toLowerCase().contains(needle);
+              route.aspect.toLowerCase().contains(needle) ||
+              route.slopeAngleLabel.toLowerCase().contains(needle);
           if (!matchesQuery) return false;
-          return switch (skiFilter) {
-            _SkiGuideFilter.all => true,
-            _SkiGuideFilter.saved => log.isProject(route),
-            _SkiGuideFilter.beginner => route.difficulty.toLowerCase().contains(
-              'beginner',
-            ),
-            _SkiGuideFilter.intermediate =>
-              route.difficulty.toLowerCase().contains('intermediate'),
-            _SkiGuideFilter.advanced =>
-              route.difficulty.toLowerCase().contains('advanced') ||
-                  route.difficulty.toLowerCase().contains('expert'),
-          };
+          final matchesSaved =
+              !skiFilters.contains(_SkiGuideFilter.saved) ||
+              log.isProject(route);
+          final matchesDifficulty =
+              difficultyFilters.isEmpty ||
+              difficultyFilters.any(
+                (filter) => switch (filter) {
+                  _SkiGuideFilter.beginner =>
+                    route.difficulty.toLowerCase().contains('beginner'),
+                  _SkiGuideFilter.intermediate =>
+                    route.difficulty.toLowerCase().contains('intermediate'),
+                  _SkiGuideFilter.advanced =>
+                    route.difficulty.toLowerCase().contains('advanced') ||
+                        route.difficulty.toLowerCase().contains('expert'),
+                  _ => false,
+                },
+              );
+          return matchesSaved && matchesDifficulty;
         })
         .toList(growable: false);
   }
@@ -514,13 +543,15 @@ class _HeroStat extends StatelessWidget {
 class _FilterBar<T> extends StatelessWidget {
   const _FilterBar({
     required this.values,
-    required this.selected,
+    required this.selectedValues,
+    required this.allValue,
     required this.labelFor,
     required this.onSelected,
   });
 
   final List<T> values;
-  final T selected;
+  final Set<T> selectedValues;
+  final T allValue;
   final String Function(T value) labelFor;
   final ValueChanged<T> onSelected;
 
@@ -538,7 +569,9 @@ class _FilterBar<T> extends StatelessWidget {
               for (final value in values)
                 ChoiceChip(
                   label: Text(labelFor(value)),
-                  selected: value == selected,
+                  selected: value == allValue
+                      ? selectedValues.isEmpty
+                      : selectedValues.contains(value),
                   onSelected: (_) => onSelected(value),
                 ),
             ],
@@ -979,7 +1012,9 @@ class _SkiRouteRow extends StatelessWidget {
             ],
           ],
         ),
-        subtitle: Text('${route.difficulty} · ${route.aspect}'),
+        subtitle: Text(
+          '${route.difficulty} · ${route.aspect} · ${route.slopeAngleLabel}',
+        ),
         trailing: IconButton(
           tooltip: saved ? 'Remove saved tour' : 'Save tour',
           onPressed: onSave,
@@ -1045,6 +1080,7 @@ class _SkiRouteDetails extends ConsumerWidget {
               Chip(label: Text(route.difficulty)),
               Chip(label: Text(route.aspect)),
               Chip(label: Text(route.avalancheTerrain)),
+              Chip(label: Text(route.slopeAngleLabel)),
             ],
           ),
           const SizedBox(height: 10),
@@ -1068,7 +1104,7 @@ class _SkiRouteDetails extends ConsumerWidget {
                   ShareParams(
                     subject: '${route.name} · Climb On',
                     text:
-                        '${route.name} — ${route.distanceKm} km, ${route.elevationGainMeters} m gain, ${route.difficulty}.',
+                        '${route.name} — ${route.distanceKm} km, ${route.elevationGainMeters} m gain, ${route.difficulty}, ${route.slopeAngleLabel}.',
                   ),
                 ),
                 icon: const Icon(Icons.ios_share),
@@ -1076,6 +1112,12 @@ class _SkiRouteDetails extends ConsumerWidget {
             ],
           ),
           const Divider(height: 30),
+          const _DetailSection(
+            title: 'Slope angle & avalanche context',
+            text:
+                'Slope angle is one part of avalanche assessment. Check the current bulletin, snowpack, terrain traps, aspect, and conditions before travel.',
+            warning: true,
+          ),
           _DetailSection(title: 'Overview', text: route.description),
           _DetailSection(title: 'Approach', text: route.approachNotes),
           _DetailSection(title: 'Descent', text: route.descentNotes),
@@ -1216,7 +1258,6 @@ class _EmptyGuideState extends StatelessWidget {
 
 enum _ClimbGuideFilter {
   all('All'),
-  projects('Projects'),
   boulder('Boulder'),
   sport('Sport'),
   trad('Trad'),

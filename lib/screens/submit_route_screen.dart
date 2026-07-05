@@ -46,6 +46,7 @@ class _SubmitRouteScreenState extends ConsumerState<SubmitRouteScreen> {
   final region = TextEditingController();
   final distanceKm = TextEditingController();
   final elevationGain = TextEditingController();
+  final maxSlopeAngle = TextEditingController(text: '0');
   final trailheadLatitude = TextEditingController();
   final trailheadLongitude = TextEditingController();
   final season = TextEditingController();
@@ -100,6 +101,7 @@ class _SubmitRouteScreenState extends ConsumerState<SubmitRouteScreen> {
       region,
       distanceKm,
       elevationGain,
+      maxSlopeAngle,
       trailheadLatitude,
       trailheadLongitude,
       season,
@@ -449,6 +451,11 @@ class _SubmitRouteScreenState extends ConsumerState<SubmitRouteScreen> {
         label: 'Elevation gain in meters',
         numeric: true,
       ),
+      _Field(
+        controller: maxSlopeAngle,
+        label: 'Maximum slope angle in degrees (0 if unknown)',
+        numeric: true,
+      ),
       _MenuField(
         label: 'Aspect',
         value: aspect,
@@ -478,6 +485,13 @@ class _SubmitRouteScreenState extends ConsumerState<SubmitRouteScreen> {
   Future<void> submit(bool isAdmin) async {
     if (!formKey.currentState!.validate()) return;
     final mode = ref.read(activityModeProvider);
+    final slopeAngle = parseWholeNumberWithUnits(maxSlopeAngle.text) ?? 0;
+    if (mode == ActivityMode.ski && (slopeAngle < 0 || slopeAngle > 90)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Slope angle must be from 0° to 90°.')),
+      );
+      return;
+    }
     final sourceTrail = ref.read(selectedLibraryTrailProvider);
     if (mode == ActivityMode.ski) {
       final trailhead = LatLng(
@@ -523,6 +537,7 @@ class _SubmitRouteScreenState extends ConsumerState<SubmitRouteScreen> {
           'elevation_gain_meters': parseWholeNumberWithUnits(
             elevationGain.text,
           )!,
+          'max_slope_angle_degrees': slopeAngle,
           'aspect': aspect,
           'avalanche_terrain': avalancheTerrain,
           'season': season.text.trim(),
@@ -544,6 +559,7 @@ class _SubmitRouteScreenState extends ConsumerState<SubmitRouteScreen> {
               'route_difficulty': skiDifficulty,
               'route_distance_km': skiValues['distance_km'],
               'route_elevation_gain_meters': skiValues['elevation_gain_meters'],
+              'route_max_slope_angle_degrees': slopeAngle,
               'route_aspect': aspect,
               'route_avalanche_terrain': avalancheTerrain,
               'route_season': season.text.trim(),

@@ -14,6 +14,7 @@ create table if not exists public.ski_routes (
   trailhead geography(point, 4326) not null,
   distance_km double precision not null,
   elevation_gain_meters integer not null,
+  max_slope_angle_degrees integer not null default 0 check (max_slope_angle_degrees between 0 and 90),
   difficulty text not null,
   aspect text not null,
   avalanche_terrain text not null,
@@ -44,6 +45,7 @@ create table if not exists public.ski_route_submissions (
   difficulty text not null,
   distance_km double precision not null,
   elevation_gain_meters integer not null,
+  max_slope_angle_degrees integer not null default 0 check (max_slope_angle_degrees between 0 and 90),
   aspect text not null,
   avalanche_terrain text not null,
   season text not null,
@@ -76,7 +78,8 @@ alter table public.route_submissions
   add column if not exists photo_urls jsonb not null default '[]';
 
 alter table public.ski_route_submissions
-  add column if not exists photo_urls jsonb not null default '[]';
+  add column if not exists photo_urls jsonb not null default '[]',
+  add column if not exists max_slope_angle_degrees integer not null default 0;
 
 alter table public.ski_routes
   add column if not exists route_path geography(linestring, 4326),
@@ -84,6 +87,9 @@ alter table public.ski_routes
   add column if not exists descent_path geography(linestring, 4326),
   add column if not exists descent_path_points jsonb not null default '[]',
   add column if not exists created_by uuid references auth.users(id) on delete set null;
+
+alter table public.ski_routes
+  add column if not exists max_slope_angle_degrees integer not null default 0;
 
 alter table public.ski_routes
   add column if not exists source_url text not null default '';
@@ -135,6 +141,7 @@ as $$
     'trailheadLng', st_x(s.trailhead::geometry),
     'distanceKm', s.distance_km,
     'elevationGainMeters', s.elevation_gain_meters,
+    'maxSlopeAngleDegrees', s.max_slope_angle_degrees,
     'difficulty', s.difficulty,
     'aspect', s.aspect,
     'avalancheTerrain', s.avalanche_terrain,
@@ -157,6 +164,12 @@ as $$
   );
 $$;
 
+drop function if exists public.admin_save_ski_route(
+  uuid, text, text, text, text, double precision, integer, text, text, text,
+  double precision, double precision, double precision, double precision,
+  text, text, text, text, text, jsonb, jsonb
+);
+
 create or replace function public.admin_save_ski_route(
   route_id uuid,
   route_name text,
@@ -165,6 +178,7 @@ create or replace function public.admin_save_ski_route(
   route_difficulty text,
   route_distance_km double precision,
   route_elevation_gain_meters integer,
+  route_max_slope_angle_degrees integer,
   route_aspect text,
   route_avalanche_terrain text,
   route_season text,
@@ -204,6 +218,7 @@ begin
     trailhead,
     distance_km,
     elevation_gain_meters,
+    max_slope_angle_degrees,
     difficulty,
     aspect,
     avalanche_terrain,
@@ -228,6 +243,7 @@ begin
     st_setsrid(st_makepoint(route_trailhead_lng, route_trailhead_lat), 4326)::geography,
     route_distance_km,
     route_elevation_gain_meters,
+    route_max_slope_angle_degrees,
     trim(route_difficulty),
     trim(route_aspect),
     trim(route_avalanche_terrain),
@@ -251,6 +267,7 @@ begin
     trailhead = excluded.trailhead,
     distance_km = excluded.distance_km,
     elevation_gain_meters = excluded.elevation_gain_meters,
+    max_slope_angle_degrees = excluded.max_slope_angle_degrees,
     difficulty = excluded.difficulty,
     aspect = excluded.aspect,
     avalanche_terrain = excluded.avalanche_terrain,
@@ -277,6 +294,7 @@ begin
       'trailheadLng', st_x(s.trailhead::geometry),
       'distanceKm', s.distance_km,
       'elevationGainMeters', s.elevation_gain_meters,
+      'maxSlopeAngleDegrees', s.max_slope_angle_degrees,
       'difficulty', s.difficulty,
       'aspect', s.aspect,
       'avalancheTerrain', s.avalanche_terrain,
@@ -296,7 +314,7 @@ $$;
 
 grant execute on function public.ski_catalog() to anon, authenticated;
 grant execute on function public.admin_save_ski_route(
-  uuid, text, text, text, text, double precision, integer, text, text, text,
+  uuid, text, text, text, text, double precision, integer, integer, text, text, text,
   double precision, double precision, double precision, double precision,
   text, text, text, text, text, jsonb, jsonb
 ) to authenticated;

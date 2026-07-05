@@ -13,6 +13,7 @@ create table if not exists public.ski_routes (
   trailhead geography(point, 4326) not null,
   distance_km double precision not null,
   elevation_gain_meters integer not null,
+  max_slope_angle_degrees integer not null default 0 check (max_slope_angle_degrees between 0 and 90),
   difficulty text not null,
   aspect text not null,
   avalanche_terrain text not null,
@@ -43,6 +44,7 @@ create table if not exists public.ski_route_submissions (
   difficulty text not null,
   distance_km double precision not null,
   elevation_gain_meters integer not null,
+  max_slope_angle_degrees integer not null default 0 check (max_slope_angle_degrees between 0 and 90),
   aspect text not null,
   avalanche_terrain text not null,
   season text not null,
@@ -60,6 +62,12 @@ create table if not exists public.ski_route_submissions (
 );
 
 alter table public.ski_route_submissions enable row level security;
+
+alter table public.ski_routes
+  add column if not exists max_slope_angle_degrees integer not null default 0;
+
+alter table public.ski_route_submissions
+  add column if not exists max_slope_angle_degrees integer not null default 0;
 
 drop policy if exists "Anyone can submit ski routes" on public.ski_route_submissions;
 create policy "Anyone can submit ski routes"
@@ -367,6 +375,7 @@ as $$
     'trailheadLng', st_x(trailhead::geometry),
     'distanceKm', distance_km,
     'elevationGainMeters', elevation_gain_meters,
+    'maxSlopeAngleDegrees', max_slope_angle_degrees,
     'difficulty', difficulty,
     'aspect', aspect,
     'avalancheTerrain', avalanche_terrain,

@@ -1323,6 +1323,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         'route_difficulty': draft.difficulty,
         'route_distance_km': draft.distanceKm,
         'route_elevation_gain_meters': draft.elevationGainMeters,
+        'route_max_slope_angle_degrees': draft.maxSlopeAngleDegrees,
         'route_aspect': draft.aspect,
         'route_avalanche_terrain': draft.avalancheTerrain,
         'route_season': draft.season,
@@ -3041,6 +3042,7 @@ class _SkiRouteDraft {
     required this.difficulty,
     required this.distanceKm,
     required this.elevationGainMeters,
+    required this.maxSlopeAngleDegrees,
     required this.aspect,
     required this.avalancheTerrain,
     required this.season,
@@ -3057,6 +3059,7 @@ class _SkiRouteDraft {
   final String difficulty;
   final double distanceKm;
   final int elevationGainMeters;
+  final int maxSlopeAngleDegrees;
   final String aspect;
   final String avalancheTerrain;
   final String season;
@@ -3089,6 +3092,7 @@ class _NewSkiRouteSheetState extends State<_NewSkiRouteSheet> {
   final region = TextEditingController(text: 'Vancouver Island');
   final distanceKm = TextEditingController();
   final elevationGain = TextEditingController();
+  final maxSlopeAngle = TextEditingController(text: '0');
   final season = TextEditingController(text: 'Winter through spring');
   final description = TextEditingController();
   final approachNotes = TextEditingController();
@@ -3116,6 +3120,7 @@ class _NewSkiRouteSheetState extends State<_NewSkiRouteSheet> {
       region,
       distanceKm,
       elevationGain,
+      maxSlopeAngle,
       season,
       description,
       approachNotes,
@@ -3179,6 +3184,11 @@ class _NewSkiRouteSheetState extends State<_NewSkiRouteSheet> {
               label: 'Elevation gain in meters',
               numeric: true,
             ),
+            _SheetField(
+              controller: maxSlopeAngle,
+              label: 'Maximum slope angle in degrees (0 if unknown)',
+              numeric: true,
+            ),
             _SheetMenu(
               label: 'Aspect',
               value: aspect,
@@ -3237,6 +3247,8 @@ class _NewSkiRouteSheetState extends State<_NewSkiRouteSheet> {
 
   void _submit() {
     if (!formKey.currentState!.validate()) return;
+    final slopeAngle = parseWholeNumberWithUnits(maxSlopeAngle.text) ?? 0;
+    if (slopeAngle < 0 || slopeAngle > 90) return;
     Navigator.pop(
       context,
       _SkiRouteDraft(
@@ -3246,6 +3258,7 @@ class _NewSkiRouteSheetState extends State<_NewSkiRouteSheet> {
         difficulty: difficulty,
         distanceKm: parseNumberWithUnits(distanceKm.text) ?? 0,
         elevationGainMeters: parseWholeNumberWithUnits(elevationGain.text) ?? 0,
+        maxSlopeAngleDegrees: slopeAngle,
         aspect: aspect,
         avalancheTerrain: avalancheTerrain,
         season: season.text.trim(),
@@ -3506,7 +3519,12 @@ class _SkiRouteMapSheet extends StatelessWidget {
               Chip(label: Text('${route.elevationGainMeters} m gain')),
               Chip(label: Text(route.difficulty)),
               Chip(label: Text(route.aspect)),
+              Chip(label: Text(route.slopeAngleLabel)),
             ],
+          ),
+          const SizedBox(height: 16),
+          const Text(
+            'Slope angle is one part of avalanche assessment. Check the current bulletin, snowpack, aspect, terrain traps, and field observations.',
           ),
           const SizedBox(height: 16),
           Text(route.description),

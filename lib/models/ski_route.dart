@@ -13,6 +13,7 @@ class SkiRoute {
     required this.difficulty,
     required this.aspect,
     required this.avalancheTerrain,
+    this.maxSlopeAngleDegrees = 0,
     required this.season,
     required this.description,
     required this.approachNotes,
@@ -34,6 +35,7 @@ class SkiRoute {
   final String difficulty;
   final String aspect;
   final String avalancheTerrain;
+  final int maxSlopeAngleDegrees;
   final String season;
   final String description;
   final String approachNotes;
@@ -42,4 +44,8 @@ class SkiRoute {
   final String imageUrl;
   final String createdBy;
   final String sourceUrl;
+
+  String get slopeAngleLabel => maxSlopeAngleDegrees > 0
+      ? '$maxSlopeAngleDegrees° max slope'
+      : 'Slope angle not listed';
 }

@@ -8,7 +8,8 @@
 create extension if not exists postgis;
 
 alter table public.ski_routes
-  add column if not exists source_url text not null default '';
+  add column if not exists source_url text not null default '',
+  add column if not exists max_slope_angle_degrees integer not null default 0;
 
 create or replace function public.is_on_vancouver_island(point geography)
 returns boolean
@@ -199,6 +200,7 @@ as $$
     'trailheadLng', st_x(s.trailhead::geometry),
     'distanceKm', s.distance_km,
     'elevationGainMeters', s.elevation_gain_meters,
+    'maxSlopeAngleDegrees', s.max_slope_angle_degrees,
     'difficulty', s.difficulty,
     'aspect', s.aspect,
     'avalancheTerrain', s.avalanche_terrain,
