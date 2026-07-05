@@ -6,6 +6,7 @@ import '../models/climb_route.dart';
 import '../models/wall.dart';
 import '../services/database_service.dart';
 import '../utils/number_parser.dart';
+import '../utils/climb_grade_search.dart';
 import '../utils/picked_upload_image.dart';
 
 class AdminRouteEditor extends StatefulWidget {
@@ -331,7 +332,7 @@ class _AdminRouteEditorState extends State<AdminRouteEditor> {
         wallId: widget.wall.id,
         values: {
           'route_name': fields['name']!.text.trim(),
-          'route_grade': fields['grade']!.text.trim(),
+          'route_grade': normalizeClimbGrade(fields['grade']!.text),
           'route_rating': parseNumberWithUnits(fields['rating']!.text)!,
           'route_type_value': routeType,
           'pitch_type_value': pitchType,

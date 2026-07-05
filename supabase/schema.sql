@@ -92,6 +92,7 @@ create table public.route_comments (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users(id) on delete cascade,
   route_id uuid not null references public.routes(id) on delete cascade,
+  parent_comment_id uuid references public.route_comments(id) on delete cascade,
   body text not null,
   created_at timestamptz not null default now()
 );

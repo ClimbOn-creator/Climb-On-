@@ -26,6 +26,25 @@ void main() {
     expect(isClimbGradeQuery(' V1 '), isTrue);
     expect(isClimbGradeQuery('5.10'), isTrue);
     expect(isClimbGradeQuery('5.10c'), isTrue);
+    expect(isClimbGradeQuery('5.13 R'), isTrue);
+    expect(isClimbGradeQuery('5.13X'), isTrue);
     expect(isClimbGradeQuery('sport'), isFalse);
+  });
+
+  test('R and X protection ratings ignore the preceding space', () {
+    expect(normalizeClimbGrade('5.13 R'), '5.13R');
+    expect(normalizeClimbGrade('5.13r'), '5.13R');
+    expect(climbGradeMatchesQuery('5.13R', '5.13 R'), isTrue);
+    expect(climbGradeMatchesQuery('5.13 R', '5.13R'), isTrue);
+    expect(climbGradeMatchesQuery('5.13X', '5.13 X'), isTrue);
+    expect(climbGradeMatchesQuery('5.13X', '5.13R'), isFalse);
+  });
+
+  test('base grades include their R and X protection variants', () {
+    expect(climbGradeMatchesQuery('5.13R', '5.13'), isTrue);
+    expect(climbGradeMatchesQuery('5.13 X', '5.13'), isTrue);
+    expect(climbGradeMatchesQuery('5.13a R', '5.13'), isTrue);
+    expect(climbGradeMatchesQuery('5.13aX', '5.13a'), isTrue);
+    expect(climbGradeMatchesQuery('5.14R', '5.13'), isFalse);
   });
 }

@@ -211,6 +211,7 @@ class _RouteCardState extends ConsumerState<RouteCard> {
                       comments: comments,
                       controller: commentController,
                       onPost: () => _postComment(climbLog),
+                      onReply: (comment) => _postReply(climbLog, comment),
                       authorFor: _commentAuthor,
                       timeFor: _commentTime,
                       onProfileTap: _showCommenterProfile,
@@ -647,6 +648,33 @@ class _RouteCardState extends ConsumerState<RouteCard> {
     }
   }
 
+  Future<void> _postReply(
+    ClimbLogState climbLog,
+    LocalRouteComment parent,
+  ) async {
+    if (!climbLog.canComment) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Sign in to reply.')));
+      return;
+    }
+    final reply = commentController.text.trim();
+    if (reply.isEmpty) return;
+    try {
+      await climbLog.addComment(
+        widget.route,
+        reply,
+        parentCommentId: parent.id,
+      );
+      commentController.clear();
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Could not post reply: $error')));
+    }
+  }
+
   String _commentAuthor(LocalRouteComment comment) {
     if (comment.authorUsername.isNotEmpty) {
       return '@${comment.authorUsername}';
@@ -961,6 +989,7 @@ class _ExpandableComments extends StatefulWidget {
     required this.comments,
     required this.controller,
     required this.onPost,
+    required this.onReply,
     required this.authorFor,
     required this.timeFor,
     required this.onProfileTap,
@@ -968,7 +997,8 @@ class _ExpandableComments extends StatefulWidget {
 
   final List<LocalRouteComment> comments;
   final TextEditingController controller;
-  final VoidCallback onPost;
+  final Future<void> Function() onPost;
+  final Future<void> Function(LocalRouteComment comment) onReply;
   final String Function(LocalRouteComment comment) authorFor;
   final String Function(DateTime createdAt) timeFor;
   final ValueChanged<LocalRouteComment> onProfileTap;
@@ -979,14 +1009,38 @@ class _ExpandableComments extends StatefulWidget {
 
 class _ExpandableCommentsState extends State<_ExpandableComments> {
   bool expanded = false;
+  LocalRouteComment? replyingTo;
 
   @override
   Widget build(BuildContext context) {
     const previewCount = 3;
-    final hasMore = widget.comments.length > previewCount;
-    final visible = expanded
-        ? widget.comments
-        : widget.comments.take(previewCount).toList(growable: false);
+    final ids = widget.comments
+        .where((comment) => comment.id.isNotEmpty)
+        .map((comment) => comment.id)
+        .toSet();
+    final roots =
+        widget.comments
+            .where(
+              (comment) =>
+                  comment.parentCommentId.isEmpty ||
+                  !ids.contains(comment.parentCommentId),
+            )
+            .toList(growable: false)
+          ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    final repliesByParent = <String, List<LocalRouteComment>>{};
+    for (final comment in widget.comments) {
+      if (comment.parentCommentId.isEmpty) continue;
+      repliesByParent
+          .putIfAbsent(comment.parentCommentId, () => [])
+          .add(comment);
+    }
+    for (final replies in repliesByParent.values) {
+      replies.sort((a, b) => a.createdAt.compareTo(b.createdAt));
+    }
+    final hasMore = roots.length > previewCount;
+    final visibleRoots = expanded
+        ? roots
+        : roots.take(previewCount).toList(growable: false);
 
     return _InfoSection(
       title: 'Comments',
@@ -1004,7 +1058,7 @@ class _ExpandableCommentsState extends State<_ExpandableComments> {
             child: Column(
               key: ValueKey(expanded),
               children: [
-                for (var index = 0; index < visible.length; index++)
+                for (var index = 0; index < visibleRoots.length; index++)
                   AnimatedOpacity(
                     duration: const Duration(milliseconds: 180),
                     opacity: expanded || !hasMore
@@ -1014,13 +1068,10 @@ class _ExpandableCommentsState extends State<_ExpandableComments> {
                             1 => 0.68,
                             _ => 0.34,
                           },
-                    child: _CommentTile(
-                      comment: visible[index],
-                      author: widget.authorFor(visible[index]),
-                      time: widget.timeFor(visible[index].createdAt),
-                      onTap: visible[index].userId.isEmpty
-                          ? null
-                          : () => widget.onProfileTap(visible[index]),
+                    child: _buildThread(
+                      visibleRoots[index],
+                      repliesByParent,
+                      const {},
                     ),
                   ),
               ],
@@ -1036,6 +1087,32 @@ class _ExpandableCommentsState extends State<_ExpandableComments> {
               child: Text(expanded ? 'Show less' : 'Read more'),
             ),
           const SizedBox(height: 6),
+          if (replyingTo case final target?)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 7),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.reply,
+                    size: 16,
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      'Replying to ${widget.authorFor(target)}',
+                      style: Theme.of(context).textTheme.labelMedium,
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: 'Cancel reply',
+                    visualDensity: VisualDensity.compact,
+                    onPressed: () => setState(() => replyingTo = null),
+                    icon: const Icon(Icons.close, size: 18),
+                  ),
+                ],
+              ),
+            ),
           Row(
             children: [
               Expanded(
@@ -1043,22 +1120,70 @@ class _ExpandableCommentsState extends State<_ExpandableComments> {
                   controller: widget.controller,
                   minLines: 1,
                   maxLines: 3,
-                  decoration: const InputDecoration(
-                    hintText: 'Add a comment',
-                    prefixIcon: Icon(Icons.chat_bubble_outline),
+                  decoration: InputDecoration(
+                    hintText: replyingTo == null
+                        ? 'Add a comment'
+                        : 'Write a reply',
+                    prefixIcon: const Icon(Icons.chat_bubble_outline),
                   ),
                 ),
               ),
               IconButton.filled(
                 tooltip: 'Post comment',
-                icon: const Icon(Icons.send),
-                onPressed: widget.onPost,
+                icon: const Icon(Icons.send, color: PacificTerrainColors.navy),
+                onPressed: _submit,
               ),
             ],
           ),
         ],
       ),
     );
+  }
+
+  Widget _buildThread(
+    LocalRouteComment comment,
+    Map<String, List<LocalRouteComment>> repliesByParent,
+    Set<String> ancestors,
+  ) {
+    if (comment.id.isNotEmpty && ancestors.contains(comment.id)) {
+      return const SizedBox.shrink();
+    }
+    final nextAncestors = {...ancestors, if (comment.id.isNotEmpty) comment.id};
+    final replies = repliesByParent[comment.id] ?? const [];
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _CommentTile(
+          comment: comment,
+          author: widget.authorFor(comment),
+          time: widget.timeFor(comment.createdAt),
+          isReply: comment.parentCommentId.isNotEmpty,
+          onTap: comment.userId.isEmpty
+              ? null
+              : () => widget.onProfileTap(comment),
+          onReply: comment.id.isEmpty
+              ? null
+              : () {
+                  widget.controller.clear();
+                  setState(() => replyingTo = comment);
+                },
+        ),
+        for (final reply in replies)
+          _buildThread(reply, repliesByParent, nextAncestors),
+      ],
+    );
+  }
+
+  Future<void> _submit() async {
+    final target = replyingTo;
+    if (target == null) {
+      await widget.onPost();
+    } else {
+      await widget.onReply(target);
+    }
+    if (mounted && widget.controller.text.isEmpty) {
+      setState(() => replyingTo = null);
+    }
   }
 }
 
@@ -1067,34 +1192,92 @@ class _CommentTile extends StatelessWidget {
     required this.comment,
     required this.author,
     required this.time,
+    required this.isReply,
     required this.onTap,
+    required this.onReply,
   });
 
   final LocalRouteComment comment;
   final String author;
   final String time;
+  final bool isReply;
   final VoidCallback? onTap;
+  final VoidCallback? onReply;
 
   @override
   Widget build(BuildContext context) {
-    return ListTile(
-      contentPadding: EdgeInsets.zero,
-      onTap: onTap,
-      leading: CircleAvatar(
-        backgroundImage: comment.authorAvatarUrl.isEmpty
-            ? null
-            : NetworkImage(comment.authorAvatarUrl),
-        child: comment.authorAvatarUrl.isEmpty
-            ? const Icon(Icons.person_outline)
+    return Container(
+      margin: EdgeInsets.fromLTRB(isReply ? 28 : 0, 0, 0, 8),
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(12),
+        border: isReply
+            ? Border(
+                left: BorderSide(
+                  color: Theme.of(context).colorScheme.primary,
+                  width: 3,
+                ),
+              )
             : null,
       ),
-      title: Text(author),
-      subtitle: Column(
+      child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(comment.body),
-          const SizedBox(height: 3),
-          Text(time, style: Theme.of(context).textTheme.labelSmall),
+          InkWell(
+            onTap: onTap,
+            customBorder: const CircleBorder(),
+            child: CircleAvatar(
+              radius: 16,
+              backgroundImage: comment.authorAvatarUrl.isEmpty
+                  ? null
+                  : NetworkImage(comment.authorAvatarUrl),
+              child: comment.authorAvatarUrl.isEmpty
+                  ? const Icon(Icons.person_outline, size: 17)
+                  : null,
+            ),
+          ),
+          const SizedBox(width: 9),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Wrap(
+                  spacing: 7,
+                  runSpacing: 2,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    InkWell(
+                      onTap: onTap,
+                      child: Text(
+                        author,
+                        style: Theme.of(context).textTheme.labelMedium
+                            ?.copyWith(fontWeight: FontWeight.w900),
+                      ),
+                    ),
+                    Text(
+                      time,
+                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 5),
+                Text(comment.body),
+                if (onReply != null)
+                  TextButton.icon(
+                    onPressed: onReply,
+                    style: TextButton.styleFrom(
+                      visualDensity: VisualDensity.compact,
+                      padding: const EdgeInsets.only(right: 8),
+                    ),
+                    icon: const Icon(Icons.reply, size: 15),
+                    label: const Text('Reply'),
+                  ),
+              ],
+            ),
+          ),
         ],
       ),
     );

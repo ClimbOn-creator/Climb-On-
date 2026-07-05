@@ -205,7 +205,11 @@ class DatabaseService {
     }, onConflict: 'user_id,route_id');
   }
 
-  Future<LocalRouteComment> saveComment(String routeId, String body) async {
+  Future<LocalRouteComment> saveComment(
+    String routeId,
+    String body, {
+    String parentCommentId = '',
+  }) async {
     final user = _currentUser;
     if (user == null) {
       throw const AuthException('Sign in before commenting.');
@@ -213,7 +217,12 @@ class DatabaseService {
 
     final row = await Supabase.instance.client
         .from('route_comments')
-        .insert({'user_id': user.id, 'route_id': routeId, 'body': body})
+        .insert({
+          'user_id': user.id,
+          'route_id': routeId,
+          'body': body,
+          'parent_comment_id': parentCommentId.isEmpty ? null : parentCommentId,
+        })
         .select()
         .single();
     final profiles = await _loadProfiles({user.id});

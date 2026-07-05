@@ -190,6 +190,7 @@ void main() {
         'id': 'comment-1',
         'user_id': 'climber-1',
         'route_id': 'moss-boss',
+        'parent_comment_id': 'parent-comment',
         'body': 'Great heel hook beta.',
         'created_at': createdAt.toIso8601String(),
       },
@@ -207,7 +208,32 @@ void main() {
     expect(comment.authorUsername, 'rockstar');
     expect(comment.authorDisplayName, 'Rock Star');
     expect(comment.authorHomeArea, 'The Boulders');
+    expect(comment.parentCommentId, 'parent-comment');
     expect(comment.createdAt, createdAt);
+  });
+
+  test('Route comments can reply to another comment', () async {
+    final climbLog = ClimbLogState(persistenceEnabled: false);
+    const route = ClimbRoute(
+      id: 'threaded-route',
+      name: 'Threaded Route',
+      grade: '5.10a',
+      rating: 4.2,
+    );
+
+    await climbLog.addComment(route, 'Does the crux stay dry?');
+    final parent = climbLog.commentsFor(route).single;
+    await climbLog.addComment(
+      route,
+      'Usually, unless the wind is from the south.',
+      parentCommentId: parent.id,
+    );
+
+    final comments = climbLog.commentsFor(route);
+    expect(parent.id, isNotEmpty);
+    expect(comments.first.parentCommentId, parent.id);
+    expect(comments.first.createdAt, isNotNull);
+    climbLog.dispose();
   });
 
   test('Social state loads real friends, sends, and recent comments', () async {

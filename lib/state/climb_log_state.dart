@@ -147,6 +147,7 @@ class LocalRouteComment {
     this.userId = '',
     required this.routeId,
     required this.body,
+    this.parentCommentId = '',
     this.authorUsername = '',
     this.authorDisplayName = '',
     this.authorAvatarUrl = '',
@@ -159,6 +160,7 @@ class LocalRouteComment {
   final String userId;
   final String routeId;
   final String body;
+  final String parentCommentId;
   final String authorUsername;
   final String authorDisplayName;
   final String authorAvatarUrl;
@@ -171,6 +173,7 @@ class LocalRouteComment {
     'userId': userId,
     'routeId': routeId,
     'body': body,
+    'parentCommentId': parentCommentId,
     'authorUsername': authorUsername,
     'authorDisplayName': authorDisplayName,
     'authorAvatarUrl': authorAvatarUrl,
@@ -188,6 +191,7 @@ class LocalRouteComment {
       userId: value['userId']?.toString() ?? '',
       routeId: value['routeId']?.toString() ?? '',
       body: value['body']?.toString() ?? '',
+      parentCommentId: value['parentCommentId']?.toString() ?? '',
       authorUsername: value['authorUsername']?.toString() ?? '',
       authorDisplayName: value['authorDisplayName']?.toString() ?? '',
       authorAvatarUrl: value['authorAvatarUrl']?.toString() ?? '',
@@ -208,6 +212,7 @@ class LocalRouteComment {
       userId: value['user_id']?.toString() ?? '',
       routeId: value['route_id']?.toString() ?? '',
       body: value['body']?.toString() ?? '',
+      parentCommentId: value['parent_comment_id']?.toString() ?? '',
       authorUsername: profile?['username']?.toString() ?? '',
       authorDisplayName: profile?['display_name']?.toString() ?? '',
       authorAvatarUrl: profile?['avatar_url']?.toString() ?? '',
@@ -440,15 +445,25 @@ class ClimbLogState extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> addComment(ClimbRoute route, String body) async {
+  Future<void> addComment(
+    ClimbRoute route,
+    String body, {
+    String parentCommentId = '',
+  }) async {
     final comment = body.trim();
     if (comment.isEmpty) return;
 
     final savedComment = databaseService.isConfigured
-        ? await databaseService.saveComment(route.id, comment)
+        ? await databaseService.saveComment(
+            route.id,
+            comment,
+            parentCommentId: parentCommentId,
+          )
         : LocalRouteComment(
+            id: 'local-${DateTime.now().microsecondsSinceEpoch}',
             routeId: route.id,
             body: comment,
+            parentCommentId: parentCommentId,
             createdAt: DateTime.now(),
           );
     _comments.insert(0, savedComment);

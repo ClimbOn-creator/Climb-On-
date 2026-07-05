@@ -13,6 +13,7 @@ import '../state/ski_route_state.dart';
 import '../state/trail_library_state.dart';
 import '../theme/climb_on_theme.dart';
 import '../utils/number_parser.dart';
+import '../utils/climb_grade_search.dart';
 import '../utils/picked_upload_image.dart';
 import '../utils/vancouver_island.dart';
 import '../widgets/side_banner_layout.dart';
@@ -593,7 +594,7 @@ class _SubmitRouteScreenState extends ConsumerState<SubmitRouteScreen> {
           'crag_id': selectedCragId,
           'wall_id': selectedWallId,
           'route_name': routeName.text.trim(),
-          'grade': grade.text.trim(),
+          'grade': normalizeClimbGrade(grade.text),
           'route_type': routeType,
           'pitch_type': pitchType,
           'angle': angle,
@@ -632,7 +633,7 @@ class _SubmitRouteScreenState extends ConsumerState<SubmitRouteScreen> {
             wallId: wallId,
             values: {
               'route_name': routeName.text.trim(),
-              'route_grade': grade.text.trim(),
+              'route_grade': normalizeClimbGrade(grade.text),
               'route_rating': 0.0,
               'route_type_value': routeType,
               'pitch_type_value': pitchType,

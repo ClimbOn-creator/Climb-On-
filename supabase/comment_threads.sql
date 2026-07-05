@@ -1,24 +1,11 @@
--- Run once in Supabase > SQL Editor for attributed comments and known-wall tags.
+-- Nested route comment discussions with attributed authors.
+-- Run after schema.sql and profile setup. Safe to run more than once.
 
-alter table public.route_submissions
-add column if not exists crag_id uuid references public.crags(id) on delete set null;
-
-alter table public.route_submissions
-add column if not exists wall_id uuid references public.walls(id) on delete set null;
-
--- Comments already reference auth.users and profiles use that same user id.
--- These indexes keep route comment refreshes and profile attribution quick.
 alter table public.route_comments
 add column if not exists parent_comment_id uuid references public.route_comments(id) on delete cascade;
 
-create index if not exists route_comments_route_created_idx
-on public.route_comments (route_id, created_at desc);
-
 create index if not exists route_comments_parent_created_idx
 on public.route_comments (parent_comment_id, created_at asc);
-
-create index if not exists route_submissions_known_location_idx
-on public.route_submissions (crag_id, wall_id);
 
 drop function if exists public.route_comments_with_authors(uuid);
 
@@ -58,7 +45,9 @@ as $$
   from public.route_comments as comments
   left join public.profiles as profiles on profiles.id = comments.user_id
   where comments.route_id = target_route_id
-  order by comments.created_at desc;
+  order by
+    case when comments.parent_comment_id is null then comments.created_at end desc,
+    comments.created_at asc;
 $$;
 
 revoke all on function public.route_comments_with_authors(uuid) from public;
