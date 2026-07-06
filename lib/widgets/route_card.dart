@@ -35,7 +35,6 @@ class RouteCard extends ConsumerStatefulWidget {
 
 class _RouteCardState extends ConsumerState<RouteCard> {
   final commentController = TextEditingController();
-  final gradeController = TextEditingController();
   final photoCaptionController = TextEditingController();
   bool uploadingPhoto = false;
   String? dangerOverride;
@@ -63,7 +62,6 @@ class _RouteCardState extends ConsumerState<RouteCard> {
   @override
   void dispose() {
     commentController.dispose();
-    gradeController.dispose();
     photoCaptionController.dispose();
     super.dispose();
   }
@@ -160,36 +158,38 @@ class _RouteCardState extends ConsumerState<RouteCard> {
                     ],
                   ),
                   const SizedBox(height: 12),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: [
-                      for (final tag in _routeTags())
-                        Chip(
-                          avatar: Icon(
-                            tag.icon,
-                            size: 16,
-                            color: PacificTerrainColors.navy,
+                  SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      children: [
+                        for (final tag in _routeTags())
+                          Padding(
+                            padding: const EdgeInsets.only(right: 8),
+                            child: Chip(
+                              avatar: Icon(
+                                tag.icon,
+                                size: 16,
+                                color: PacificTerrainColors.navy,
+                              ),
+                              label: Text(tag.label),
+                              backgroundColor: tag.color,
+                              labelStyle: const TextStyle(
+                                color: PacificTerrainColors.navy,
+                                fontWeight: FontWeight.w700,
+                              ),
+                              side: BorderSide(
+                                color: tag.color.withValues(alpha: 0.9),
+                              ),
+                            ),
                           ),
-                          label: Text(tag.label),
-                          backgroundColor: tag.color,
-                          labelStyle: const TextStyle(
-                            color: PacificTerrainColors.navy,
-                            fontWeight: FontWeight.w700,
-                          ),
-                          side: BorderSide(
-                            color: tag.color.withValues(alpha: 0.9),
-                          ),
-                        ),
-                    ],
+                      ],
+                    ),
                   ),
                   const SizedBox(height: 8),
                   _RouteActions(
                     completed: completed,
                     savedProject: savedProject,
                     onCompleted: () => climbLog.toggleRoute(widget.route),
-                    onGradeOpinion: () => _showGradeDialog(climbLog),
-                    onComment: () => _showCommentDialog(climbLog),
                     onProject: () => climbLog.toggleProject(widget.route),
                     onShare: _shareRoute,
                   ),
@@ -551,81 +551,6 @@ class _RouteCardState extends ConsumerState<RouteCard> {
           return label.isNotEmpty && seen.add(label);
         })
         .toList(growable: false);
-  }
-
-  Future<void> _showGradeDialog(ClimbLogState climbLog) async {
-    gradeController.text = widget.route.grade;
-    await showDialog<void>(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: const Text('Grade opinion'),
-          content: TextField(
-            controller: gradeController,
-            autofocus: true,
-            decoration: const InputDecoration(
-              hintText: 'Suggested grade',
-              prefixIcon: Icon(Icons.grade),
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: () {
-                climbLog.addGradeOpinion(widget.route, gradeController.text);
-                Navigator.pop(context);
-              },
-              child: const Text('Save'),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  Future<void> _showCommentDialog(ClimbLogState climbLog) async {
-    if (!climbLog.canComment) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Sign in to comment.')));
-      return;
-    }
-    commentController.text = '';
-    final comment = await showDialog<String>(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: const Text('Add comment'),
-          content: TextField(
-            controller: commentController,
-            autofocus: true,
-            minLines: 2,
-            maxLines: 4,
-            decoration: const InputDecoration(
-              hintText: 'What should others know?',
-              prefixIcon: Icon(Icons.comment),
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: () =>
-                  Navigator.pop(context, commentController.text.trim()),
-              child: const Text('Post'),
-            ),
-          ],
-        );
-      },
-    );
-    if (comment == null || comment.isEmpty || !mounted) return;
-    commentController.text = comment;
-    await _postComment(climbLog);
   }
 
   Future<void> _postComment(ClimbLogState climbLog) async {
@@ -1289,8 +1214,6 @@ class _RouteActions extends StatelessWidget {
     required this.completed,
     required this.savedProject,
     required this.onCompleted,
-    required this.onGradeOpinion,
-    required this.onComment,
     required this.onProject,
     required this.onShare,
   });
@@ -1298,88 +1221,61 @@ class _RouteActions extends StatelessWidget {
   final bool completed;
   final bool savedProject;
   final VoidCallback onCompleted;
-  final VoidCallback onGradeOpinion;
-  final VoidCallback onComment;
   final VoidCallback onProject;
   final VoidCallback onShare;
 
   @override
   Widget build(BuildContext context) {
-    return Wrap(
-      spacing: 8,
-      runSpacing: 8,
-      children: [
-        ActionChip(
-          avatar: Icon(
-            completed ? Icons.check_circle : Icons.done,
-            size: 18,
-            color: PacificTerrainColors.navy,
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: [
+          ActionChip(
+            avatar: Icon(
+              completed ? Icons.check_circle : Icons.done,
+              size: 18,
+              color: PacificTerrainColors.navy,
+            ),
+            label: Text(completed ? 'Sent' : 'Mark sent'),
+            backgroundColor: const Color(0xFFCDE8D2),
+            labelStyle: const TextStyle(
+              color: PacificTerrainColors.navy,
+              fontWeight: FontWeight.w700,
+            ),
+            onPressed: onCompleted,
           ),
-          label: Text(completed ? 'Sent' : 'Mark sent'),
-          backgroundColor: const Color(0xFFCDE8D2),
-          labelStyle: const TextStyle(
-            color: PacificTerrainColors.navy,
-            fontWeight: FontWeight.w700,
+          const SizedBox(width: 8),
+          ActionChip(
+            avatar: Icon(
+              savedProject ? Icons.bookmark : Icons.bookmark_border,
+              size: 18,
+              color: PacificTerrainColors.navy,
+            ),
+            label: Text(savedProject ? 'Project' : 'Save'),
+            backgroundColor: const Color(0xFFFFE2A3),
+            labelStyle: const TextStyle(
+              color: PacificTerrainColors.navy,
+              fontWeight: FontWeight.w700,
+            ),
+            onPressed: onProject,
           ),
-          onPressed: onCompleted,
-        ),
-        ActionChip(
-          avatar: const Icon(
-            Icons.grade,
-            size: 18,
-            color: PacificTerrainColors.navy,
+          const SizedBox(width: 8),
+          ActionChip(
+            avatar: const Icon(
+              Icons.ios_share,
+              size: 18,
+              color: PacificTerrainColors.navy,
+            ),
+            label: const Text('Share'),
+            backgroundColor: const Color(0xFFD1E9E7),
+            labelStyle: const TextStyle(
+              color: PacificTerrainColors.navy,
+              fontWeight: FontWeight.w700,
+            ),
+            onPressed: onShare,
           ),
-          label: const Text('Grade'),
-          backgroundColor: const Color(0xFFD3E7F5),
-          labelStyle: const TextStyle(
-            color: PacificTerrainColors.navy,
-            fontWeight: FontWeight.w700,
-          ),
-          onPressed: onGradeOpinion,
-        ),
-        ActionChip(
-          avatar: const Icon(
-            Icons.comment,
-            size: 18,
-            color: PacificTerrainColors.navy,
-          ),
-          label: const Text('Comment'),
-          backgroundColor: const Color(0xFFF3D7CA),
-          labelStyle: const TextStyle(
-            color: PacificTerrainColors.navy,
-            fontWeight: FontWeight.w700,
-          ),
-          onPressed: onComment,
-        ),
-        ActionChip(
-          avatar: Icon(
-            savedProject ? Icons.bookmark : Icons.bookmark_border,
-            size: 18,
-            color: PacificTerrainColors.navy,
-          ),
-          label: Text(savedProject ? 'Project' : 'Save'),
-          backgroundColor: const Color(0xFFFFE2A3),
-          labelStyle: const TextStyle(
-            color: PacificTerrainColors.navy,
-            fontWeight: FontWeight.w700,
-          ),
-          onPressed: onProject,
-        ),
-        ActionChip(
-          avatar: const Icon(
-            Icons.ios_share,
-            size: 18,
-            color: PacificTerrainColors.navy,
-          ),
-          label: const Text('Share'),
-          backgroundColor: const Color(0xFFD1E9E7),
-          labelStyle: const TextStyle(
-            color: PacificTerrainColors.navy,
-            fontWeight: FontWeight.w700,
-          ),
-          onPressed: onShare,
-        ),
-      ],
+        ],
+      ),
     );
   }
 }
