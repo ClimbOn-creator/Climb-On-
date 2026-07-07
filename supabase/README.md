@@ -24,7 +24,8 @@ GitHub before applying them in the Supabase SQL Editor.
 17. `admin_ski_route_editor.sql`
 18. `vancouver_island_ski_catalog.sql`
 19. `route_trailhead_images.sql`
-20. `offline_map_regions.sql`
+20. `route_ar_scans.sql`
+21. `offline_map_regions.sql`
 
 Optional catalog data:
 

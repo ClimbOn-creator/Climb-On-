@@ -4,9 +4,12 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../config/supabase_config.dart';
 import '../models/user_profile.dart';
+import 'object_storage_service.dart';
 
 class ProfileService {
   const ProfileService();
+
+  static const _storage = ObjectStorageService();
 
   SupabaseClient get _client => Supabase.instance.client;
 
@@ -89,18 +92,14 @@ class ProfileService {
     final fileName =
         'avatar.${cleanExtension.isEmpty ? 'jpg' : cleanExtension}';
     final path = '${user.id}/$fileName';
-    await _client.storage
-        .from('profile-avatars')
-        .uploadBinary(
-          path,
-          bytes,
-          fileOptions: FileOptions(contentType: contentType, upsert: true),
-        );
-
-    final publicUrl = _client.storage
-        .from('profile-avatars')
-        .getPublicUrl(path);
-    return Uri.parse(publicUrl)
+    final uploaded = await _storage.upload(
+      area: ObjectStorageArea.profileAvatars,
+      path: path,
+      bytes: bytes,
+      contentType: contentType,
+      upsert: true,
+    );
+    return Uri.parse(uploaded.url)
         .replace(
           queryParameters: {
             'v': DateTime.now().millisecondsSinceEpoch.toString(),

@@ -13,6 +13,7 @@ import '../state/ski_log_state.dart';
 import '../state/ski_route_state.dart';
 import '../theme/climb_on_theme.dart';
 import '../utils/climb_grade_search.dart';
+import '../utils/optimized_image_url.dart';
 import '../widgets/route_card.dart';
 import '../widgets/side_banner_layout.dart';
 
@@ -1057,8 +1058,9 @@ class _SkiRouteDetails extends ConsumerWidget {
             child: SizedBox(
               height: 240,
               child: CachedNetworkImage(
-                imageUrl: route.imageUrl,
+                imageUrl: optimizedImageUrl(route.imageUrl, ImageVariant.card),
                 fit: BoxFit.cover,
+                memCacheWidth: 900,
                 errorWidget: (_, _, _) => const ColoredBox(
                   color: PacificTerrainColors.navySoft,
                   child: Icon(

@@ -15,6 +15,7 @@ import '../state/catalog_state.dart';
 import '../state/climb_log_state.dart';
 import '../state/map_path_state.dart';
 import '../state/ski_route_state.dart';
+import '../utils/optimized_image_url.dart';
 
 final offlineDownloadProvider = ChangeNotifierProvider<OfflineDownloadState>((
   ref,
@@ -163,7 +164,9 @@ class OfflineDownloadState extends ChangeNotifier {
       var imageIndex = 0;
       for (final url in imageUrls) {
         try {
-          await DefaultCacheManager().downloadFile(url);
+          await DefaultCacheManager().downloadFile(
+            optimizedImageUrl(url, ImageVariant.offline),
+          );
         } catch (_) {
           // A single missing community picture should not discard the pack.
         }

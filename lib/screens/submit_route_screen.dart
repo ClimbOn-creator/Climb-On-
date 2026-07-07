@@ -695,7 +695,10 @@ class _SubmitRouteScreenState extends ConsumerState<SubmitRouteScreen> {
 
   Future<void> pickPicture() async {
     try {
-      final pickedPhotos = await pickUploadImages();
+      final pickedPhotos = await pickUploadImages(
+        imageQuality: 78,
+        maxWidth: 1600,
+      );
       if (pickedPhotos.isEmpty || !mounted) return;
       setState(() {
         photos = [...photos, ...pickedPhotos];

@@ -27,6 +27,23 @@ flutter run \
   --dart-define=SUPABASE_AUTH_REDIRECT_URL=climbon://login-callback
 ```
 
+Route photos, profile avatars, submission photos, and app visuals use Supabase
+Storage by default. To move bulky media to R2/S3-compatible storage later, point
+the app at a small private upload gateway:
+
+```sh
+flutter run \
+  --dart-define=SUPABASE_URL=your-project-url \
+  --dart-define=SUPABASE_PUBLISHABLE_KEY=your-publishable-key \
+  --dart-define=OBJECT_STORAGE_UPLOAD_ENDPOINT=https://api.your-domain.ca/storage/upload \
+  --dart-define=OBJECT_STORAGE_DELETE_ENDPOINT=https://api.your-domain.ca/storage/delete \
+  --dart-define=OBJECT_STORAGE_PUBLIC_BASE_URL=https://media.your-domain.ca
+```
+
+The gateway should accept multipart uploads with `area`, `path`, `upsert`, and
+`file` fields, then return JSON containing the public `url` and stored `path`.
+Do not put R2/S3 secret keys in the Flutter app.
+
 See [`docs/phases/AUTH_SETUP.md`](docs/phases/AUTH_SETUP.md) for Google sign-in
 redirect URLs and dashboard setup.
 

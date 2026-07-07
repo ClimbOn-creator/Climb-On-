@@ -1,12 +1,16 @@
+import 'dart:convert';
 import 'dart:typed_data';
 
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
+import '../models/ar_beta_overlay.dart';
 import '../models/climb_route.dart';
 import '../models/wall.dart';
 import '../services/database_service.dart';
-import '../utils/number_parser.dart';
 import '../utils/climb_grade_search.dart';
+import '../utils/number_parser.dart';
+import '../utils/optimized_image_url.dart';
 import '../utils/picked_upload_image.dart';
 
 class AdminRouteEditor extends StatefulWidget {
@@ -26,6 +30,7 @@ class _AdminRouteEditorState extends State<AdminRouteEditor> {
   late String pitchType;
   late String angle;
   late bool topRope;
+  late bool arEnabled;
   Uint8List? imageBytes;
   String imageName = '';
   String imageContentType = 'image/jpeg';
@@ -61,6 +66,26 @@ class _AdminRouteEditorState extends State<AdminRouteEditor> {
       'approach': TextEditingController(text: route?.approachNotes ?? ''),
       'descent': TextEditingController(text: route?.descentNotes ?? ''),
       'danger': TextEditingController(text: route?.dangerInfo ?? ''),
+      'arAsset': TextEditingController(text: route?.arScan?.assetUrl ?? ''),
+      'arAnchor': TextEditingController(
+        text: route?.arScan?.anchorImageUrl ?? '',
+      ),
+      'arInstructions': TextEditingController(
+        text: route?.arScan?.instructions ?? '',
+      ),
+      'arScale': TextEditingController(
+        text: route?.arScan?.scaleHintMeters?.toString() ?? '',
+      ),
+      'arPriority': TextEditingController(
+        text: '${route?.arScan?.displayPriority ?? 100}',
+      ),
+      'arBetaOverlay': TextEditingController(
+        text: route?.arScan?.betaOverlay == null
+            ? ''
+            : const JsonEncoder.withIndent(
+                '  ',
+              ).convert(route!.arScan!.betaOverlay!.toJson()),
+      ),
     };
     routeType = switch (route?.type) {
       ClimbRouteType.topRope => 'top_rope',
@@ -75,6 +100,7 @@ class _AdminRouteEditorState extends State<AdminRouteEditor> {
     };
     angle = route?.angle ?? 'Vertical';
     topRope = route?.topRope ?? false;
+    arEnabled = route?.arScan?.enabled ?? false;
   }
 
   @override
@@ -172,6 +198,64 @@ class _AdminRouteEditorState extends State<AdminRouteEditor> {
             _field('descent', 'Descent notes', lines: 2),
             _field('danger', 'Safety warning', lines: 3),
             _field('gear', 'Gear notes', lines: 2),
+            const SizedBox(height: 6),
+            Text('AR', style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(height: 8),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Enable AR for this route'),
+              subtitle: const Text('Stores links only, not large AR files.'),
+              value: arEnabled,
+              onChanged: saving
+                  ? null
+                  : (value) => setState(() => arEnabled = value),
+            ),
+            _optionalField(
+              'arAsset',
+              'AR asset URL',
+              requiredWhen: arEnabled,
+              helperText: 'External .usdz for iPhone, .glb/.gltf for Android.',
+            ),
+            _optionalField(
+              'arAnchor',
+              'Anchor/reference image URL',
+              helperText: 'Optional photo users can line up at the crag.',
+            ),
+            _optionalField(
+              'arInstructions',
+              'AR setup notes',
+              lines: 3,
+              helperText:
+                  'Optional notes like where to stand or what to align.',
+            ),
+            Row(
+              children: [
+                Expanded(
+                  child: _optionalField(
+                    'arScale',
+                    'Scale hint (m)',
+                    decimal: true,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _optionalField(
+                    'arPriority',
+                    'AR priority',
+                    integer: true,
+                    helperText: 'Lower numbers show first.',
+                  ),
+                ),
+              ],
+            ),
+            _optionalField(
+              'arBetaOverlay',
+              'Boulder beta overlay JSON',
+              lines: 8,
+              helperText:
+                  'Tiny hold/line data. Use normalized x/y from 0 to 1.',
+              jsonObject: true,
+            ),
             const SizedBox(height: 4),
             Text(
               'Main picture',
@@ -181,7 +265,12 @@ class _AdminRouteEditorState extends State<AdminRouteEditor> {
             if (imageBytes != null)
               Image.memory(imageBytes!, height: 210, fit: BoxFit.cover)
             else if (existingImage.isNotEmpty)
-              Image.network(existingImage, height: 210, fit: BoxFit.cover),
+              CachedNetworkImage(
+                imageUrl: optimizedImageUrl(existingImage, ImageVariant.card),
+                height: 210,
+                fit: BoxFit.cover,
+                memCacheWidth: 900,
+              ),
             const SizedBox(height: 8),
             OutlinedButton.icon(
               onPressed: saving ? null : _pickImage,
@@ -205,10 +294,14 @@ class _AdminRouteEditorState extends State<AdminRouteEditor> {
             if (trailheadImageBytes != null)
               Image.memory(trailheadImageBytes!, height: 210, fit: BoxFit.cover)
             else if (existingTrailheadImage.isNotEmpty)
-              Image.network(
-                existingTrailheadImage,
+              CachedNetworkImage(
+                imageUrl: optimizedImageUrl(
+                  existingTrailheadImage,
+                  ImageVariant.card,
+                ),
                 height: 210,
                 fit: BoxFit.cover,
+                memCacheWidth: 900,
               ),
             const SizedBox(height: 8),
             OutlinedButton.icon(
@@ -270,6 +363,49 @@ class _AdminRouteEditorState extends State<AdminRouteEditor> {
     );
   }
 
+  Widget _optionalField(
+    String key,
+    String label, {
+    bool integer = false,
+    bool decimal = false,
+    int lines = 1,
+    bool requiredWhen = false,
+    String? helperText,
+    bool jsonObject = false,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: TextFormField(
+        controller: fields[key],
+        maxLines: lines,
+        keyboardType: integer || decimal
+            ? const TextInputType.numberWithOptions(decimal: true, signed: true)
+            : TextInputType.text,
+        decoration: InputDecoration(labelText: label, helperText: helperText),
+        validator: (value) {
+          final text = value?.trim() ?? '';
+          if (requiredWhen && text.isEmpty) return 'Required when AR is on';
+          if (text.isEmpty) return null;
+          if (integer && parseWholeNumberWithUnits(text) == null) {
+            return 'Enter a number';
+          }
+          if (decimal && parseNumberWithUnits(text) == null) {
+            return 'Enter a number';
+          }
+          if (jsonObject) {
+            try {
+              final decoded = jsonDecode(text);
+              if (decoded is! Map) return 'Enter a JSON object';
+            } catch (_) {
+              return 'Enter valid JSON';
+            }
+          }
+          return null;
+        },
+      ),
+    );
+  }
+
   Widget _menu(
     String label,
     String value,
@@ -296,7 +432,7 @@ class _AdminRouteEditorState extends State<AdminRouteEditor> {
   }
 
   Future<void> _pickImage() async {
-    final image = await pickUploadImage();
+    final image = await pickUploadImage(imageQuality: 78, maxWidth: 1600);
     if (image == null || !mounted) return;
     setState(() {
       imageBytes = image.bytes;
@@ -306,7 +442,7 @@ class _AdminRouteEditorState extends State<AdminRouteEditor> {
   }
 
   Future<void> _pickTrailheadImage() async {
-    final image = await pickUploadImage();
+    final image = await pickUploadImage(imageQuality: 76, maxWidth: 1400);
     if (image == null || !mounted) return;
     setState(() {
       trailheadImageBytes = image.bytes;
@@ -365,6 +501,21 @@ class _AdminRouteEditorState extends State<AdminRouteEditor> {
           imageContentType: trailheadImageContentType,
         );
       }
+      if (arEnabled || widget.route?.arScan != null) {
+        await const DatabaseService().adminSaveRouteARScan(
+          routeId: routeId,
+          enabled: arEnabled,
+          assetUrl: arEnabled ? fields['arAsset']!.text : '',
+          anchorImageUrl: fields['arAnchor']!.text,
+          instructions: fields['arInstructions']!.text,
+          scaleHintMeters: fields['arScale']!.text.trim().isEmpty
+              ? null
+              : parseNumberWithUnits(fields['arScale']!.text),
+          displayPriority:
+              parseWholeNumberWithUnits(fields['arPriority']!.text) ?? 100,
+          betaOverlay: _betaOverlayFromField(),
+        );
+      }
       if (mounted) Navigator.pop(context, true);
     } catch (error) {
       if (!mounted) return;
@@ -374,5 +525,14 @@ class _AdminRouteEditorState extends State<AdminRouteEditor> {
     } finally {
       if (mounted) setState(() => saving = false);
     }
+  }
+
+  ARBetaOverlay? _betaOverlayFromField() {
+    final raw = fields['arBetaOverlay']!.text.trim();
+    if (raw.isEmpty) return null;
+    final decoded = jsonDecode(raw);
+    if (decoded is! Map) return null;
+    final overlay = ARBetaOverlay.fromJson(Map<String, Object?>.from(decoded));
+    return overlay.isNotEmpty ? overlay : null;
   }
 }

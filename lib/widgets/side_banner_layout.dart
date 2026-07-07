@@ -1,8 +1,10 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/app_visuals.dart';
 import '../state/app_visuals_state.dart';
+import '../utils/optimized_image_url.dart';
 
 class SideBannerLayout extends ConsumerWidget {
   const SideBannerLayout({
@@ -86,7 +88,11 @@ class _CompactMountainBanner extends StatelessWidget {
       child: Stack(
         fit: StackFit.expand,
         children: [
-          Image.network(imageUrl, fit: BoxFit.cover),
+          CachedNetworkImage(
+            imageUrl: optimizedImageUrl(imageUrl, ImageVariant.thumbnail),
+            fit: BoxFit.cover,
+            memCacheWidth: 600,
+          ),
           ColoredBox(color: Colors.black.withValues(alpha: 0.18)),
           Align(
             alignment: Alignment.topRight,
@@ -132,7 +138,11 @@ class _VerticalMountainBanner extends StatelessWidget {
           child: Stack(
             fit: StackFit.expand,
             children: [
-              Image.network(imageUrl, fit: BoxFit.cover),
+              CachedNetworkImage(
+                imageUrl: optimizedImageUrl(imageUrl, ImageVariant.card),
+                fit: BoxFit.cover,
+                memCacheWidth: 900,
+              ),
               DecoratedBox(
                 decoration: BoxDecoration(
                   gradient: LinearGradient(

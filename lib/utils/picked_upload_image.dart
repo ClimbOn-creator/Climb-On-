@@ -24,8 +24,8 @@ class UnsupportedUploadImageError implements Exception {
 
 Future<PickedUploadImage?> pickUploadImage({
   ImageSource source = ImageSource.gallery,
-  int imageQuality = 88,
-  double maxWidth = 2400,
+  int imageQuality = 78,
+  double maxWidth = 1600,
 }) async {
   final image = await ImagePicker().pickImage(
     source: source,
@@ -43,8 +43,8 @@ Future<PickedUploadImage?> pickUploadImage({
 }
 
 Future<List<PickedUploadImage>> pickUploadImages({
-  int imageQuality = 88,
-  double maxWidth = 2400,
+  int imageQuality = 78,
+  double maxWidth = 1600,
 }) async {
   final images = await ImagePicker().pickMultiImage(
     imageQuality: imageQuality,

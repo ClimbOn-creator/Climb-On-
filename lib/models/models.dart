@@ -1,4 +1,5 @@
 export 'ar_scan.dart';
+export 'ar_beta_overlay.dart';
 export 'ascent.dart';
 export 'climb_route.dart';
 export 'comment.dart';

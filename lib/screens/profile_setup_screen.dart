@@ -8,6 +8,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../services/auth_service.dart';
 import '../services/profile_service.dart';
 import '../state/profile_state.dart';
+import '../utils/optimized_image_url.dart';
 import '../utils/picked_upload_image.dart';
 
 class ProfileSetupScreen extends ConsumerStatefulWidget {
@@ -225,7 +226,7 @@ class _ProfileSetupScreenState extends ConsumerState<ProfileSetupScreen> {
   Future<void> _choosePhoto() async {
     setState(() => choosingPhoto = true);
     try {
-      final photo = await pickUploadImage(maxWidth: 1200);
+      final photo = await pickUploadImage(imageQuality: 72, maxWidth: 512);
       if (photo == null) return;
 
       if (!mounted) return;
@@ -270,7 +271,7 @@ class _AvatarEditor extends StatelessWidget {
     final ImageProvider<Object>? image = imageBytes != null
         ? MemoryImage(imageBytes!)
         : imageUrl.trim().isNotEmpty
-        ? NetworkImage(imageUrl.trim())
+        ? NetworkImage(optimizedImageUrl(imageUrl, ImageVariant.avatar))
         : null;
 
     return Center(

@@ -1,5 +1,6 @@
 import 'package:latlong2/latlong.dart';
 
+import 'ar_scan.dart';
 import 'comment.dart';
 import 'route_photo.dart';
 
@@ -66,6 +67,7 @@ class ClimbRoute {
     this.photos = const [],
     this.comments = const [],
     this.createdBy = '',
+    this.arScan,
   });
 
   final String id;
@@ -92,6 +94,9 @@ class ClimbRoute {
   final List<RoutePhoto> photos;
   final List<Comment> comments;
   final String createdBy;
+  final ARScan? arScan;
+
+  bool get hasAR => arScan?.isAvailable ?? false;
 
   String get typeLabel {
     return switch (type) {

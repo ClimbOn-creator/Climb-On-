@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'dart:typed_data';
 
 import 'package:latlong2/latlong.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -7,6 +6,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../config/supabase_config.dart';
 import '../data/sample_crags.dart' as sample_data;
+import '../models/ar_beta_overlay.dart';
+import '../models/ar_scan.dart';
 import '../models/climb_route.dart';
 import '../models/crag.dart';
 import '../models/geo_bounds.dart';
@@ -15,9 +16,12 @@ import '../models/ski_route.dart';
 import '../models/social.dart';
 import '../models/wall.dart';
 import '../state/climb_log_state.dart';
+import 'object_storage_service.dart';
 
 class DatabaseService {
   const DatabaseService();
+
+  static const _storage = ObjectStorageService();
 
   static const _catalogCacheKey = 'climb_on_catalog_cache_v1';
   static const _skiCatalogCacheKey = 'climb_on_ski_catalog_cache_v1';
@@ -85,21 +89,23 @@ class DatabaseService {
     final extension = _safeFileExtension(imageName);
     final path =
         '${user.id}/app-visuals/$visualKey-${DateTime.now().microsecondsSinceEpoch}.$extension';
-    final storage = Supabase.instance.client.storage.from('submission-photos');
-    await storage.uploadBinary(
-      path,
-      Uint8List.fromList(imageBytes),
-      fileOptions: FileOptions(contentType: imageContentType, upsert: false),
+    final uploaded = await _storage.upload(
+      area: ObjectStorageArea.appVisuals,
+      path: path,
+      bytes: imageBytes,
+      contentType: imageContentType,
     );
-    final imageUrl = storage.getPublicUrl(path);
     try {
       await Supabase.instance.client.rpc(
         'admin_update_app_visual',
-        params: {'target_visual_key': visualKey, 'new_image_url': imageUrl},
+        params: {'target_visual_key': visualKey, 'new_image_url': uploaded.url},
       );
-      return imageUrl;
+      return uploaded.url;
     } catch (_) {
-      await storage.remove([path]);
+      await _storage.remove(
+        area: ObjectStorageArea.appVisuals,
+        paths: [uploaded.path],
+      );
       rethrow;
     }
   }
@@ -314,23 +320,21 @@ class DatabaseService {
     final safeExtension = extension.isEmpty ? 'jpg' : extension;
     final storagePath =
         '${user.id}/$routeId/${DateTime.now().microsecondsSinceEpoch}.$safeExtension';
-    final storage = Supabase.instance.client.storage.from('route-photos');
-
-    await storage.uploadBinary(
-      storagePath,
-      Uint8List.fromList(bytes),
-      fileOptions: FileOptions(contentType: contentType, upsert: false),
+    final uploaded = await _storage.upload(
+      area: ObjectStorageArea.routePhotos,
+      path: storagePath,
+      bytes: bytes,
+      contentType: contentType,
     );
 
     try {
-      final url = storage.getPublicUrl(storagePath);
       final row = await Supabase.instance.client
           .from('route_photos')
           .insert({
             'user_id': user.id,
             'route_id': routeId,
-            'url': url,
-            'storage_path': storagePath,
+            'url': uploaded.url,
+            'storage_path': uploaded.path,
             'caption': caption,
           })
           .select()
@@ -339,7 +343,10 @@ class DatabaseService {
       if (photo == null) throw StateError('The uploaded picture was invalid.');
       return photo;
     } catch (_) {
-      await storage.remove([storagePath]);
+      await _storage.remove(
+        area: ObjectStorageArea.routePhotos,
+        paths: [uploaded.path],
+      );
       rethrow;
     }
   }
@@ -353,9 +360,10 @@ class DatabaseService {
     }
 
     if (photo.storagePath.isNotEmpty) {
-      await Supabase.instance.client.storage.from('route-photos').remove([
-        photo.storagePath,
-      ]);
+      await _storage.remove(
+        area: ObjectStorageArea.routePhotos,
+        paths: [photo.storagePath],
+      );
     }
     await Supabase.instance.client
         .from('route_photos')
@@ -526,21 +534,24 @@ class DatabaseService {
         : 'jpg';
     final storagePath =
         '${user.id}/${DateTime.now().microsecondsSinceEpoch}.${extension.isEmpty ? 'jpg' : extension}';
-    final storage = Supabase.instance.client.storage.from('submission-photos');
-    await storage.uploadBinary(
-      storagePath,
-      Uint8List.fromList(photoBytes),
-      fileOptions: FileOptions(contentType: photoContentType, upsert: false),
+    final uploaded = await _storage.upload(
+      area: ObjectStorageArea.submissionPhotos,
+      path: storagePath,
+      bytes: photoBytes,
+      contentType: photoContentType,
     );
 
     try {
       await Supabase.instance.client.from(table).insert({
         ...submission,
         'user_id': user.id,
-        imageColumn: storage.getPublicUrl(storagePath),
+        imageColumn: uploaded.url,
       });
     } catch (_) {
-      await storage.remove([storagePath]);
+      await _storage.remove(
+        area: ObjectStorageArea.submissionPhotos,
+        paths: [uploaded.path],
+      );
       rethrow;
     }
   }
@@ -562,7 +573,6 @@ class DatabaseService {
       throw const AuthException('Sign in before submitting a route.');
     }
 
-    final storage = Supabase.instance.client.storage.from('submission-photos');
     final uploadedPaths = <String>[];
     final urls = <String>[];
 
@@ -572,16 +582,14 @@ class DatabaseService {
         final extension = _safeFileExtension(photo.fileName);
         final storagePath =
             '${user.id}/${DateTime.now().microsecondsSinceEpoch}_$index.$extension';
-        await storage.uploadBinary(
-          storagePath,
-          Uint8List.fromList(photo.bytes),
-          fileOptions: FileOptions(
-            contentType: photo.contentType,
-            upsert: false,
-          ),
+        final uploaded = await _storage.upload(
+          area: ObjectStorageArea.submissionPhotos,
+          path: storagePath,
+          bytes: photo.bytes,
+          contentType: photo.contentType,
         );
-        uploadedPaths.add(storagePath);
-        urls.add(storage.getPublicUrl(storagePath));
+        uploadedPaths.add(uploaded.path);
+        urls.add(uploaded.url);
       }
 
       await Supabase.instance.client.from(table).insert({
@@ -591,7 +599,10 @@ class DatabaseService {
         'photo_urls': urls,
       });
     } catch (_) {
-      if (uploadedPaths.isNotEmpty) await storage.remove(uploadedPaths);
+      await _storage.remove(
+        area: ObjectStorageArea.submissionPhotos,
+        paths: uploadedPaths,
+      );
       rethrow;
     }
   }
@@ -666,7 +677,7 @@ class DatabaseService {
     if (user == null) throw const AuthException('Sign in to edit routes.');
 
     String imageUrl = values['route_image_url']?.toString() ?? '';
-    String? uploadedPath;
+    StoredObject? uploaded;
     if (imageBytes != null && imageBytes.isNotEmpty) {
       final extension = imageName.contains('.')
           ? imageName
@@ -675,17 +686,15 @@ class DatabaseService {
                 .toLowerCase()
                 .replaceAll(RegExp(r'[^a-z0-9]'), '')
           : 'jpg';
-      uploadedPath =
+      final path =
           '${user.id}/catalog/${DateTime.now().microsecondsSinceEpoch}.${extension.isEmpty ? 'jpg' : extension}';
-      final storage = Supabase.instance.client.storage.from(
-        'submission-photos',
+      uploaded = await _storage.upload(
+        area: ObjectStorageArea.submissionPhotos,
+        path: path,
+        bytes: imageBytes,
+        contentType: imageContentType,
       );
-      await storage.uploadBinary(
-        uploadedPath,
-        Uint8List.fromList(imageBytes),
-        fileOptions: FileOptions(contentType: imageContentType, upsert: false),
-      );
-      imageUrl = storage.getPublicUrl(uploadedPath);
+      imageUrl = uploaded.url;
     }
 
     try {
@@ -700,9 +709,10 @@ class DatabaseService {
       );
       return result?.toString() ?? '';
     } catch (_) {
-      if (uploadedPath != null) {
-        await Supabase.instance.client.storage.from('submission-photos').remove(
-          [uploadedPath],
+      if (uploaded != null) {
+        await _storage.remove(
+          area: ObjectStorageArea.submissionPhotos,
+          paths: [uploaded.path],
         );
       }
       rethrow;
@@ -763,6 +773,50 @@ class DatabaseService {
     );
   }
 
+  Future<ARScan?> adminSaveRouteARScan({
+    required String routeId,
+    required bool enabled,
+    required String assetUrl,
+    String anchorImageUrl = '',
+    String instructions = '',
+    double? scaleHintMeters,
+    int displayPriority = 100,
+    ARBetaOverlay? betaOverlay,
+  }) async {
+    final user = _currentUser;
+    if (user == null) throw const AuthException('Sign in to edit route AR.');
+
+    final result = await Supabase.instance.client.rpc(
+      'admin_save_route_ar_scan',
+      params: {
+        'target_route_id': routeId,
+        'new_enabled': enabled,
+        'new_asset_url': assetUrl.trim(),
+        'new_anchor_image_url': anchorImageUrl.trim(),
+        'new_instructions': instructions.trim(),
+        'new_scale_hint_meters': scaleHintMeters,
+        'new_display_priority': displayPriority,
+        'new_beta_overlay': betaOverlay?.toJson() ?? const <String, Object?>{},
+      },
+    );
+    if (result is Map) return _arScanFromJson(result);
+    final rows = _maps(result);
+    if (rows.isEmpty) return null;
+    return _arScanFromJson(rows.first);
+  }
+
+  Future<List<Map<String, dynamic>>> loadRouteARCandidatesForCrag({
+    required String cragId,
+    int maxRoutes = 5,
+  }) async {
+    if (!SupabaseConfig.isConfigured) return const [];
+    final result = await Supabase.instance.client.rpc(
+      'route_ar_candidates_for_crag',
+      params: {'target_crag_id': cragId, 'max_routes': maxRoutes},
+    );
+    return _maps(result);
+  }
+
   Future<String> _adminReplaceCatalogImage({
     required String routeId,
     required List<int> imageBytes,
@@ -781,21 +835,23 @@ class DatabaseService {
         : 'jpg';
     final path =
         '${user.id}/catalog/${DateTime.now().microsecondsSinceEpoch}.${extension.isEmpty ? 'jpg' : extension}';
-    final storage = Supabase.instance.client.storage.from('submission-photos');
-    await storage.uploadBinary(
-      path,
-      Uint8List.fromList(imageBytes),
-      fileOptions: FileOptions(contentType: imageContentType, upsert: false),
+    final uploaded = await _storage.upload(
+      area: ObjectStorageArea.submissionPhotos,
+      path: path,
+      bytes: imageBytes,
+      contentType: imageContentType,
     );
-    final imageUrl = storage.getPublicUrl(path);
     try {
       await Supabase.instance.client.rpc(
         functionName,
-        params: {'target_route_id': routeId, 'new_image_url': imageUrl},
+        params: {'target_route_id': routeId, 'new_image_url': uploaded.url},
       );
-      return imageUrl;
+      return uploaded.url;
     } catch (_) {
-      await storage.remove([path]);
+      await _storage.remove(
+        area: ObjectStorageArea.submissionPhotos,
+        paths: [uploaded.path],
+      );
       rethrow;
     }
   }
@@ -929,20 +985,18 @@ class DatabaseService {
     }
 
     String imageUrl = values['route_image_url']?.toString() ?? '';
-    String? uploadedPath;
+    StoredObject? uploaded;
     if (imageBytes != null && imageBytes.isNotEmpty) {
       final extension = _safeFileExtension(imageName);
-      uploadedPath =
+      final path =
           '${_currentUser?.id ?? 'admin'}/ski-route-${DateTime.now().microsecondsSinceEpoch}.$extension';
-      final storage = Supabase.instance.client.storage.from(
-        'submission-photos',
+      uploaded = await _storage.upload(
+        area: ObjectStorageArea.submissionPhotos,
+        path: path,
+        bytes: imageBytes,
+        contentType: imageContentType,
       );
-      await storage.uploadBinary(
-        uploadedPath,
-        Uint8List.fromList(imageBytes),
-        fileOptions: FileOptions(contentType: imageContentType, upsert: false),
-      );
-      imageUrl = storage.getPublicUrl(uploadedPath);
+      imageUrl = uploaded.url;
     }
 
     try {
@@ -959,9 +1013,10 @@ class DatabaseService {
       final value = result is String ? jsonDecode(result) : result;
       return _skiRouteFromJson(Map<String, Object?>.from(value as Map));
     } catch (_) {
-      if (uploadedPath != null) {
-        await Supabase.instance.client.storage.from('submission-photos').remove(
-          [uploadedPath],
+      if (uploaded != null) {
+        await _storage.remove(
+          area: ObjectStorageArea.submissionPhotos,
+          paths: [uploaded.path],
         );
       }
       rethrow;
@@ -1173,7 +1228,53 @@ class DatabaseService {
         'https://images.unsplash.com/photo-1522163182402-834f871fd851',
       ),
       createdBy: _string(json['createdBy']),
+      arScan: _arScanFromJson(json['arScan']),
     );
+  }
+
+  ARScan? _arScanFromJson(Object? value) {
+    if (value == null) return null;
+    final json = value is Map<String, dynamic>
+        ? value
+        : value is Map
+        ? Map<String, dynamic>.from(value)
+        : null;
+    if (json == null) return null;
+    final id = _string(json['id']);
+    final routeId = _string(json['routeId']);
+    final assetUrl = _string(json['assetUrl']);
+    final enabled = json['enabled'] != false;
+    if (id.isEmpty || routeId.isEmpty || assetUrl.isEmpty || !enabled) {
+      return null;
+    }
+    return ARScan(
+      id: id,
+      routeId: routeId,
+      assetUrl: assetUrl,
+      anchorImageUrl: _string(json['anchorImageUrl']),
+      instructions: _string(json['instructions']),
+      scaleHintMeters: json['scaleHintMeters'] == null
+          ? null
+          : _double(json['scaleHintMeters']),
+      displayPriority: _int(json['displayPriority'], 100),
+      betaOverlay: _arBetaOverlayFromJson(json['betaOverlay']),
+      enabled: enabled,
+      createdByUserId: _string(json['createdBy']),
+      updatedAt: _dateTime(json['updatedAt']),
+      createdAt: _dateTime(json['createdAt']),
+    );
+  }
+
+  ARBetaOverlay? _arBetaOverlayFromJson(Object? value) {
+    if (value == null) return null;
+    final json = value is Map<String, dynamic>
+        ? value
+        : value is Map
+        ? Map<String, Object?>.from(value)
+        : null;
+    if (json == null || json.isEmpty) return null;
+    final overlay = ARBetaOverlay.fromJson(Map<String, Object?>.from(json));
+    return overlay.isNotEmpty ? overlay : null;
   }
 
   SkiRoute _skiRouteFromJson(Map<String, Object?> json) {
@@ -1261,6 +1362,12 @@ class DatabaseService {
   double _double(Object? value, [double fallback = 0]) {
     if (value is num) return value.toDouble();
     return double.tryParse(value?.toString() ?? '') ?? fallback;
+  }
+
+  DateTime? _dateTime(Object? value) {
+    final text = value?.toString() ?? '';
+    if (text.isEmpty) return null;
+    return DateTime.tryParse(text);
   }
 
   String _safeFileExtension(String fileName) {

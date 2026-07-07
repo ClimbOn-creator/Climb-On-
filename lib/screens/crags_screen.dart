@@ -16,6 +16,7 @@ import '../state/catalog_state.dart';
 import '../state/climb_log_state.dart';
 import '../state/ski_route_state.dart';
 import '../theme/climb_on_theme.dart';
+import '../utils/optimized_image_url.dart';
 import '../models/wall.dart';
 import '../widgets/side_banner_layout.dart';
 import '../widgets/admin_route_editor.dart';
@@ -429,8 +430,12 @@ class _RangeDetailScroll extends ConsumerWidget {
               fit: StackFit.expand,
               children: [
                 CachedNetworkImage(
-                  imageUrl: visuals.url('range_${range.id}'),
+                  imageUrl: optimizedImageUrl(
+                    visuals.url('range_${range.id}'),
+                    ImageVariant.detail,
+                  ),
                   fit: BoxFit.cover,
+                  memCacheWidth: 1400,
                   errorWidget: (_, _, _) => const ColoredBox(
                     color: PacificTerrainColors.navySoft,
                     child: Icon(Icons.landscape, color: Colors.white, size: 54),
@@ -533,8 +538,12 @@ class _RangeCard extends ConsumerWidget {
             fit: StackFit.expand,
             children: [
               CachedNetworkImage(
-                imageUrl: visuals.url('range_${range.id}'),
+                imageUrl: optimizedImageUrl(
+                  visuals.url('range_${range.id}'),
+                  ImageVariant.card,
+                ),
                 fit: BoxFit.cover,
+                memCacheWidth: 900,
                 errorWidget: (_, _, _) => const ColoredBox(
                   color: PacificTerrainColors.navySoft,
                   child: Icon(Icons.landscape, color: Colors.white),
@@ -624,8 +633,9 @@ class _CityAreaCard extends ConsumerWidget {
             fit: StackFit.expand,
             children: [
               CachedNetworkImage(
-                imageUrl: imageUrl,
+                imageUrl: optimizedImageUrl(imageUrl, ImageVariant.card),
                 fit: BoxFit.cover,
+                memCacheWidth: 900,
                 errorWidget: (_, _, _) => const ColoredBox(
                   color: PacificTerrainColors.navySoft,
                   child: Icon(Icons.location_city, color: Colors.white),
@@ -797,10 +807,11 @@ class _CragCard extends ConsumerWidget {
             Stack(
               children: [
                 CachedNetworkImage(
-                  imageUrl: imageUrl,
+                  imageUrl: optimizedImageUrl(imageUrl, ImageVariant.card),
                   height: 154,
                   width: double.infinity,
                   fit: BoxFit.cover,
+                  memCacheWidth: 900,
                   errorWidget: (_, _, _) => const SizedBox(
                     height: 154,
                     child: ColoredBox(color: PacificTerrainColors.seaGlass),
@@ -1045,10 +1056,11 @@ class _SkiRangeRouteCard extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             CachedNetworkImage(
-              imageUrl: route.imageUrl,
+              imageUrl: optimizedImageUrl(route.imageUrl, ImageVariant.card),
               height: 154,
               width: double.infinity,
               fit: BoxFit.cover,
+              memCacheWidth: 900,
               errorWidget: (_, _, _) => ColoredBox(
                 color: Theme.of(context).colorScheme.primaryContainer,
                 child: const SizedBox(
@@ -1179,10 +1191,11 @@ class _SkiTourDetails extends StatelessWidget {
           ClipRRect(
             borderRadius: BorderRadius.circular(14),
             child: CachedNetworkImage(
-              imageUrl: route.imageUrl,
+              imageUrl: optimizedImageUrl(route.imageUrl, ImageVariant.detail),
               height: 260,
               width: double.infinity,
               fit: BoxFit.cover,
+              memCacheWidth: 1400,
             ),
           ),
           const SizedBox(height: 14),
@@ -1405,10 +1418,11 @@ class _CragRoutePickerState extends ConsumerState<_CragRoutePicker> {
             ClipRRect(
               borderRadius: BorderRadius.circular(16),
               child: CachedNetworkImage(
-                imageUrl: heroImageUrl,
+                imageUrl: optimizedImageUrl(heroImageUrl, ImageVariant.detail),
                 height: 230,
                 width: double.infinity,
                 fit: BoxFit.cover,
+                memCacheWidth: 1400,
                 errorWidget: (_, _, _) => const SizedBox.shrink(),
               ),
             ),

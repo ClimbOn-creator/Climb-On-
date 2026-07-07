@@ -20,6 +20,7 @@ import '../state/ski_route_state.dart';
 import '../state/social_state.dart';
 import '../state/trail_library_state.dart';
 import '../theme/climb_on_theme.dart';
+import '../utils/optimized_image_url.dart';
 import '../widgets/side_banner_layout.dart';
 
 class ProfileScreen extends ConsumerStatefulWidget {
@@ -663,7 +664,12 @@ class _AccountCard extends ConsumerWidget {
                       radius: 22,
                       backgroundImage: _avatarFor(profile, user) == null
                           ? null
-                          : NetworkImage(_avatarFor(profile, user)!),
+                          : NetworkImage(
+                              optimizedImageUrl(
+                                _avatarFor(profile, user)!,
+                                ImageVariant.avatar,
+                              ),
+                            ),
                       child: _avatarFor(profile, user) == null
                           ? const Icon(Icons.person)
                           : null,
@@ -831,7 +837,9 @@ class _ProfileHeader extends StatelessWidget {
               backgroundColor: PacificTerrainColors.seaGlass,
               backgroundImage: avatarUrl == null || avatarUrl.isEmpty
                   ? null
-                  : NetworkImage(avatarUrl),
+                  : NetworkImage(
+                      optimizedImageUrl(avatarUrl, ImageVariant.avatar),
+                    ),
               child: avatarUrl == null || avatarUrl.isEmpty
                   ? const Icon(Icons.person, size: 42)
                   : null,
@@ -1169,7 +1177,9 @@ class _SkiProfileHeader extends StatelessWidget {
               radius: 44,
               backgroundImage: avatarUrl == null || avatarUrl.isEmpty
                   ? null
-                  : NetworkImage(avatarUrl),
+                  : NetworkImage(
+                      optimizedImageUrl(avatarUrl, ImageVariant.avatar),
+                    ),
               child: avatarUrl == null || avatarUrl.isEmpty
                   ? const Icon(Icons.person, size: 42)
                   : null,

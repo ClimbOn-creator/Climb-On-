@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import '../models/app_visuals.dart';
 import '../services/database_service.dart';
 import '../state/app_visuals_state.dart';
+import '../utils/optimized_image_url.dart';
 import '../utils/picked_upload_image.dart';
 import '../widgets/side_banner_layout.dart';
 
@@ -99,7 +100,7 @@ class _AppPicturesScreenState extends ConsumerState<AppPicturesScreen> {
   }
 
   Future<void> _replacePicture(AppVisualDefinition definition) async {
-    final image = await pickUploadImage();
+    final image = await pickUploadImage(imageQuality: 76, maxWidth: 1400);
     if (image == null || !mounted) return;
     setState(() => uploadingKey = definition.key);
     try {
@@ -144,10 +145,11 @@ class _AppPictureRow extends StatelessWidget {
     final preview = ClipRRect(
       borderRadius: BorderRadius.circular(10),
       child: CachedNetworkImage(
-        imageUrl: imageUrl,
+        imageUrl: optimizedImageUrl(imageUrl, ImageVariant.thumbnail),
         width: compact ? double.infinity : 112,
         height: compact ? 140 : 78,
         fit: BoxFit.cover,
+        memCacheWidth: compact ? 700 : 300,
         errorWidget: (_, _, _) => const ColoredBox(
           color: Color(0xFFE1E8E5),
           child: Center(child: Icon(Icons.broken_image_outlined)),

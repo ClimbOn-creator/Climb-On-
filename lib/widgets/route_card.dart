@@ -4,16 +4,21 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
 
+import '../models/ar_beta_overlay.dart';
 import '../models/climb_route.dart';
 import '../models/crag.dart';
 import '../models/wall.dart';
 import '../services/database_service.dart';
 import '../state/admin_state.dart';
+import '../state/ar_download_state.dart';
 import '../state/catalog_state.dart';
 import '../state/climb_log_state.dart';
 import '../state/social_state.dart';
 import '../theme/climb_on_theme.dart';
+import '../utils/ar_launch_url.dart';
+import '../utils/optimized_image_url.dart';
 import '../utils/picked_upload_image.dart';
 import 'admin_route_editor.dart';
 
@@ -76,6 +81,7 @@ class _RouteCardState extends ConsumerState<RouteCard> {
         isAdmin ||
         const DatabaseService().currentUserId == widget.route.createdBy;
     final social = ref.watch(socialProvider);
+    final arStatus = ref.watch(arDownloadProvider).statusFor(widget.route.id);
 
     return AnimatedBuilder(
       animation: climbLog,
@@ -192,7 +198,26 @@ class _RouteCardState extends ConsumerState<RouteCard> {
                     onCompleted: () => climbLog.toggleRoute(widget.route),
                     onProject: () => climbLog.toggleProject(widget.route),
                     onShare: _shareRoute,
+                    onAR: widget.route.hasAR ? _openARPreview : null,
+                    arReady: arStatus.ready,
                   ),
+                  if (widget.expanded && widget.route.hasAR) ...[
+                    const SizedBox(height: 10),
+                    SizedBox(
+                      width: double.infinity,
+                      child: FilledButton.icon(
+                        onPressed: _openARPreview,
+                        icon: Icon(
+                          arStatus.ready
+                              ? Icons.view_in_ar
+                              : Icons.download_for_offline,
+                        ),
+                        label: Text(
+                          arStatus.ready ? 'View in AR' : 'Download AR Pack',
+                        ),
+                      ),
+                    ),
+                  ],
                   if (widget.expanded && isAdmin && routeWall != null) ...[
                     const SizedBox(height: 10),
                     OutlinedButton.icon(
@@ -321,7 +346,12 @@ class _RouteCardState extends ConsumerState<RouteCard> {
                                       backgroundImage:
                                           send.user.avatarUrl.isEmpty
                                           ? null
-                                          : NetworkImage(send.user.avatarUrl),
+                                          : NetworkImage(
+                                              optimizedImageUrl(
+                                                send.user.avatarUrl,
+                                                ImageVariant.avatar,
+                                              ),
+                                            ),
                                       child: send.user.avatarUrl.isEmpty
                                           ? const Icon(Icons.person_outline)
                                           : null,
@@ -396,6 +426,18 @@ class _RouteCardState extends ConsumerState<RouteCard> {
         text:
             '${widget.route.name} (${widget.route.grade})\n${widget.route.description}',
       ),
+    );
+  }
+
+  void _openARPreview() {
+    final arScan = widget.route.arScan;
+    if (arScan == null || !arScan.isAvailable) return;
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      showDragHandle: true,
+      builder: (context) => _RouteARPreview(route: widget.route),
     );
   }
 
@@ -660,7 +702,12 @@ class _RouteCardState extends ConsumerState<RouteCard> {
                 radius: 38,
                 backgroundImage: comment.authorAvatarUrl.isEmpty
                     ? null
-                    : NetworkImage(comment.authorAvatarUrl),
+                    : NetworkImage(
+                        optimizedImageUrl(
+                          comment.authorAvatarUrl,
+                          ImageVariant.avatar,
+                        ),
+                      ),
                 child: comment.authorAvatarUrl.isEmpty
                     ? const Icon(Icons.person, size: 36)
                     : null,
@@ -699,7 +746,7 @@ class _RouteCardState extends ConsumerState<RouteCard> {
     }
 
     try {
-      final image = await pickUploadImage();
+      final image = await pickUploadImage(imageQuality: 78, maxWidth: 1600);
       if (image == null || !mounted) return;
 
       final caption = await _askForPhotoCaption();
@@ -729,7 +776,7 @@ class _RouteCardState extends ConsumerState<RouteCard> {
 
   Future<void> _pickAndReplaceMainPicture() async {
     try {
-      final image = await pickUploadImage();
+      final image = await pickUploadImage(imageQuality: 78, maxWidth: 1600);
       if (image == null || !mounted) return;
       setState(() => uploadingPhoto = true);
       final imageUrl = await const DatabaseService().adminReplaceRouteImage(
@@ -756,7 +803,7 @@ class _RouteCardState extends ConsumerState<RouteCard> {
 
   Future<void> _pickAndReplaceTrailheadPicture() async {
     try {
-      final image = await pickUploadImage();
+      final image = await pickUploadImage(imageQuality: 76, maxWidth: 1400);
       if (image == null || !mounted) return;
       setState(() => uploadingPhoto = true);
       final imageUrl = await const DatabaseService()
@@ -1156,7 +1203,12 @@ class _CommentTile extends StatelessWidget {
               radius: 16,
               backgroundImage: comment.authorAvatarUrl.isEmpty
                   ? null
-                  : NetworkImage(comment.authorAvatarUrl),
+                  : NetworkImage(
+                      optimizedImageUrl(
+                        comment.authorAvatarUrl,
+                        ImageVariant.avatar,
+                      ),
+                    ),
               child: comment.authorAvatarUrl.isEmpty
                   ? const Icon(Icons.person_outline, size: 17)
                   : null,
@@ -1216,6 +1268,8 @@ class _RouteActions extends StatelessWidget {
     required this.onCompleted,
     required this.onProject,
     required this.onShare,
+    this.onAR,
+    this.arReady = false,
   });
 
   final bool completed;
@@ -1223,6 +1277,8 @@ class _RouteActions extends StatelessWidget {
   final VoidCallback onCompleted;
   final VoidCallback onProject;
   final VoidCallback onShare;
+  final VoidCallback? onAR;
+  final bool arReady;
 
   @override
   Widget build(BuildContext context) {
@@ -1274,9 +1330,314 @@ class _RouteActions extends StatelessWidget {
             ),
             onPressed: onShare,
           ),
+          if (onAR != null) ...[
+            const SizedBox(width: 8),
+            ActionChip(
+              avatar: const Icon(
+                Icons.view_in_ar,
+                size: 18,
+                color: PacificTerrainColors.navy,
+              ),
+              label: Text(arReady ? 'AR' : 'Download AR'),
+              backgroundColor: const Color(0xFFE4DCF1),
+              labelStyle: const TextStyle(
+                color: PacificTerrainColors.navy,
+                fontWeight: FontWeight.w700,
+              ),
+              onPressed: onAR,
+            ),
+          ],
         ],
       ),
     );
+  }
+}
+
+class _RouteARPreview extends ConsumerWidget {
+  const _RouteARPreview({required this.route});
+
+  final ClimbRoute route;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final arScan = route.arScan;
+    if (arScan == null) return const SizedBox.shrink();
+    final anchorUrl = arScan.anchorImageUrl.trim();
+    final betaOverlay = arScan.betaOverlay;
+    final betaReferenceUrl = betaOverlay?.referenceImageUrl.trim() ?? '';
+    final overlayImageUrl = betaReferenceUrl.isNotEmpty
+        ? betaReferenceUrl
+        : anchorUrl;
+    final instructions = arScan.instructions.trim();
+    final format = inferARAssetFormat(arScan.assetUrl);
+    final nativeViewer = canUseNativeARViewer(arScan.assetUrl);
+    final arDownloads = ref.watch(arDownloadProvider);
+    final packStatus = arDownloads.statusFor(route.id);
+    return Padding(
+      padding: EdgeInsets.fromLTRB(
+        18,
+        4,
+        18,
+        18 + MediaQuery.viewPaddingOf(context).bottom,
+      ),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 640),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  CircleAvatar(
+                    backgroundColor: Theme.of(
+                      context,
+                    ).colorScheme.primaryContainer,
+                    child: const Icon(Icons.view_in_ar),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '${route.name} AR',
+                          style: Theme.of(context).textTheme.titleLarge
+                              ?.copyWith(fontWeight: FontWeight.w900),
+                        ),
+                        Text('${route.grade} · ${route.typeLabel}'),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  Chip(
+                    avatar: const Icon(Icons.inventory_2_outlined, size: 16),
+                    label: Text(arAssetFormatLabel(format)),
+                  ),
+                  Chip(
+                    avatar: Icon(
+                      packStatus.ready
+                          ? Icons.download_done
+                          : Icons.download_for_offline,
+                      size: 16,
+                    ),
+                    label: Text(
+                      packStatus.ready ? 'Downloaded' : 'Not downloaded',
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              if (overlayImageUrl.isNotEmpty) ...[
+                _AROverlayImage(
+                  imageUrl: overlayImageUrl,
+                  overlay: betaOverlay,
+                ),
+                const SizedBox(height: 12),
+              ],
+              if (!packStatus.ready) ...[
+                Text(
+                  'Download this route AR pack before opening the viewer. The pack caches the external AR asset, reference image, and tiny hold overlay data on this phone.',
+                  style: Theme.of(context).textTheme.bodyMedium,
+                ),
+                const SizedBox(height: 12),
+              ],
+              if (instructions.isNotEmpty) ...[
+                Text(
+                  'Setup Notes',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(instructions),
+                const SizedBox(height: 12),
+              ],
+              if (arScan.scaleHintMeters case final scale?)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: _AttributeRow(
+                    label: 'Scale hint',
+                    value: '${scale.toStringAsFixed(scale >= 10 ? 0 : 1)} m',
+                  ),
+                ),
+              SizedBox(
+                width: double.infinity,
+                child: packStatus.ready
+                    ? FilledButton.icon(
+                        onPressed: () => _launchAR(context, arScan.assetUrl),
+                        icon: Icon(
+                          nativeViewer ? Icons.view_in_ar : Icons.open_in_new,
+                        ),
+                        label: Text(
+                          nativeViewer ? 'Launch AR' : 'Open AR Asset',
+                        ),
+                      )
+                    : FilledButton.icon(
+                        onPressed: packStatus.downloading
+                            ? null
+                            : () =>
+                                  ref.read(arDownloadProvider).download(route),
+                        icon: packStatus.downloading
+                            ? const SizedBox.square(
+                                dimension: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : const Icon(Icons.download_for_offline),
+                        label: Text(
+                          packStatus.downloading
+                              ? packStatus.message
+                              : 'Download AR Pack',
+                        ),
+                      ),
+              ),
+              if (packStatus.downloading) ...[
+                const SizedBox(height: 10),
+                LinearProgressIndicator(value: packStatus.progress),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _launchAR(BuildContext context, String url) async {
+    final uri = platformARLaunchUri(url);
+    if (uri == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('AR asset link is not valid.')),
+      );
+      return;
+    }
+    final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (!opened && context.mounted) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Could not open AR asset.')));
+    }
+  }
+}
+
+class _AROverlayImage extends StatelessWidget {
+  const _AROverlayImage({required this.imageUrl, required this.overlay});
+
+  final String imageUrl;
+  final ARBetaOverlay? overlay;
+
+  @override
+  Widget build(BuildContext context) {
+    return AspectRatio(
+      aspectRatio: 4 / 3,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(8),
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            CachedNetworkImage(
+              imageUrl: optimizedImageUrl(imageUrl, ImageVariant.card),
+              fit: BoxFit.cover,
+              memCacheWidth: 900,
+              errorWidget: (context, url, error) => Container(
+                alignment: Alignment.center,
+                color: Theme.of(context).colorScheme.surfaceContainerHigh,
+                child: const Text('Reference image unavailable'),
+              ),
+            ),
+            if (overlay != null)
+              CustomPaint(painter: _ARBetaOverlayPainter(overlay!)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ARBetaOverlayPainter extends CustomPainter {
+  const _ARBetaOverlayPainter(this.overlay);
+
+  final ARBetaOverlay overlay;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final linePaint = Paint()
+      ..color = const Color(0xFFEFFB6E)
+      ..strokeWidth = 5
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round
+      ..style = PaintingStyle.stroke;
+    final shadowPaint = Paint()
+      ..color = Colors.black.withValues(alpha: 0.45)
+      ..strokeWidth = 9
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round
+      ..style = PaintingStyle.stroke;
+
+    if (overlay.line.length >= 2) {
+      final path = Path()
+        ..moveTo(
+          overlay.line.first.x * size.width,
+          overlay.line.first.y * size.height,
+        );
+      for (final point in overlay.line.skip(1)) {
+        path.lineTo(point.x * size.width, point.y * size.height);
+      }
+      canvas.drawPath(path, shadowPaint);
+      canvas.drawPath(path, linePaint);
+    }
+
+    for (final hold in overlay.holds) {
+      final center = Offset(hold.x * size.width, hold.y * size.height);
+      final color = switch (hold.type.toLowerCase()) {
+        'start' => const Color(0xFF7BE495),
+        'finish' || 'top' => const Color(0xFF7DD3FC),
+        'foot' => const Color(0xFFFFD166),
+        _ => const Color(0xFFFF6B6B),
+      };
+      canvas.drawCircle(
+        center,
+        14,
+        Paint()..color = Colors.black.withValues(alpha: 0.45),
+      );
+      canvas.drawCircle(center, 10, Paint()..color = color);
+      canvas.drawCircle(
+        center,
+        10,
+        Paint()
+          ..color = Colors.white
+          ..strokeWidth = 2
+          ..style = PaintingStyle.stroke,
+      );
+      if (hold.label.trim().isEmpty) continue;
+      final labelPainter = TextPainter(
+        text: TextSpan(
+          text: hold.label.trim(),
+          style: const TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.w900,
+            fontSize: 12,
+          ),
+        ),
+        textDirection: TextDirection.ltr,
+      )..layout();
+      labelPainter.paint(
+        canvas,
+        center - Offset(labelPainter.width / 2, labelPainter.height / 2),
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _ARBetaOverlayPainter oldDelegate) {
+    return oldDelegate.overlay != overlay;
   }
 }
 
@@ -1416,8 +1777,9 @@ class _ExpandableRouteImage extends StatelessWidget {
                 height: height,
                 width: double.infinity,
                 child: CachedNetworkImage(
-                  imageUrl: imageUrl,
+                  imageUrl: optimizedImageUrl(imageUrl, ImageVariant.card),
                   fit: BoxFit.contain,
+                  memCacheWidth: 900,
                   errorWidget: (_, _, _) => const Icon(Icons.broken_image),
                 ),
               ),
@@ -1460,8 +1822,12 @@ class _ExpandableRouteImage extends StatelessWidget {
                     minScale: 0.8,
                     maxScale: 5,
                     child: CachedNetworkImage(
-                      imageUrl: imageUrl,
+                      imageUrl: optimizedImageUrl(
+                        imageUrl,
+                        ImageVariant.detail,
+                      ),
                       fit: BoxFit.contain,
+                      memCacheWidth: 1600,
                       errorWidget: (_, _, _) =>
                           const Icon(Icons.broken_image, color: Colors.white),
                     ),
