@@ -74,6 +74,8 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   Timer? recordingTimer;
   bool gpsRecording = false;
   bool appliedInitialSettings = false;
+  String? appliedFocusedClimbRouteId;
+  String? appliedFocusedSkiRouteId;
   _PathDraftKind? recordedPathKind;
   DateTime? recordingStartedAt;
   Duration recordingElapsed = Duration.zero;
@@ -289,6 +291,13 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         ref.watch(offlineRegionCatalogProvider).valueOrNull ?? offlineBcRegions;
     final catalogCrags = catalog.valueOrNull ?? const <Crag>[];
     final mapCrags = visibleCrags(catalogCrags);
+    final focusedClimbRoute = ref.watch(focusedRouteProvider);
+    final focusedSkiRoute = ref.watch(focusedSkiRouteProvider);
+    _scheduleFocusedRouteSelection(
+      focusedClimbRoute: focusedClimbRoute,
+      focusedSkiRoute: focusedSkiRoute,
+      catalogCrags: catalogCrags,
+    );
     final mapLibreStyle = _mapLibreStyleFor(tileStyle);
     final useMapLibre =
         tileStyle == _MapTileStyle.terrain3d ||
@@ -405,7 +414,11 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                             ),
                           ...(mode == ActivityMode.ski
                               ? currentZoom >= _minimumDataZoom
-                                    ? _skiLines(mapPaths, skiCatalog)
+                                    ? _skiLines(
+                                        mapPaths,
+                                        skiCatalog,
+                                        activeSkiRoute,
+                                      )
                                     : const <Polyline>[]
                               : _approachLines(mapPaths)),
                           if (pathEditMode && pathDraft.length >= 2)
@@ -946,20 +959,44 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     );
   }
 
-  List<Polyline> _skiLines(MapPathCatalog mapPaths, List<SkiRoute> routes) {
+  List<Polyline> _skiLines(
+    MapPathCatalog mapPaths,
+    List<SkiRoute> routes,
+    SkiRoute? activeRoute,
+  ) {
     return [
-      for (final route in routes) ...[
-        Polyline(
-          points: _skiAscentPoints(route, mapPaths),
-          color: _PathDraftKind.skiAscent.color,
-          strokeWidth: 7,
-        ),
-        Polyline(
-          points: _skiDescentPoints(route, mapPaths),
-          color: _PathDraftKind.skiDescent.color,
-          strokeWidth: 4,
-        ),
+      for (final route in routes.where((route) => route.id != activeRoute?.id))
+        ..._skiRouteLines(mapPaths, route, false),
+      if (activeRoute != null) ..._skiRouteLines(mapPaths, activeRoute, true),
+    ];
+  }
+
+  List<Polyline> _skiRouteLines(
+    MapPathCatalog mapPaths,
+    SkiRoute route,
+    bool selected,
+  ) {
+    final ascent = _skiAscentPoints(route, mapPaths);
+    final descent = _skiDescentPoints(route, mapPaths);
+    return [
+      if (selected) ...[
+        Polyline(points: ascent, color: Colors.white, strokeWidth: 12),
+        Polyline(points: descent, color: Colors.white, strokeWidth: 9),
       ],
+      Polyline(
+        points: ascent,
+        color: selected
+            ? const Color(0xFFB6FF2E)
+            : _PathDraftKind.skiAscent.color,
+        strokeWidth: selected ? 8 : 7,
+      ),
+      Polyline(
+        points: descent,
+        color: selected
+            ? const Color(0xFF38BDF8)
+            : _PathDraftKind.skiDescent.color,
+        strokeWidth: selected ? 5 : 4,
+      ),
     ];
   }
 
@@ -996,6 +1033,8 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       selectedSkiRoute = null;
       selectedSkiRouteId = null;
     });
+    ref.read(focusedRouteProvider.notifier).state = null;
+    ref.read(focusedSkiRouteProvider.notifier).state = null;
 
     if (wide) return;
     showModalBottomSheet(
@@ -1036,6 +1075,8 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       selectedCrag = null;
       selectedWall = null;
     });
+    ref.read(focusedSkiRouteProvider.notifier).state = route;
+    ref.read(focusedRouteProvider.notifier).state = null;
     if (editMode) {
       _showMapMessage('${route.name} selected for ski line editing');
       return;
@@ -1069,6 +1110,81 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       selectedSkiRoute = null;
       selectedSkiRouteId = null;
     });
+    ref.read(focusedRouteProvider.notifier).state = null;
+    ref.read(focusedSkiRouteProvider.notifier).state = null;
+  }
+
+  void _scheduleFocusedRouteSelection({
+    required ClimbRoute? focusedClimbRoute,
+    required SkiRoute? focusedSkiRoute,
+    required List<Crag> catalogCrags,
+  }) {
+    if (focusedClimbRoute == null) appliedFocusedClimbRouteId = null;
+    if (focusedSkiRoute == null) appliedFocusedSkiRouteId = null;
+
+    if (focusedClimbRoute != null &&
+        focusedClimbRoute.id != appliedFocusedClimbRouteId) {
+      appliedFocusedClimbRouteId = focusedClimbRoute.id;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _applyFocusedClimbRoute(focusedClimbRoute, catalogCrags);
+      });
+    }
+
+    if (focusedSkiRoute != null &&
+        focusedSkiRoute.id != appliedFocusedSkiRouteId) {
+      appliedFocusedSkiRouteId = focusedSkiRoute.id;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _applyFocusedSkiRoute(focusedSkiRoute);
+      });
+    }
+  }
+
+  void _applyFocusedClimbRoute(ClimbRoute route, List<Crag> catalogCrags) {
+    for (final crag in catalogCrags) {
+      for (final wall in crag.walls) {
+        if (!wall.routes.any((candidate) => candidate.id == route.id)) {
+          continue;
+        }
+        final target = route.location ?? wall.location;
+        setState(() {
+          selectedCrag = crag;
+          selectedWall = wall;
+          selectedParkingCrag = null;
+          selectedSkiRoute = null;
+          selectedSkiRouteId = null;
+        });
+        _moveMap(target, 14);
+        return;
+      }
+    }
+    appliedFocusedClimbRouteId = null;
+  }
+
+  void _applyFocusedSkiRoute(SkiRoute route) {
+    setState(() {
+      selectedSkiRoute = route;
+      selectedSkiRouteId = route.id;
+      selectedCrag = null;
+      selectedWall = null;
+      selectedParkingCrag = null;
+    });
+    _moveMap(route.location, 13);
+  }
+
+  void _moveMap(LatLng target, double zoom) {
+    currentMapCenter = target;
+    currentZoom = zoom;
+    final controller = mapLibreController;
+    if (controller != null) {
+      controller.moveCamera(
+        ml.CameraUpdate.newLatLngZoom(
+          ml.LatLng(target.latitude, target.longitude),
+          zoom,
+        ),
+      );
+    } else {
+      mapController.move(target, zoom);
+    }
   }
 
   void _startPathEditor(

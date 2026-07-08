@@ -5,6 +5,8 @@ import '../models/ski_route.dart';
 import '../services/database_service.dart';
 import '../utils/vancouver_island.dart';
 
+final focusedSkiRouteProvider = StateProvider<SkiRoute?>((ref) => null);
+
 final skiRouteCatalogProvider = FutureProvider<List<SkiRoute>>((ref) async {
   final cloudRoutes = await const DatabaseService().loadSkiRoutes();
   final islandRoutes = cloudRoutes

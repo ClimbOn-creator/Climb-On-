@@ -31,9 +31,24 @@ right edge. `y: 0` is the top, `y: 1` is the bottom.
 {
   "referenceImageUrl": "https://example.com/boulders/problem-reference.webp",
   "holds": [
-    {"x": 0.32, "y": 0.76, "type": "start", "label": "LH"},
+    {
+      "x": 0.32,
+      "y": 0.76,
+      "type": "start",
+      "label": "LH",
+      "title": "Left start rail",
+      "imageUrl": "https://example.com/boulders/left-start.webp",
+      "description": "Pull inward on the rail and keep the right hip close."
+    },
     {"x": 0.45, "y": 0.72, "type": "start", "label": "RH"},
-    {"x": 0.52, "y": 0.55, "type": "hand", "label": "2"},
+    {
+      "x": 0.52,
+      "y": 0.55,
+      "type": "hand",
+      "label": "2",
+      "title": "Right-hand crimp",
+      "description": "Use the thumb catch before moving the left foot."
+    },
     {"x": 0.39, "y": 0.82, "type": "foot", "label": "F"},
     {"x": 0.66, "y": 0.22, "type": "finish", "label": "Top"}
   ],
@@ -44,6 +59,9 @@ right edge. `y: 0` is the top, `y: 1` is the bottom.
   ]
 }
 ```
+
+`title`, `imageUrl`, and `description` are optional. When present, the route
+viewer opens them as tappable micro-beta for that hold.
 
 ## Getting Rock Recognition Working
 

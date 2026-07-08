@@ -1,6 +1,7 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../models/climb_route.dart';
@@ -383,6 +384,7 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
   }
 
   void _openRouteDetails(ClimbRoute route) {
+    final desktop = MediaQuery.sizeOf(context).width >= 900;
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -395,7 +397,7 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
         maxChildSize: 0.98,
         builder: (context, controller) => Center(
           child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 760),
+            constraints: BoxConstraints(maxWidth: desktop ? 980 : 760),
             child: ListView(
               controller: controller,
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 18),
@@ -809,6 +811,7 @@ class _CragGuideGroup extends StatelessWidget {
               completed: climbLog.isCompleted(entry.route),
               saved: climbLog.isProject(entry.route),
               onTap: () => onRouteTap(entry.route),
+              onMap: () => _showClimbOnMap(context, entry.route),
               onSave: () => climbLog.toggleProject(entry.route),
             ),
         ],
@@ -823,6 +826,7 @@ class _ClimbRouteRow extends StatelessWidget {
     required this.completed,
     required this.saved,
     required this.onTap,
+    required this.onMap,
     required this.onSave,
   });
 
@@ -830,6 +834,7 @@ class _ClimbRouteRow extends StatelessWidget {
   final bool completed;
   final bool saved;
   final VoidCallback onTap;
+  final VoidCallback onMap;
   final VoidCallback onSave;
 
   @override
@@ -901,6 +906,11 @@ class _ClimbRouteRow extends StatelessWidget {
                   onPressed: onSave,
                   icon: Icon(saved ? Icons.bookmark : Icons.bookmark_border),
                 ),
+                IconButton(
+                  tooltip: 'Show on map',
+                  onPressed: onMap,
+                  icon: const Icon(Icons.map_outlined),
+                ),
                 const Icon(Icons.chevron_right),
               ],
             ),
@@ -947,6 +957,7 @@ class _SkiAreaGroup extends StatelessWidget {
               completed: skiLog.isCompleted(route),
               saved: skiLog.isProject(route),
               onTap: () => onRouteTap(route),
+              onMap: () => _showSkiOnMap(context, route),
               onSave: () => skiLog.toggleProject(route),
             ),
         ],
@@ -961,6 +972,7 @@ class _SkiRouteRow extends StatelessWidget {
     required this.completed,
     required this.saved,
     required this.onTap,
+    required this.onMap,
     required this.onSave,
   });
 
@@ -968,6 +980,7 @@ class _SkiRouteRow extends StatelessWidget {
   final bool completed;
   final bool saved;
   final VoidCallback onTap;
+  final VoidCallback onMap;
   final VoidCallback onSave;
 
   @override
@@ -1016,14 +1029,38 @@ class _SkiRouteRow extends StatelessWidget {
         subtitle: Text(
           '${route.difficulty} · ${route.aspect} · ${route.slopeAngleLabel}',
         ),
-        trailing: IconButton(
-          tooltip: saved ? 'Remove saved tour' : 'Save tour',
-          onPressed: onSave,
-          icon: Icon(saved ? Icons.bookmark : Icons.bookmark_border),
+        trailing: Wrap(
+          spacing: 2,
+          children: [
+            IconButton(
+              tooltip: 'Show on map',
+              onPressed: onMap,
+              icon: const Icon(Icons.map_outlined),
+            ),
+            IconButton(
+              tooltip: saved ? 'Remove saved tour' : 'Save tour',
+              onPressed: onSave,
+              icon: Icon(saved ? Icons.bookmark : Icons.bookmark_border),
+            ),
+          ],
         ),
       ),
     );
   }
+}
+
+void _showClimbOnMap(BuildContext context, ClimbRoute route) {
+  final container = ProviderScope.containerOf(context, listen: false);
+  container.read(activityModeProvider.notifier).state = ActivityMode.climb;
+  container.read(focusedRouteProvider.notifier).state = route;
+  context.go('/map');
+}
+
+void _showSkiOnMap(BuildContext context, SkiRoute route) {
+  final container = ProviderScope.containerOf(context, listen: false);
+  container.read(activityModeProvider.notifier).state = ActivityMode.ski;
+  container.read(focusedSkiRouteProvider.notifier).state = route;
+  context.go('/map');
 }
 
 class _SkiRouteDetails extends ConsumerWidget {
@@ -1099,6 +1136,11 @@ class _SkiRouteDetails extends ConsumerWidget {
                 onPressed: () => skiLog.toggleProject(route),
                 icon: Icon(saved ? Icons.bookmark : Icons.bookmark_border),
                 label: Text(saved ? 'Saved' : 'Save objective'),
+              ),
+              OutlinedButton.icon(
+                onPressed: () => _showSkiOnMap(context, route),
+                icon: const Icon(Icons.map_outlined),
+                label: const Text('Show on map'),
               ),
               IconButton.outlined(
                 tooltip: 'Share objective',

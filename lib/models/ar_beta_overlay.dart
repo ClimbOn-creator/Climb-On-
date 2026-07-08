@@ -4,12 +4,23 @@ class ARBetaPoint {
     required this.y,
     this.type = 'hand',
     this.label = '',
+    this.title = '',
+    this.imageUrl = '',
+    this.description = '',
   });
 
   final double x;
   final double y;
   final String type;
   final String label;
+  final String title;
+  final String imageUrl;
+  final String description;
+
+  bool get hasBetaDetails =>
+      title.trim().isNotEmpty ||
+      imageUrl.trim().isNotEmpty ||
+      description.trim().isNotEmpty;
 
   factory ARBetaPoint.fromJson(Map<String, Object?> json) {
     return ARBetaPoint(
@@ -17,6 +28,9 @@ class ARBetaPoint {
       y: _unit(json['y']),
       type: json['type']?.toString() ?? 'hand',
       label: json['label']?.toString() ?? '',
+      title: json['title']?.toString() ?? '',
+      imageUrl: json['imageUrl']?.toString() ?? '',
+      description: json['description']?.toString() ?? '',
     );
   }
 
@@ -25,6 +39,9 @@ class ARBetaPoint {
     'y': y,
     'type': type,
     'label': label,
+    if (title.trim().isNotEmpty) 'title': title.trim(),
+    if (imageUrl.trim().isNotEmpty) 'imageUrl': imageUrl.trim(),
+    if (description.trim().isNotEmpty) 'description': description.trim(),
   };
 
   static double _unit(Object? value) {

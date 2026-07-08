@@ -87,11 +87,12 @@ class ARDownloadState extends ChangeNotifier {
     );
 
     try {
-      final urls = <String>[
+      final urls = <String>{
         scan.assetUrl,
         scan.anchorImageUrl,
         ?scan.betaOverlay?.referenceImageUrl,
-      ].where((url) => url.trim().isNotEmpty).toList(growable: false);
+        for (final hold in scan.betaOverlay?.holds ?? const []) hold.imageUrl,
+      }.where((url) => url.trim().isNotEmpty).toList(growable: false);
 
       for (var index = 0; index < urls.length; index++) {
         final url = urls[index];
@@ -102,7 +103,7 @@ class ARDownloadState extends ChangeNotifier {
             downloading: true,
             ready: previous.ready,
             progress: 0.08 + 0.88 * (index + 1) / urls.length,
-            message: 'Saving AR file ${index + 1} of ${urls.length}...',
+            message: 'Saving AR pack file ${index + 1} of ${urls.length}...',
           ),
         );
       }

@@ -151,7 +151,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                                       completedCount: completedRoutes.length,
                                       projectCount: projectRoutes.length,
                                     ),
-                                    const _TrailLibraryPanel(),
                                   ],
                                 ),
                               ),
@@ -187,7 +186,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                             completedCount: completedRoutes.length,
                             projectCount: projectRoutes.length,
                           ),
-                          const _TrailLibraryPanel(),
                           _SectionCard(
                             title: 'Bouldering progression',
                             child: _GradeProgressChart(
@@ -205,29 +203,24 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                             ),
                           ),
                         ],
-                        _SectionCard(
-                          title: 'Map of areas climbed',
-                          child: climbedAreas.isEmpty
-                              ? const _EmptyProfileState(
-                                  text: 'Areas appear after your first send.',
-                                )
-                              : Wrap(
-                                  spacing: 8,
-                                  runSpacing: 8,
-                                  children: [
-                                    for (final area in climbedAreas)
-                                      Chip(
-                                        avatar: const Icon(
-                                          Icons.place,
-                                          size: 16,
-                                        ),
-                                        label: Text(
-                                          '${area.name}, ${area.region}',
-                                        ),
-                                      ),
-                                  ],
+                        if (desktop) ...[
+                          const SizedBox(height: 16),
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Expanded(child: _TrailLibraryPanel()),
+                              const SizedBox(width: 16),
+                              Expanded(
+                                child: _ClimbedAreasPanel(
+                                  climbedAreas: climbedAreas,
                                 ),
-                        ),
+                              ),
+                            ],
+                          ),
+                        ] else ...[
+                          const _TrailLibraryPanel(),
+                          _ClimbedAreasPanel(climbedAreas: climbedAreas),
+                        ],
                         _SectionCard(
                           title: 'Completed routes',
                           child: completedRoutes.isEmpty
@@ -968,7 +961,7 @@ class _TrailLibraryPanel extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final library = ref.watch(trailLibraryProvider);
     return _SectionCard(
-      title: 'Your Library',
+      title: 'Saved recordings',
       child: !library.loaded
           ? const Center(child: CircularProgressIndicator())
           : library.trails.isEmpty
@@ -979,6 +972,79 @@ class _TrailLibraryPanel extends ConsumerWidget {
               children: [
                 for (final trail in library.trails)
                   _SavedTrailTile(trail: trail),
+              ],
+            ),
+    );
+  }
+}
+
+class _ClimbedAreasPanel extends StatefulWidget {
+  const _ClimbedAreasPanel({required this.climbedAreas});
+
+  final List<Crag> climbedAreas;
+
+  @override
+  State<_ClimbedAreasPanel> createState() => _ClimbedAreasPanelState();
+}
+
+class _ClimbedAreasPanelState extends State<_ClimbedAreasPanel> {
+  bool expanded = false;
+
+  @override
+  void didUpdateWidget(covariant _ClimbedAreasPanel oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.climbedAreas.length != widget.climbedAreas.length) {
+      expanded = false;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    const collapsedCount = 6;
+    final areas = widget.climbedAreas;
+    final hasMore = areas.length > collapsedCount;
+    final visibleAreas = expanded || !hasMore
+        ? areas
+        : areas.take(collapsedCount).toList(growable: false);
+    return _SectionCard(
+      title: 'Map of areas climbed',
+      child: areas.isEmpty
+          ? const _EmptyProfileState(
+              text: 'Areas appear after your first send.',
+            )
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                AnimatedSize(
+                  duration: const Duration(milliseconds: 180),
+                  curve: Curves.easeOutCubic,
+                  alignment: Alignment.topCenter,
+                  child: Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      for (final area in visibleAreas)
+                        Chip(
+                          avatar: const Icon(Icons.place, size: 16),
+                          label: Text('${area.name}, ${area.region}'),
+                        ),
+                    ],
+                  ),
+                ),
+                if (hasMore) ...[
+                  const SizedBox(height: 10),
+                  TextButton.icon(
+                    onPressed: () => setState(() => expanded = !expanded),
+                    icon: Icon(
+                      expanded ? Icons.expand_less : Icons.expand_more,
+                    ),
+                    label: Text(
+                      expanded
+                          ? 'See less'
+                          : 'See ${areas.length - collapsedCount} more',
+                    ),
+                  ),
+                ],
               ],
             ),
     );

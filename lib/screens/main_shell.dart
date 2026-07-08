@@ -68,17 +68,22 @@ class _MainShellState extends ConsumerState<MainShell> {
                   ),
           ),
           if (path != '/map' && !(compact && path == '/submit'))
-            SizedBox(
-              height: compact ? 74 : 82,
-              child: IgnorePointer(
-                ignoring: !showSponsoredFooter,
-                child: AnimatedOpacity(
-                  opacity: showSponsoredFooter ? 1 : 0,
-                  duration: const Duration(milliseconds: 180),
-                  child: NativeAdCard(
-                    mode: mode,
-                    compact: compact,
-                    persistent: true,
+            AnimatedSize(
+              duration: const Duration(milliseconds: 180),
+              curve: Curves.easeOutCubic,
+              alignment: Alignment.topCenter,
+              child: SizedBox(
+                height: showSponsoredFooter ? (compact ? 74 : 82) : 0,
+                child: IgnorePointer(
+                  ignoring: !showSponsoredFooter,
+                  child: AnimatedOpacity(
+                    opacity: showSponsoredFooter ? 1 : 0,
+                    duration: const Duration(milliseconds: 140),
+                    child: NativeAdCard(
+                      mode: mode,
+                      compact: compact,
+                      persistent: true,
+                    ),
                   ),
                 ),
               ),

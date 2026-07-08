@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -11,6 +12,7 @@ import '../models/climb_route.dart';
 import '../models/crag.dart';
 import '../models/wall.dart';
 import '../services/database_service.dart';
+import '../state/activity_mode_state.dart';
 import '../state/admin_state.dart';
 import '../state/ar_download_state.dart';
 import '../state/catalog_state.dart';
@@ -74,6 +76,7 @@ class _RouteCardState extends ConsumerState<RouteCard> {
   @override
   Widget build(BuildContext context) {
     final climbLog = ref.watch(climbLogProvider);
+    final desktop = MediaQuery.sizeOf(context).width >= 900;
     final catalog = ref.watch(catalogProvider).valueOrNull ?? const <Crag>[];
     final routeWall = _findWall(catalog);
     final isAdmin = ref.watch(isMapAdminProvider).valueOrNull == true;
@@ -110,7 +113,7 @@ class _RouteCardState extends ConsumerState<RouteCard> {
                   _ExpandableRouteImage(
                     imageUrl: imageOverride ?? widget.route.imageUrl,
                     title: widget.route.name,
-                    height: widget.expanded ? 320 : 220,
+                    height: widget.expanded ? (desktop ? 420 : 320) : 220,
                   ),
                   if (isAdmin) ...[
                     const SizedBox(height: 8),
@@ -198,6 +201,7 @@ class _RouteCardState extends ConsumerState<RouteCard> {
                     onCompleted: () => climbLog.toggleRoute(widget.route),
                     onProject: () => climbLog.toggleProject(widget.route),
                     onShare: _shareRoute,
+                    onMap: _showOnMap,
                     onAR: widget.route.hasAR ? _openARPreview : null,
                     arReady: arStatus.ready,
                   ),
@@ -427,6 +431,12 @@ class _RouteCardState extends ConsumerState<RouteCard> {
             '${widget.route.name} (${widget.route.grade})\n${widget.route.description}',
       ),
     );
+  }
+
+  void _showOnMap() {
+    ref.read(activityModeProvider.notifier).state = ActivityMode.climb;
+    ref.read(focusedRouteProvider.notifier).state = widget.route;
+    context.go('/map');
   }
 
   void _openARPreview() {
@@ -1268,6 +1278,7 @@ class _RouteActions extends StatelessWidget {
     required this.onCompleted,
     required this.onProject,
     required this.onShare,
+    required this.onMap,
     this.onAR,
     this.arReady = false,
   });
@@ -1277,6 +1288,7 @@ class _RouteActions extends StatelessWidget {
   final VoidCallback onCompleted;
   final VoidCallback onProject;
   final VoidCallback onShare;
+  final VoidCallback onMap;
   final VoidCallback? onAR;
   final bool arReady;
 
@@ -1329,6 +1341,21 @@ class _RouteActions extends StatelessWidget {
               fontWeight: FontWeight.w700,
             ),
             onPressed: onShare,
+          ),
+          const SizedBox(width: 8),
+          ActionChip(
+            avatar: const Icon(
+              Icons.map_outlined,
+              size: 18,
+              color: PacificTerrainColors.navy,
+            ),
+            label: const Text('Map'),
+            backgroundColor: const Color(0xFFDDEAF7),
+            labelStyle: const TextStyle(
+              color: PacificTerrainColors.navy,
+              fontWeight: FontWeight.w700,
+            ),
+            onPressed: onMap,
           ),
           if (onAR != null) ...[
             const SizedBox(width: 8),
@@ -1438,12 +1465,13 @@ class _RouteARPreview extends ConsumerWidget {
                 _AROverlayImage(
                   imageUrl: overlayImageUrl,
                   overlay: betaOverlay,
+                  routeName: route.name,
                 ),
                 const SizedBox(height: 12),
               ],
               if (!packStatus.ready) ...[
                 Text(
-                  'Download this route AR pack before opening the viewer. The pack caches the external AR asset, reference image, and tiny hold overlay data on this phone.',
+                  'Download this route AR pack before opening the viewer. The pack caches the external AR asset, reference image, hold photos, and tiny beta overlay data on this phone.',
                   style: Theme.of(context).textTheme.bodyMedium,
                 ),
                 const SizedBox(height: 12),
@@ -1528,10 +1556,15 @@ class _RouteARPreview extends ConsumerWidget {
 }
 
 class _AROverlayImage extends StatelessWidget {
-  const _AROverlayImage({required this.imageUrl, required this.overlay});
+  const _AROverlayImage({
+    required this.imageUrl,
+    required this.overlay,
+    required this.routeName,
+  });
 
   final String imageUrl;
   final ARBetaOverlay? overlay;
+  final String routeName;
 
   @override
   Widget build(BuildContext context) {
@@ -1542,10 +1575,115 @@ class _AROverlayImage extends StatelessWidget {
         child: Stack(
           fit: StackFit.expand,
           children: [
+            _ARBetaMapCanvas(imageUrl: imageUrl, overlay: overlay),
+            Positioned(
+              right: 10,
+              top: 10,
+              child: IconButton.filledTonal(
+                tooltip: 'Open beta map',
+                onPressed: () => _openBetaMap(context),
+                icon: const Icon(Icons.open_in_full),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _openBetaMap(BuildContext context) {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        fullscreenDialog: true,
+        builder: (context) => _ARBetaMapScreen(
+          imageUrl: imageUrl,
+          overlay: overlay,
+          routeName: routeName,
+        ),
+      ),
+    );
+  }
+}
+
+class _ARBetaMapScreen extends StatelessWidget {
+  const _ARBetaMapScreen({
+    required this.imageUrl,
+    required this.overlay,
+    required this.routeName,
+  });
+
+  final String imageUrl;
+  final ARBetaOverlay? overlay;
+  final String routeName;
+
+  @override
+  Widget build(BuildContext context) {
+    final holdCount = overlay?.holds.length ?? 0;
+    return Scaffold(
+      backgroundColor: Colors.black,
+      appBar: AppBar(
+        backgroundColor: Colors.black,
+        foregroundColor: Colors.white,
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(routeName),
+            Text(
+              holdCount == 1 ? '1 hold mapped' : '$holdCount holds mapped',
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: Colors.white70),
+            ),
+          ],
+        ),
+      ),
+      body: SafeArea(
+        top: false,
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            const aspectRatio = 4 / 3;
+            var canvasWidth = constraints.maxWidth;
+            var canvasHeight = canvasWidth / aspectRatio;
+            if (canvasHeight > constraints.maxHeight) {
+              canvasHeight = constraints.maxHeight;
+              canvasWidth = canvasHeight * aspectRatio;
+            }
+            return InteractiveViewer(
+              minScale: 1,
+              maxScale: 5,
+              boundaryMargin: const EdgeInsets.all(120),
+              child: Center(
+                child: SizedBox(
+                  width: canvasWidth,
+                  height: canvasHeight,
+                  child: _ARBetaMapCanvas(imageUrl: imageUrl, overlay: overlay),
+                ),
+              ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
+class _ARBetaMapCanvas extends StatelessWidget {
+  const _ARBetaMapCanvas({required this.imageUrl, required this.overlay});
+
+  final String imageUrl;
+  final ARBetaOverlay? overlay;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return Stack(
+          fit: StackFit.expand,
+          children: [
             CachedNetworkImage(
               imageUrl: optimizedImageUrl(imageUrl, ImageVariant.card),
               fit: BoxFit.cover,
-              memCacheWidth: 900,
+              memCacheWidth: 1200,
               errorWidget: (context, url, error) => Container(
                 alignment: Alignment.center,
                 color: Theme.of(context).colorScheme.surfaceContainerHigh,
@@ -1554,6 +1692,156 @@ class _AROverlayImage extends StatelessWidget {
             ),
             if (overlay != null)
               CustomPaint(painter: _ARBetaOverlayPainter(overlay!)),
+            if (overlay != null)
+              for (final hold in overlay!.holds)
+                _ARHoldHotspot(
+                  hold: hold,
+                  width: constraints.maxWidth,
+                  height: constraints.maxHeight,
+                ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _ARHoldHotspot extends StatelessWidget {
+  const _ARHoldHotspot({
+    required this.hold,
+    required this.width,
+    required this.height,
+  });
+
+  final ARBetaPoint hold;
+  final double width;
+  final double height;
+
+  @override
+  Widget build(BuildContext context) {
+    const tapSize = 44.0;
+    final maxLeft = (width - tapSize).clamp(0.0, double.infinity);
+    final maxTop = (height - tapSize).clamp(0.0, double.infinity);
+    final left = (hold.x * width - tapSize / 2).clamp(0.0, maxLeft);
+    final top = (hold.y * height - tapSize / 2).clamp(0.0, maxTop);
+    final label = hold.label.trim().isEmpty ? hold.type : hold.label.trim();
+    return Positioned(
+      left: left,
+      top: top,
+      width: tapSize,
+      height: tapSize,
+      child: Tooltip(
+        message: 'Hold $label',
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            customBorder: const CircleBorder(),
+            onTap: () => _showHoldBeta(context, hold),
+            child: const SizedBox.expand(),
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showHoldBeta(BuildContext context, ARBetaPoint hold) {
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) => _ARHoldBetaSheet(hold: hold),
+    );
+  }
+}
+
+class _ARHoldBetaSheet extends StatelessWidget {
+  const _ARHoldBetaSheet({required this.hold});
+
+  final ARBetaPoint hold;
+
+  @override
+  Widget build(BuildContext context) {
+    final label = hold.label.trim();
+    final type = hold.type.trim().isEmpty ? 'Hold' : hold.type.trim();
+    final title = hold.title.trim();
+    final imageUrl = hold.imageUrl.trim();
+    final description = hold.description.trim();
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(
+          18,
+          0,
+          18,
+          18 + MediaQuery.viewPaddingOf(context).bottom,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                CircleAvatar(
+                  backgroundColor: _arHoldColor(hold.type),
+                  foregroundColor: Colors.white,
+                  child: Text(
+                    label.isEmpty ? type.characters.first.toUpperCase() : label,
+                    style: const TextStyle(fontWeight: FontWeight.w900),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title.isNotEmpty
+                            ? title
+                            : label.isEmpty
+                            ? type
+                            : '$type · $label',
+                        style: Theme.of(context).textTheme.titleMedium
+                            ?.copyWith(fontWeight: FontWeight.w900),
+                      ),
+                      if (title.isNotEmpty)
+                        Text(
+                          label.isEmpty ? type : '$type · $label',
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                      Text(
+                        'x ${hold.x.toStringAsFixed(2)} · y ${hold.y.toStringAsFixed(2)}',
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            if (imageUrl.isNotEmpty) ...[
+              const SizedBox(height: 14),
+              AspectRatio(
+                aspectRatio: 16 / 9,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: CachedNetworkImage(
+                    imageUrl: optimizedImageUrl(imageUrl, ImageVariant.card),
+                    fit: BoxFit.cover,
+                    memCacheWidth: 900,
+                    errorWidget: (context, url, error) => Container(
+                      alignment: Alignment.center,
+                      color: Theme.of(context).colorScheme.surfaceContainerHigh,
+                      child: const Text('Hold picture unavailable'),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+            const SizedBox(height: 14),
+            Text(
+              description.isEmpty
+                  ? 'No micro beta has been added for this hold yet.'
+                  : description,
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
           ],
         ),
       ),
@@ -1596,12 +1884,7 @@ class _ARBetaOverlayPainter extends CustomPainter {
 
     for (final hold in overlay.holds) {
       final center = Offset(hold.x * size.width, hold.y * size.height);
-      final color = switch (hold.type.toLowerCase()) {
-        'start' => const Color(0xFF7BE495),
-        'finish' || 'top' => const Color(0xFF7DD3FC),
-        'foot' => const Color(0xFFFFD166),
-        _ => const Color(0xFFFF6B6B),
-      };
+      final color = _arHoldColor(hold.type);
       canvas.drawCircle(
         center,
         14,
@@ -1639,6 +1922,15 @@ class _ARBetaOverlayPainter extends CustomPainter {
   bool shouldRepaint(covariant _ARBetaOverlayPainter oldDelegate) {
     return oldDelegate.overlay != overlay;
   }
+}
+
+Color _arHoldColor(String type) {
+  return switch (type.toLowerCase()) {
+    'start' => const Color(0xFF7BE495),
+    'finish' || 'top' => const Color(0xFF7DD3FC),
+    'foot' => const Color(0xFFFFD166),
+    _ => const Color(0xFFFF6B6B),
+  };
 }
 
 class _RoutePhoto extends StatelessWidget {

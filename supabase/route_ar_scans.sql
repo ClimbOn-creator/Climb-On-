@@ -3,6 +3,9 @@
 -- storage so the project stays within the small storage quota.
 -- Run after admin_catalog_route_editor.sql and route_trailhead_images.sql.
 
+alter table public.routes
+add column if not exists trailhead_image_url text not null default '';
+
 create table if not exists public.route_ar_scans (
   id uuid primary key default gen_random_uuid(),
   route_id uuid not null references public.routes(id) on delete cascade,
