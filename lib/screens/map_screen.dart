@@ -278,7 +278,9 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     final settings = ref.watch(appSettingsProvider);
     if (!appliedInitialSettings && settings.loaded) {
       appliedInitialSettings = true;
-      if (settings.prefer3d) tileStyle = _MapTileStyle.terrain3d;
+      if (settings.prefer3d && _supportsMapLibre) {
+        tileStyle = _MapTileStyle.terrain3d;
+      }
     }
     final catalog = ref.watch(catalogProvider);
     final skiCatalog =
@@ -300,8 +302,9 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     );
     final mapLibreStyle = _mapLibreStyleFor(tileStyle);
     final useMapLibre =
-        tileStyle == _MapTileStyle.terrain3d ||
-        (!pathEditMode && !kIsWeb && mapLibreStyle != null);
+        _supportsMapLibre &&
+        (tileStyle == _MapTileStyle.terrain3d ||
+            (!pathEditMode && mapLibreStyle != null));
     final initialCenter =
         userLocation ??
         (mode == ActivityMode.ski
@@ -511,7 +514,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                 _MapLayerSwitcher(
                   selected: tileStyle,
                   terrainAvailable:
-                      kIsWeb || OfflineMapConfig.terrainConfigured,
+                      _supportsMapLibre && OfflineMapConfig.terrainConfigured,
                   onChanged: (style) {
                     if (style == _MapTileStyle.terrain3d && pathEditMode) {
                       _cancelPathEditor();
@@ -1721,8 +1724,15 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   }
 
   bool _usesMapLibre(_MapTileStyle style) {
-    return style == _MapTileStyle.terrain3d ||
-        (!kIsWeb && _mapLibreStyleFor(style) != null);
+    return _supportsMapLibre &&
+        (style == _MapTileStyle.terrain3d ||
+            (!kIsWeb && _mapLibreStyleFor(style) != null));
+  }
+
+  bool get _supportsMapLibre {
+    if (kIsWeb) return true;
+    return defaultTargetPlatform == TargetPlatform.android ||
+        defaultTargetPlatform == TargetPlatform.iOS;
   }
 
   bool _shouldShowParking(Crag crag) {

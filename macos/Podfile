@@ -1,0 +1,58 @@
+platform :osx, '13.5'
+
+# CocoaPods analytics sends network stats synchronously affecting flutter build latency.
+ENV['COCOAPODS_DISABLE_STATS'] = 'true'
+
+project 'Runner', {
+  'Debug' => :debug,
+  'Profile' => :release,
+  'Release' => :release,
+}
+
+def flutter_root
+  generated_xcode_build_settings_path = File.expand_path(File.join('..', 'Flutter', 'ephemeral', 'Flutter-Generated.xcconfig'), __FILE__)
+  unless File.exist?(generated_xcode_build_settings_path)
+    raise "#{generated_xcode_build_settings_path} must exist. If you're running pod install manually, make sure \"flutter pub get\" is executed first"
+  end
+
+  File.foreach(generated_xcode_build_settings_path) do |line|
+    matches = line.match(/FLUTTER_ROOT\=(.*)/)
+    return matches[1].strip if matches
+  end
+  raise "FLUTTER_ROOT not found in #{generated_xcode_build_settings_path}. Try deleting Flutter-Generated.xcconfig, then run \"flutter pub get\""
+end
+
+require File.expand_path(File.join('packages', 'flutter_tools', 'bin', 'podhelper'), flutter_root)
+
+flutter_macos_podfile_setup
+
+target 'Runner' do
+  use_frameworks!
+
+  flutter_install_all_macos_pods File.dirname(File.realpath(__FILE__))
+  target 'RunnerTests' do
+    inherit! :search_paths
+  end
+end
+
+post_install do |installer|
+  installer.pods_project.targets.each do |target|
+    flutter_additional_macos_build_settings(target)
+  end
+
+  frameworks_script = File.join(__dir__, 'Pods', 'Target Support Files', 'Pods-Runner', 'Pods-Runner-frameworks.sh')
+  if File.exist?(frameworks_script)
+    script = File.read(frameworks_script)
+    cleanup = <<~'SH'
+      /usr/bin/find "$1" -mindepth 1 -exec /bin/sh -c 'for item do /usr/bin/xattr -d com.apple.FinderInfo "$item" 2>/dev/null || true; /usr/bin/xattr -d "com.apple.fileprovider.fpfs#P" "$item" 2>/dev/null || true; /usr/bin/xattr -d com.apple.ResourceFork "$item" 2>/dev/null || true; done' sh {} +
+      /usr/bin/xattr -d com.apple.FinderInfo "$1" 2>/dev/null || true
+      /usr/bin/xattr -d 'com.apple.fileprovider.fpfs#P' "$1" 2>/dev/null || true
+      /usr/bin/xattr -d com.apple.ResourceFork "$1" 2>/dev/null || true
+    SH
+    marker = '  if [ -n "${EXPANDED_CODE_SIGN_IDENTITY:-}" -a "${CODE_SIGNING_REQUIRED:-}" != "NO" -a "${CODE_SIGNING_ALLOWED}" != "NO" ]; then'
+    unless script.include?(cleanup.strip)
+      script = script.sub(marker, "#{marker}\n#{cleanup.lines.map { |line| "    #{line}" }.join.rstrip}")
+      File.write(frameworks_script, script)
+    end
+  end
+end
