@@ -193,7 +193,9 @@ class OfflineDownloadState extends ChangeNotifier {
         includeTerrain3d: includeTerrain3d,
       );
       final mapsReady = mapResult.mapsReady;
-      final terrainReady = mapResult.terrainReady || previous.terrainReady;
+      final terrainReady = includeTerrain3d
+          ? mapResult.terrainReady
+          : previous.terrainReady;
       final now = DateTime.now();
       _set(
         region.id,
@@ -206,6 +208,8 @@ class OfflineDownloadState extends ChangeNotifier {
           message: mapsReady
               ? terrainReady
                     ? '2D, satellite, and 3D terrain are ready offline.'
+                    : includeTerrain3d
+                    ? 'Clean 2D and satellite are ready. 3D terrain did not finish; check the terrain service and update this section.'
                     : 'Clean 2D and satellite are ready offline.'
               : kIsWeb
               ? 'Route data and pictures are ready. Native map packs are available in the iPhone/Android app.'

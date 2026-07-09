@@ -3,10 +3,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../config/offline_map_config.dart';
 import '../models/offline_bc_region.dart';
+import '../state/app_settings_state.dart';
 import '../state/offline_download_state.dart';
 import '../state/offline_region_state.dart';
 
-final _include3dProvider = StateProvider<bool>((ref) => false);
+final _include3dProvider = StateProvider<bool>((ref) {
+  return ref.watch(appSettingsProvider).prefer3d;
+});
 
 class OfflineDownloadsScreen extends ConsumerWidget {
   const OfflineDownloadsScreen({super.key});
@@ -15,6 +18,8 @@ class OfflineDownloadsScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final downloads = ref.watch(offlineDownloadProvider);
     final include3d = ref.watch(_include3dProvider);
+    final settings = ref.watch(appSettingsProvider);
+    final effectiveInclude3d = include3d || settings.prefer3d;
     final regions =
         ref.watch(offlineRegionCatalogProvider).valueOrNull ?? offlineBcRegions;
     return Scaffold(
@@ -66,10 +71,12 @@ class OfflineDownloadsScreen extends ConsumerWidget {
           if (OfflineMapConfig.mapsConfigured)
             Card(
               child: SwitchListTile.adaptive(
-                value: include3d,
+                value: effectiveInclude3d,
                 onChanged: OfflineMapConfig.terrainConfigured
-                    ? (value) =>
-                          ref.read(_include3dProvider.notifier).state = value
+                    ? (value) {
+                        ref.read(_include3dProvider.notifier).state = value;
+                        settings.setPrefer3d(value);
+                      }
                     : null,
                 secondary: const Icon(Icons.view_in_ar_outlined),
                 title: const Text('Include 3D terrain'),
@@ -85,8 +92,10 @@ class OfflineDownloadsScreen extends ConsumerWidget {
             _RegionDownloadCard(
               region: region,
               status: downloads.statusFor(region.id),
-              onDownload: () =>
-                  downloads.download(region, includeTerrain3d: include3d),
+              onDownload: () => downloads.download(
+                region,
+                includeTerrain3d: effectiveInclude3d,
+              ),
               onRemove: () => _confirmRemove(context, downloads, region),
             ),
         ],

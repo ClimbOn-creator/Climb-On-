@@ -31,6 +31,7 @@ class _ProfileSetupScreenState extends ConsumerState<ProfileSetupScreen> {
   bool saving = false;
   bool choosingPhoto = false;
   bool initialized = false;
+  String originalUsername = '';
   Uint8List? pickedAvatarBytes;
   String pickedAvatarExtension = 'jpg';
   String pickedAvatarContentType = 'image/jpeg';
@@ -57,10 +58,12 @@ class _ProfileSetupScreenState extends ConsumerState<ProfileSetupScreen> {
         displayName.text = user?.userMetadata?['full_name']?.toString() ?? '';
         avatarUrl.text = user?.userMetadata?['avatar_url']?.toString() ?? '';
         username.text = _usernameFromEmail(user?.email ?? '');
+        originalUsername = '';
         return;
       }
       displayName.text = value.displayName;
       username.text = value.username;
+      originalUsername = value.username.trim().toLowerCase();
       avatarUrl.text = value.avatarUrl ?? '';
       homeArea.text = value.homeArea;
       bio.text = value.bio;
@@ -177,15 +180,17 @@ class _ProfileSetupScreenState extends ConsumerState<ProfileSetupScreen> {
 
     setState(() => saving = true);
     try {
-      final available = await const ProfileService().isUsernameAvailable(
-        cleanUsername,
-      );
-      if (!available) {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('That username is already reserved')),
+      if (cleanUsername != originalUsername) {
+        final available = await const ProfileService().isUsernameAvailable(
+          cleanUsername,
         );
-        return;
+        if (!available) {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('That username is already reserved')),
+          );
+          return;
+        }
       }
       if (pickedAvatarBytes != null) {
         avatarUrl.text = await const ProfileService().uploadAvatar(
@@ -203,6 +208,8 @@ class _ProfileSetupScreenState extends ConsumerState<ProfileSetupScreen> {
         isPublic: isPublic,
       );
       ref.invalidate(currentProfileProvider);
+      originalUsername = cleanUsername;
+      username.text = cleanUsername;
       if (!mounted) return;
       context.go(widget.settingsPage ? '/settings' : '/profile');
     } on PostgrestException catch (error) {
