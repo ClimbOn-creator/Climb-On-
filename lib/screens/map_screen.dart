@@ -591,7 +591,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                   ),
                 if (!pathEditMode && tileStyle != _MapTileStyle.terrain3d)
                   _GpsRecorderTools(
-                    top: mode == ActivityMode.climb ? 64 : 94,
+                    top: mode == ActivityMode.climb ? 58 : 88,
                     recording: gpsRecording,
                     elapsed: recordingElapsed,
                     hasDraft: recordedTrack.isNotEmpty,
@@ -2511,35 +2511,38 @@ class _MapFilters extends StatelessWidget {
       left: alignLeft ? 12 : null,
       right: alignLeft ? null : 12,
       top: top,
-      child: Material(
-        color: Theme.of(context).colorScheme.surface,
-        elevation: 3,
-        borderRadius: BorderRadius.circular(8),
-        child: PopupMenuButton<_MapRouteFilter>(
-          tooltip: 'Climb filters',
-          onSelected: onToggle,
-          itemBuilder: (context) => [
-            for (final filter in _MapRouteFilter.values)
-              CheckedPopupMenuItem(
-                value: filter,
-                checked: activeFilters.contains(filter),
-                child: Text(filter.label),
-              ),
-          ],
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(Icons.filter_alt_outlined, size: 19),
-                const SizedBox(width: 7),
-                Text(
-                  activeFilters.isEmpty
-                      ? 'Filters'
-                      : 'Filters ${activeFilters.length}',
+      child: SafeArea(
+        top: false,
+        child: Material(
+          color: Theme.of(context).colorScheme.surface,
+          elevation: 3,
+          borderRadius: BorderRadius.circular(8),
+          child: PopupMenuButton<_MapRouteFilter>(
+            tooltip: 'Climb filters',
+            onSelected: onToggle,
+            itemBuilder: (context) => [
+              for (final filter in _MapRouteFilter.values)
+                CheckedPopupMenuItem(
+                  value: filter,
+                  checked: activeFilters.contains(filter),
+                  child: Text(filter.label),
                 ),
-                const Icon(Icons.arrow_drop_down),
-              ],
+            ],
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.filter_alt_outlined, size: 19),
+                  const SizedBox(width: 7),
+                  Text(
+                    activeFilters.isEmpty
+                        ? 'Filters'
+                        : 'Filters ${activeFilters.length}',
+                  ),
+                  const Icon(Icons.arrow_drop_down),
+                ],
+              ),
             ),
           ),
         ),
@@ -2574,6 +2577,7 @@ class _MapLayerSwitcher extends StatelessWidget {
       left: 12,
       top: 8,
       child: SafeArea(
+        top: false,
         child: Material(
           color: Theme.of(context).colorScheme.surface,
           elevation: 3,
@@ -2938,6 +2942,7 @@ class _GpsRecorderTools extends StatelessWidget {
       right: 12,
       top: top,
       child: SafeArea(
+        top: false,
         child: Material(
           elevation: 5,
           color: Theme.of(context).colorScheme.surface,

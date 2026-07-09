@@ -8,7 +8,6 @@ import '../state/activity_mode_state.dart';
 import '../state/app_settings_state.dart';
 import '../theme/climb_on_theme.dart';
 import '../widgets/climb_on_brand.dart';
-import '../widgets/native_ad_card.dart';
 
 class MainShell extends ConsumerStatefulWidget {
   const MainShell({super.key, required this.child});
@@ -20,7 +19,6 @@ class MainShell extends ConsumerStatefulWidget {
 }
 
 class _MainShellState extends ConsumerState<MainShell> {
-  bool showSponsoredFooter = false;
   String currentPath = '';
 
   @override
@@ -28,7 +26,6 @@ class _MainShellState extends ConsumerState<MainShell> {
     final path = GoRouterState.of(context).uri.path;
     if (currentPath != path) {
       currentPath = path;
-      showSponsoredFooter = false;
     }
     final width = MediaQuery.sizeOf(context).width;
     final compact = width < 900;
@@ -43,51 +40,18 @@ class _MainShellState extends ConsumerState<MainShell> {
           Expanded(
             child: path == '/map'
                 ? widget.child
-                : NotificationListener<ScrollNotification>(
-                    onNotification: (notification) {
-                      if (notification.metrics.axis != Axis.vertical) {
-                        return false;
-                      }
-                      final atBottom = notification.metrics.extentAfter <= 12;
-                      if (atBottom != showSponsoredFooter) {
-                        setState(() => showSponsoredFooter = atBottom);
-                      }
-                      return false;
-                    },
-                    child: Stack(
-                      children: [
-                        if (settings.showTopoBackground)
-                          const Positioned.fill(
-                            child: IgnorePointer(
-                              child: CustomPaint(painter: _ContourPainter()),
-                            ),
+                : Stack(
+                    children: [
+                      if (settings.showTopoBackground)
+                        const Positioned.fill(
+                          child: IgnorePointer(
+                            child: CustomPaint(painter: _ContourPainter()),
                           ),
-                        Positioned.fill(child: widget.child),
-                      ],
-                    ),
+                        ),
+                      Positioned.fill(child: widget.child),
+                    ],
                   ),
           ),
-          if (path != '/map' && !(compact && path == '/submit'))
-            AnimatedSize(
-              duration: const Duration(milliseconds: 180),
-              curve: Curves.easeOutCubic,
-              alignment: Alignment.topCenter,
-              child: SizedBox(
-                height: showSponsoredFooter ? (compact ? 74 : 82) : 0,
-                child: IgnorePointer(
-                  ignoring: !showSponsoredFooter,
-                  child: AnimatedOpacity(
-                    opacity: showSponsoredFooter ? 1 : 0,
-                    duration: const Duration(milliseconds: 140),
-                    child: NativeAdCard(
-                      mode: mode,
-                      compact: compact,
-                      persistent: true,
-                    ),
-                  ),
-                ),
-              ),
-            ),
         ],
       ),
       bottomNavigationBar: compact
@@ -118,7 +82,7 @@ class _AppHeader extends StatelessWidget {
       child: SafeArea(
         bottom: false,
         child: SizedBox(
-          height: compact ? 64 : 76,
+          height: compact ? 70 : 76,
           child: Padding(
             padding: EdgeInsets.symmetric(horizontal: compact ? 14 : 24),
             child: Row(
@@ -158,8 +122,21 @@ class _ModeSwitch extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final compactTextStyle = TextStyle(
+      fontSize: compact ? 13 : null,
+      fontWeight: compact ? FontWeight.w800 : null,
+    );
     return SegmentedButton<ActivityMode>(
       showSelectedIcon: false,
+      style: compact
+          ? const ButtonStyle(
+              visualDensity: VisualDensity.standard,
+              tapTargetSize: MaterialTapTargetSize.padded,
+              padding: WidgetStatePropertyAll(
+                EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+              ),
+            )
+          : null,
       segments: [
         ButtonSegment(
           value: ActivityMode.climb,
@@ -167,9 +144,9 @@ class _ModeSwitch extends ConsumerWidget {
             'Climb',
             maxLines: 1,
             softWrap: false,
-            style: TextStyle(fontSize: compact ? 11 : null),
+            style: compactTextStyle,
           ),
-          icon: compact ? null : const Icon(Icons.landscape_outlined, size: 17),
+          icon: Icon(Icons.landscape_outlined, size: compact ? 16 : 17),
         ),
         ButtonSegment(
           value: ActivityMode.ski,
@@ -177,9 +154,9 @@ class _ModeSwitch extends ConsumerWidget {
             'Ski',
             maxLines: 1,
             softWrap: false,
-            style: TextStyle(fontSize: compact ? 11 : null),
+            style: compactTextStyle,
           ),
-          icon: compact ? null : const Icon(Icons.downhill_skiing, size: 17),
+          icon: Icon(Icons.downhill_skiing, size: compact ? 16 : 17),
         ),
       ],
       selected: {mode},
@@ -286,7 +263,7 @@ class _MobileNavItem extends StatelessWidget {
         ? Theme.of(context).colorScheme.primary
         : const Color(0xFF9AA5A1);
     return InkWell(
-      onTap: () => context.go(destination.path),
+      onTap: () => context.go(_resetLocation(destination.path)),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
@@ -324,6 +301,15 @@ class _MobileNavItem extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  String _resetLocation(String path) {
+    return Uri(
+      path: path,
+      queryParameters: {
+        'reset': DateTime.now().microsecondsSinceEpoch.toString(),
+      },
+    ).toString();
   }
 }
 

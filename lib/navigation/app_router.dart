@@ -82,7 +82,7 @@ CustomTransitionPage<void> _appPage({
   required Widget child,
 }) {
   return CustomTransitionPage<void>(
-    key: state.pageKey,
+    key: ValueKey(state.uri.toString()),
     child: child,
     transitionDuration: const Duration(milliseconds: 120),
     reverseTransitionDuration: const Duration(milliseconds: 90),
