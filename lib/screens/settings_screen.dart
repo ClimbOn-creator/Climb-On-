@@ -138,23 +138,33 @@ class SettingsScreen extends ConsumerWidget {
             _SettingsCard(
               title: 'Offline maps',
               icon: Icons.download_for_offline_outlined,
-              child: ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: CircleAvatar(
-                  backgroundColor: Theme.of(
-                    context,
-                  ).colorScheme.primaryContainer,
-                  child: Icon(
-                    Icons.cloud_download_outlined,
-                    color: Theme.of(context).colorScheme.primary,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: CircleAvatar(
+                      backgroundColor: Theme.of(
+                        context,
+                      ).colorScheme.primaryContainer,
+                      child: Icon(
+                        Icons.cloud_download_outlined,
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
+                    ),
+                    title: const Text('Offline download packs'),
+                    subtitle: const Text(
+                      'Save routes, pictures, satellite maps, and optional 3D terrain before leaving service.',
+                    ),
+                    onTap: () => context.go('/offline'),
                   ),
-                ),
-                title: const Text('Manage map downloads'),
-                subtitle: const Text(
-                  'Download routes, pictures, satellite maps, and optional 3D terrain before leaving service.',
-                ),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: () => context.go('/offline'),
+                  const SizedBox(height: 10),
+                  FilledButton.icon(
+                    onPressed: () => context.go('/offline'),
+                    icon: const Icon(Icons.download_for_offline),
+                    label: const Text('Download offline maps'),
+                  ),
+                ],
               ),
             ),
             _SettingsCard(

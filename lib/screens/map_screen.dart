@@ -273,6 +273,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   Widget build(BuildContext context) {
     final width = MediaQuery.sizeOf(context).width;
     final wide = width >= 860;
+    final compact = width < 900;
     final showTitleBar = width >= 1024;
     final mode = ref.watch(activityModeProvider);
     final settings = ref.watch(appSettingsProvider);
@@ -591,7 +592,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                   ),
                 if (!pathEditMode && tileStyle != _MapTileStyle.terrain3d)
                   _GpsRecorderTools(
-                    top: mode == ActivityMode.climb ? 58 : 88,
+                    bottom: compact ? 16 : 24,
                     recording: gpsRecording,
                     elapsed: recordingElapsed,
                     hasDraft: recordedTrack.isNotEmpty,
@@ -2904,7 +2905,7 @@ class _HeadingControl extends StatelessWidget {
 
 class _GpsRecorderTools extends StatelessWidget {
   const _GpsRecorderTools({
-    required this.top,
+    required this.bottom,
     required this.recording,
     required this.elapsed,
     required this.hasDraft,
@@ -2919,7 +2920,7 @@ class _GpsRecorderTools extends StatelessWidget {
     required this.onDiscard,
   });
 
-  final double top;
+  final double bottom;
   final bool recording;
   final Duration elapsed;
   final bool hasDraft;
@@ -2939,8 +2940,8 @@ class _GpsRecorderTools extends StatelessWidget {
         ? '${(lengthMeters / 1000).toStringAsFixed(2)} km'
         : '${lengthMeters.round()} m';
     return Positioned(
-      right: 12,
-      top: top,
+      left: 12,
+      bottom: bottom,
       child: SafeArea(
         top: false,
         child: Material(
