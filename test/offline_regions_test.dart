@@ -1,10 +1,21 @@
 import 'package:climb_on/models/offline_bc_region.dart';
+import 'package:climb_on/state/offline_download_state.dart';
 import 'package:climb_on/state/offline_region_state.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:latlong2/latlong.dart';
 
 void main() {
+  test('completed data downloads display a full progress bar', () {
+    const completed = OfflineRegionStatus(
+      dataReady: true,
+      mapsReady: false,
+      progress: 0.5,
+    );
+
+    expect(completed.displayProgress, 1);
+  });
+
   TestWidgetsFlutterBinding.ensureInitialized();
 
   test('official BC tourism boundary asset contains all six regions', () async {

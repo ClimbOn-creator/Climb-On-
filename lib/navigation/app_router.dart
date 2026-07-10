@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/widgets.dart';
 import 'package:go_router/go_router.dart';
 
 import '../screens/crags_screen.dart';
@@ -23,71 +23,60 @@ final appRouter = GoRouter(
         GoRoute(
           path: '/map',
           pageBuilder: (context, state) =>
-              _appPage(state: state, child: const MapScreen()),
+              _noTransitionPage(state, const MapScreen()),
         ),
         GoRoute(
           path: '/offline',
           pageBuilder: (context, state) =>
-              _appPage(state: state, child: const OfflineDownloadsScreen()),
+              _noTransitionPage(state, const OfflineDownloadsScreen()),
         ),
         GoRoute(
           path: '/feed',
           pageBuilder: (context, state) =>
-              _appPage(state: state, child: const FeedScreen()),
+              _noTransitionPage(state, const FeedScreen()),
         ),
         GoRoute(
           path: '/crags',
           pageBuilder: (context, state) =>
-              _appPage(state: state, child: const CragsScreen()),
+              _noTransitionPage(state, const CragsScreen()),
         ),
         GoRoute(
           path: '/submit',
           pageBuilder: (context, state) =>
-              _appPage(state: state, child: const SubmitRouteScreen()),
+              _noTransitionPage(state, const SubmitRouteScreen()),
         ),
         GoRoute(
           path: '/profile',
           pageBuilder: (context, state) =>
-              _appPage(state: state, child: const ProfileScreen()),
+              _noTransitionPage(state, const ProfileScreen()),
         ),
         GoRoute(
           path: '/profile/setup',
           pageBuilder: (context, state) =>
-              _appPage(state: state, child: const ProfileSetupScreen()),
+              _noTransitionPage(state, const ProfileSetupScreen()),
         ),
         GoRoute(
           path: '/settings',
           pageBuilder: (context, state) =>
-              _appPage(state: state, child: const SettingsScreen()),
+              _noTransitionPage(state, const SettingsScreen()),
         ),
         GoRoute(
           path: '/settings/profile',
-          pageBuilder: (context, state) => _appPage(
-            state: state,
-            child: const ProfileSetupScreen(settingsPage: true),
+          pageBuilder: (context, state) => _noTransitionPage(
+            state,
+            const ProfileSetupScreen(settingsPage: true),
           ),
         ),
         GoRoute(
           path: '/settings/pictures',
           pageBuilder: (context, state) =>
-              _appPage(state: state, child: const AppPicturesScreen()),
+              _noTransitionPage(state, const AppPicturesScreen()),
         ),
       ],
     ),
   ],
 );
 
-CustomTransitionPage<void> _appPage({
-  required GoRouterState state,
-  required Widget child,
-}) {
-  return CustomTransitionPage<void>(
-    key: ValueKey(state.uri.toString()),
-    child: child,
-    transitionDuration: const Duration(milliseconds: 120),
-    reverseTransitionDuration: const Duration(milliseconds: 90),
-    transitionsBuilder: (context, animation, secondaryAnimation, child) {
-      return FadeTransition(opacity: animation, child: child);
-    },
-  );
+NoTransitionPage<void> _noTransitionPage(GoRouterState state, Widget child) {
+  return NoTransitionPage<void>(key: state.pageKey, child: child);
 }

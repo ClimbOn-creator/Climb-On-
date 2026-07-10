@@ -263,7 +263,7 @@ class _MobileNavItem extends StatelessWidget {
         ? Theme.of(context).colorScheme.primary
         : const Color(0xFF9AA5A1);
     return InkWell(
-      onTap: () => context.go(_resetLocation(destination.path)),
+      onTap: () => context.go(destination.path),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
@@ -301,15 +301,6 @@ class _MobileNavItem extends StatelessWidget {
         ],
       ),
     );
-  }
-
-  String _resetLocation(String path) {
-    return Uri(
-      path: path,
-      queryParameters: {
-        'reset': DateTime.now().microsecondsSinceEpoch.toString(),
-      },
-    ).toString();
   }
 }
 

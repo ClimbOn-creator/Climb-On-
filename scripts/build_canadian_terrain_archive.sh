@@ -5,7 +5,7 @@ ROOT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 TOOLS_DIR="$ROOT_DIR/.tools"
 VENV="$TOOLS_DIR/canadian-terrain-venv"
 OUTPUT_DIR="${OUTPUT_DIR:-$ROOT_DIR/map_archives}"
-MAX_ZOOM="${MAX_ZOOM:-11}"
+MAX_ZOOM="${MAX_ZOOM:-10}"
 BOUNDS="${BOUNDS:--139.10,48.20,-113.80,60.05}"
 SOURCE_URL="${CDEM_SOURCE_URL:-https://datacube-prod-data-public.s3.ca-central-1.amazonaws.com/store/elevation/cdem-cdsm/cdem/cdem-canada-dem.tif}"
 

@@ -6,10 +6,20 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/climb_route.dart';
+import '../services/auth_service.dart';
 import '../services/database_service.dart';
 
 final climbLogProvider = ChangeNotifierProvider<ClimbLogState>((ref) {
-  return ClimbLogState();
+  final state = ClimbLogState();
+  const authService = AuthService();
+  if (authService.isConfigured) {
+    unawaited(state.syncCompletedRoutes());
+    final subscription = authService.authStateChanges.listen((_) {
+      unawaited(state.syncCompletedRoutes());
+    });
+    ref.onDispose(subscription.cancel);
+  }
+  return state;
 });
 
 final focusedRouteProvider = StateProvider<ClimbRoute?>((ref) => null);
@@ -288,9 +298,7 @@ class ClimbLogState extends ChangeNotifier {
     this.persistenceEnabled = true,
     this.databaseService = const DatabaseService(),
   }) {
-    if (persistenceEnabled) {
-      unawaited(_restore());
-    }
+    _restoreFuture = persistenceEnabled ? _restore() : Future<void>.value();
   }
 
   static const _storageKey = 'climb_on_sends_v1';
@@ -298,6 +306,7 @@ class ClimbLogState extends ChangeNotifier {
   final SharedPreferences? preferences;
   final bool persistenceEnabled;
   final DatabaseService databaseService;
+  late final Future<void> _restoreFuture;
   final List<Send> _sends = [];
   final List<Attempt> _attempts = [];
   final List<GradeOpinion> _gradeOpinions = [];
@@ -320,6 +329,34 @@ class ClimbLogState extends ChangeNotifier {
 
   bool isCompleted(ClimbRoute route) => _completedRoutes.contains(route.id);
   bool isProject(ClimbRoute route) => _projectRouteIds.contains(route.id);
+
+  Future<void> syncCompletedRoutes() async {
+    await _restoreFuture;
+    if (!databaseService.isCloudReady || _disposed) return;
+
+    try {
+      for (final send in _sends) {
+        await databaseService.saveCompletedRoute(send);
+      }
+      final cloudSends = await databaseService.loadCompletedRoutes();
+      if (_disposed) return;
+
+      final merged = <String, Send>{
+        for (final send in cloudSends) send.routeId: send,
+        for (final send in _sends) send.routeId: send,
+      }.values.toList()..sort((a, b) => b.sentAt.compareTo(a.sentAt));
+      _sends
+        ..clear()
+        ..addAll(merged);
+      _completedRoutes
+        ..clear()
+        ..addAll(merged.map((send) => send.routeId));
+      await _persist();
+      notifyListeners();
+    } catch (_) {
+      // Local logbook data remains available while cloud sync is unavailable.
+    }
+  }
 
   List<Attempt> attemptsFor(ClimbRoute route) {
     return _attempts

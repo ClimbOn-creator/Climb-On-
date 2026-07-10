@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -10,6 +11,11 @@ import '../state/offline_region_state.dart';
 final _include3dProvider = StateProvider<bool>((ref) {
   return ref.watch(appSettingsProvider).prefer3d;
 });
+
+bool get _supportsOfflineMapPacks =>
+    !kIsWeb &&
+    (defaultTargetPlatform == TargetPlatform.iOS ||
+        defaultTargetPlatform == TargetPlatform.android);
 
 class OfflineDownloadsScreen extends ConsumerWidget {
   const OfflineDownloadsScreen({super.key});
@@ -40,7 +46,7 @@ class OfflineDownloadsScreen extends ConsumerWidget {
                   ),
                   SizedBox(height: 6),
                   Text(
-                    'Each section saves climbing and ski information, pictures, the clean 2D map, and satellite imagery. 3D terrain is optional when viewing satellite. GPS and recordings work without service.',
+                    'Each section saves climbing and ski information, pictures, and the clean 2D map. Compact 3D terrain is optional. GPS and recordings work without service.',
                   ),
                 ],
               ),
@@ -53,7 +59,7 @@ class OfflineDownloadsScreen extends ConsumerWidget {
                 leading: Icon(Icons.map_outlined),
                 title: Text('Offline map provider setup required'),
                 subtitle: Text(
-                  'Data and pictures can download now. The self-hosted open map service must be connected to activate clean 2D, satellite, and optional 3D terrain.',
+                  'Data and pictures can download now. The self-hosted open map service must be connected to activate clean 2D and optional 3D terrain.',
                 ),
               ),
             ),
@@ -64,29 +70,34 @@ class OfflineDownloadsScreen extends ConsumerWidget {
                 leading: Icon(Icons.verified_outlined),
                 title: Text('Open-data maps connected'),
                 subtitle: Text(
-                  'Clean 2D uses OpenStreetMap/Protomaps, satellite uses Copernicus Sentinel-2, and optional 3D uses Natural Resources Canada elevation data.',
+                  'Clean 2D uses OpenStreetMap/Protomaps and optional 3D uses Natural Resources Canada elevation data.',
                 ),
               ),
             ),
-          if (OfflineMapConfig.mapsConfigured)
-            Card(
-              child: SwitchListTile.adaptive(
-                value: effectiveInclude3d,
-                onChanged: OfflineMapConfig.terrainConfigured
-                    ? (value) {
-                        ref.read(_include3dProvider.notifier).state = value;
-                        settings.setPrefer3d(value);
-                      }
-                    : null,
-                secondary: const Icon(Icons.view_in_ar_outlined),
-                title: const Text('Include 3D terrain'),
-                subtitle: Text(
-                  OfflineMapConfig.terrainConfigured
-                      ? 'Optional larger download. Satellite stays available as a normal flat map too.'
-                      : '3D activates when the terrain archive is connected.',
-                ),
+          Card(
+            child: SwitchListTile.adaptive(
+              value:
+                  _supportsOfflineMapPacks &&
+                  OfflineMapConfig.terrainConfigured &&
+                  effectiveInclude3d,
+              onChanged:
+                  _supportsOfflineMapPacks && OfflineMapConfig.terrainConfigured
+                  ? (value) {
+                      ref.read(_include3dProvider.notifier).state = value;
+                      settings.setPrefer3d(value);
+                    }
+                  : null,
+              secondary: const Icon(Icons.view_in_ar_outlined),
+              title: const Text('Include 3D terrain'),
+              subtitle: Text(
+                !_supportsOfflineMapPacks
+                    ? '3D terrain packs download in the iPhone and Android apps.'
+                    : OfflineMapConfig.terrainConfigured
+                    ? 'Optional larger download with shaded, pitchable mountain terrain.'
+                    : 'Connect the self-hosted terrain archive and rebuild the app to enable this download.',
               ),
             ),
+          ),
           const SizedBox(height: 8),
           for (final region in regions)
             _RegionDownloadCard(
@@ -168,8 +179,10 @@ class _RegionDownloadCard extends StatelessWidget {
                     avatar: const Icon(Icons.offline_pin, size: 17),
                     label: Text(
                       status.terrainReady
-                          ? '2D · Satellite · 3D'
-                          : '2D · Satellite',
+                          ? '2D · 3D Terrain'
+                          : OfflineMapConfig.satelliteConfigured
+                          ? '2D · Satellite'
+                          : 'Clean 2D',
                     ),
                   )
                 else if (status.dataReady)
@@ -185,7 +198,7 @@ class _RegionDownloadCard extends StatelessWidget {
             Text(region.description),
             if (status.downloading || status.progress > 0) ...[
               const SizedBox(height: 12),
-              LinearProgressIndicator(value: status.progress.clamp(0, 1)),
+              LinearProgressIndicator(value: status.displayProgress),
             ],
             if (status.message.isNotEmpty) ...[
               const SizedBox(height: 8),

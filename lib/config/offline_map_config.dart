@@ -30,8 +30,8 @@ class OfflineMapConfig {
 
   static const openMapAttribution =
       '© OpenStreetMap contributors · Protomaps · '
-      'Terrain: Natural Resources Canada CDEM · '
-      'Satellite: Copernicus Sentinel-2';
+      'Satellite: Copernicus Sentinel-2 · '
+      'Terrain and contours: Natural Resources Canada';
 
   static Map<String, String> downloadableStyles({
     required bool includeTerrain3d,
@@ -39,11 +39,11 @@ class OfflineMapConfig {
     if (cleanStyleUrl.isNotEmpty) 'Clean 2D': cleanStyleUrl,
     if (satelliteStyleUrl.isNotEmpty) 'Satellite': satelliteStyleUrl,
     if (includeTerrain3d && terrain3dStyleUrl.isNotEmpty)
-      'Satellite 3D': terrain3dStyleUrl,
+      'Terrain 3D': terrain3dStyleUrl,
   };
 
-  static bool get mapsConfigured =>
-      cleanStyleUrl.isNotEmpty && satelliteStyleUrl.isNotEmpty;
+  static bool get mapsConfigured => cleanStyleUrl.isNotEmpty;
+  static bool get satelliteConfigured => satelliteStyleUrl.isNotEmpty;
   static bool get terrainConfigured => terrain3dStyleUrl.isNotEmpty;
   static bool get allCoreMapsConfigured => mapsConfigured && terrainConfigured;
 }

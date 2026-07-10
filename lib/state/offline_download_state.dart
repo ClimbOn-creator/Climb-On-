@@ -43,6 +43,8 @@ class OfflineRegionStatus {
   final String message;
 
   bool get ready => dataReady && mapsReady;
+  double get displayProgress =>
+      !downloading && dataReady ? 1 : progress.clamp(0, 1);
 
   Map<String, Object?> toJson() => {
     'dataReady': dataReady,
@@ -203,14 +205,14 @@ class OfflineDownloadState extends ChangeNotifier {
           dataReady: true,
           mapsReady: mapsReady,
           terrainReady: terrainReady,
-          progress: mapsReady ? 1 : 0.5,
+          progress: 1,
           downloadedAt: now,
           message: mapsReady
               ? terrainReady
-                    ? '2D, satellite, and 3D terrain are ready offline.'
+                    ? 'Clean 2D and 3D terrain are ready offline.'
                     : includeTerrain3d
-                    ? 'Clean 2D and satellite are ready. 3D terrain did not finish; check the terrain service and update this section.'
-                    : 'Clean 2D and satellite are ready offline.'
+                    ? 'Clean 2D is ready. 3D terrain did not finish; check the terrain service and update this section.'
+                    : 'Clean 2D is ready offline.'
               : kIsWeb
               ? 'Route data and pictures are ready. Native map packs are available in the iPhone/Android app.'
               : 'Route data and pictures are ready. Add licensed offline map style URLs to enable map packs.',
@@ -310,9 +312,10 @@ class OfflineDownloadState extends ChangeNotifier {
         .toSet();
     final mapsReady =
         installedLayers.contains('Clean 2D') &&
-        installedLayers.contains('Satellite');
+        (!OfflineMapConfig.satelliteConfigured ||
+            installedLayers.contains('Satellite'));
     final terrainReady =
-        includeTerrain3d && installedLayers.contains('Satellite 3D');
+        includeTerrain3d && installedLayers.contains('Terrain 3D');
     return (mapsReady: mapsReady, terrainReady: terrainReady);
   }
 

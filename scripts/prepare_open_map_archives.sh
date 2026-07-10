@@ -17,12 +17,13 @@ fi
 
 OUTPUT_DIR="${OUTPUT_DIR:-map_archives}"
 BC_BBOX="-139.10,48.20,-113.80,60.05"
+MAX_ZOOM="${MAX_ZOOM:-12}"
 
 mkdir -p "$OUTPUT_DIR"
 
 "$PMTILES_BIN" extract "$PROTOMAPS_SOURCE_URL" "$OUTPUT_DIR/bc-basemap.pmtiles" \
   --bbox="$BC_BBOX" \
-  --maxzoom=15
+  --maxzoom="$MAX_ZOOM"
 
 echo "The clean 2D basemap is ready in $OUTPUT_DIR."
 echo "Build Canadian terrain with scripts/build_canadian_terrain_archive.sh."

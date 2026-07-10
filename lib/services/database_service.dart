@@ -176,6 +176,35 @@ class DatabaseService {
     }, onConflict: 'user_id,route_id');
   }
 
+  Future<List<Send>> loadCompletedRoutes() async {
+    final user = _currentUser;
+    if (user == null) return const [];
+
+    final result = await Supabase.instance.client
+        .from('user_sends')
+        .select('route_id,style,sent_at,routes(name,grade)')
+        .eq('user_id', user.id)
+        .order('sent_at', ascending: false);
+
+    return result
+        .map<Send?>((row) {
+          final route = row['routes'];
+          final routeData = route is Map ? route : const <String, Object?>{};
+          final routeId = row['route_id']?.toString() ?? '';
+          final sentAt = DateTime.tryParse(row['sent_at']?.toString() ?? '');
+          if (routeId.isEmpty || sentAt == null) return null;
+          return Send(
+            routeId: routeId,
+            routeName: routeData['name']?.toString() ?? 'Climbing route',
+            grade: routeData['grade']?.toString() ?? '',
+            style: row['style']?.toString() ?? 'Redpoint',
+            sentAt: sentAt,
+          );
+        })
+        .whereType<Send>()
+        .toList(growable: false);
+  }
+
   Future<void> deleteCompletedRoute(String routeId) async {
     final user = _currentUser;
     if (user == null) return;

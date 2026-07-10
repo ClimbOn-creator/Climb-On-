@@ -127,6 +127,33 @@ void main() {
     climbLog.dispose();
   });
 
+  test(
+    'Climb log merges completed routes from the signed-in account',
+    () async {
+      final database = _SendSyncDatabaseService();
+      final climbLog = ClimbLogState(
+        persistenceEnabled: false,
+        databaseService: database,
+      );
+      const localRoute = ClimbRoute(
+        id: 'local-route',
+        name: 'Local Route',
+        grade: 'V2',
+        rating: 4,
+      );
+
+      climbLog.toggleRoute(localRoute);
+      await climbLog.syncCompletedRoutes();
+
+      expect(climbLog.sends.map((send) => send.routeId), {
+        'local-route',
+        'cloud-route',
+      });
+      expect(database.savedRouteIds, contains('local-route'));
+      climbLog.dispose();
+    },
+  );
+
   test('Climb log stores feed action state', () async {
     final climbLog = ClimbLogState(persistenceEnabled: false);
     final route = ClimbRoute(
@@ -288,6 +315,31 @@ class _PhotoDatabaseService extends DatabaseService {
   @override
   Future<void> deletePhoto(LocalRoutePhoto photo) async {
     deletedPhotoIds.add(photo.id);
+  }
+}
+
+class _SendSyncDatabaseService extends DatabaseService {
+  final savedRouteIds = <String>[];
+
+  @override
+  bool get isCloudReady => true;
+
+  @override
+  Future<void> saveCompletedRoute(Send send) async {
+    savedRouteIds.add(send.routeId);
+  }
+
+  @override
+  Future<List<Send>> loadCompletedRoutes() async {
+    return [
+      Send(
+        routeId: 'cloud-route',
+        routeName: 'Cloud Route',
+        grade: '5.10a',
+        style: 'Redpoint',
+        sentAt: DateTime.utc(2026, 7, 1),
+      ),
+    ];
   }
 }
 

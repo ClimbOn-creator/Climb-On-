@@ -14,11 +14,33 @@ if [ -z "${R2_REMOTE:-}" ]; then
 fi
 
 ARCHIVE_DIR="${ARCHIVE_DIR:-map_archives}"
-for archive in bc-basemap.pmtiles bc-terrain.pmtiles bc-satellite.pmtiles; do
+MAX_ARCHIVE_BYTES="${MAX_ARCHIVE_BYTES:-8589934592}"
+TOTAL_ARCHIVE_BYTES=0
+ARCHIVES="bc-basemap.pmtiles bc-terrain.pmtiles"
+if [ -f "$ARCHIVE_DIR/bc-satellite.pmtiles" ]; then
+  ARCHIVES="$ARCHIVES bc-satellite.pmtiles"
+fi
+for archive in $ARCHIVES; do
   if [ ! -f "$ARCHIVE_DIR/$archive" ]; then
     echo "Missing $ARCHIVE_DIR/$archive"
     exit 1
   fi
+  if stat -f%z "$ARCHIVE_DIR/$archive" >/dev/null 2>&1; then
+    archive_bytes=$(stat -f%z "$ARCHIVE_DIR/$archive")
+  else
+    archive_bytes=$(stat -c%s "$ARCHIVE_DIR/$archive")
+  fi
+  TOTAL_ARCHIVE_BYTES=$((TOTAL_ARCHIVE_BYTES + archive_bytes))
+done
+
+if [ "$TOTAL_ARCHIVE_BYTES" -gt "$MAX_ARCHIVE_BYTES" ]; then
+  echo "Archives total $TOTAL_ARCHIVE_BYTES bytes, above the $MAX_ARCHIVE_BYTES-byte safety limit."
+  echo "Nothing was uploaded. Reduce archive zoom/detail before deploying."
+  exit 1
+fi
+
+echo "Archive safety check passed: $TOTAL_ARCHIVE_BYTES of $MAX_ARCHIVE_BYTES bytes."
+for archive in $ARCHIVES; do
   rclone copyto "$ARCHIVE_DIR/$archive" "$R2_REMOTE/$archive" \
     --progress \
     --s3-chunk-size=256M \

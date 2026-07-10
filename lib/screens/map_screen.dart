@@ -349,6 +349,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                   )
                 else
                   FlutterMap(
+                    key: ValueKey(settings.twoFingerRotation),
                     mapController: mapController,
                     options: MapOptions(
                       initialCenter: initialCenter,
@@ -473,12 +474,6 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                           ..._pathEditorMarkers(),
                         ],
                       ),
-                      SimpleAttributionWidget(
-                        source: Text(tileStyle.attribution),
-                        backgroundColor: Theme.of(
-                          context,
-                        ).colorScheme.surface.withValues(alpha: 0.82),
-                      ),
                     ],
                   ),
                 if (wide && !useMapLibre && currentZoom < 6.5)
@@ -487,30 +482,14 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                     bottom: 158,
                     child: _BcRegionLegend(regions: mapRegions),
                   ),
-                if (useMapLibre && OfflineMapConfig.mapsConfigured)
-                  Positioned(
-                    right: 8,
-                    bottom: 5,
-                    child: IgnorePointer(
-                      child: DecoratedBox(
-                        decoration: BoxDecoration(
-                          color: Theme.of(
-                            context,
-                          ).colorScheme.surface.withValues(alpha: 0.84),
-                          borderRadius: BorderRadius.circular(5),
-                        ),
-                        child: const Padding(
-                          padding: EdgeInsets.symmetric(
-                            horizontal: 6,
-                            vertical: 3,
-                          ),
-                          child: Text(
-                            OfflineMapConfig.openMapAttribution,
-                            style: TextStyle(fontSize: 9),
-                          ),
-                        ),
-                      ),
-                    ),
+                if (!pathEditMode)
+                  _MapInfoButton(
+                    style: tileStyle,
+                    bottom: wide && tileStyle != _MapTileStyle.terrain3d
+                        ? 118
+                        : compact
+                        ? 16
+                        : 24,
                   ),
                 _MapLayerSwitcher(
                   selected: tileStyle,
@@ -2401,11 +2380,12 @@ enum _MapTileStyle {
         'Tiles © Esri and data providers · Labels © OpenStreetMap contributors © CARTO',
   ),
   terrain3d(
-    label: 'Satellite 3D',
+    label: 'Satellite 3D + Topo',
     icon: Icons.view_in_ar,
     urlTemplate: '',
     subdomains: [],
-    attribution: 'Imagery © Esri and data providers',
+    attribution:
+        'Satellite: Copernicus Sentinel-2 · Terrain and contours: Natural Resources Canada',
   );
 
   const _MapTileStyle({
@@ -2490,6 +2470,98 @@ class _BcRegionLegend extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+class _MapInfoButton extends StatelessWidget {
+  const _MapInfoButton({required this.style, required this.bottom});
+
+  final _MapTileStyle style;
+  final double bottom;
+
+  @override
+  Widget build(BuildContext context) {
+    return Positioned(
+      right: 12,
+      bottom: bottom,
+      child: SafeArea(
+        top: false,
+        child: Material(
+          color: Theme.of(context).colorScheme.surface,
+          elevation: 4,
+          shape: const CircleBorder(),
+          child: IconButton(
+            tooltip: 'Map info',
+            icon: const Icon(Icons.info_outline),
+            onPressed: () => _showMapInfo(context),
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showMapInfo(BuildContext context) {
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) => SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(
+                    style.icon,
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      style.label,
+                      style: Theme.of(context).textTheme.titleLarge,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Text(_descriptionFor(style)),
+              const SizedBox(height: 14),
+              Text(
+                'Sources',
+                style: Theme.of(
+                  context,
+                ).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w900),
+              ),
+              const SizedBox(height: 6),
+              Text(_attributionFor(style)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  String _descriptionFor(_MapTileStyle style) {
+    return switch (style) {
+      _MapTileStyle.clean =>
+        'Clean 2D map for route browsing, crag locations, parking, and approach context.',
+      _MapTileStyle.satellite =>
+        'Satellite imagery with labels for terrain context and visual navigation.',
+      _MapTileStyle.terrain3d =>
+        'Pitchable satellite terrain with crags, map labels, hillshade, and topographic contour lines.',
+    };
+  }
+
+  String _attributionFor(_MapTileStyle style) {
+    return switch (style) {
+      _MapTileStyle.clean => style.attribution,
+      _MapTileStyle.satellite => style.attribution,
+      _MapTileStyle.terrain3d => OfflineMapConfig.openMapAttribution,
+    };
   }
 }
 
