@@ -105,18 +105,12 @@ function style(
   };
   const satelliteSource = {
     type: "raster",
-    url: `${origin}/bc-satellite.json`,
+    tiles: [
+      "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+    ],
     tileSize: 256,
-    attribution: `Contains modified Copernicus Sentinel-2 data (${sentinelDataYear})`,
-  };
-  const contourSource = {
-    type: "raster",
-    tiles: [`${origin}/contours/{z}/{x}/{y}.png`],
-    tileSize: 256,
-    minzoom: 8,
-    maxzoom: 16,
-    attribution:
-      "Contours © Natural Resources Canada CanVec; Contains information licensed under the Open Government Licence – Canada",
+    maxzoom: 19,
+    attribution: "Imagery © Esri and data providers",
   };
   const glyphs =
     "https://protomaps.github.io/basemaps-assets/fonts/{fontstack}/{range}.pbf";
@@ -173,7 +167,7 @@ function style(
   if (kind === "satellite") {
     return {
       version: 8,
-      name: "Climb On Sentinel-2 Satellite",
+      name: "Climb On Satellite",
       glyphs,
       sprite,
       sources: {
@@ -190,14 +184,13 @@ function style(
   if (kind === "3d") {
     return {
       version: 8,
-      name: "Climb On Satellite 3D + Topo",
+      name: "Climb On Satellite 3D",
       glyphs,
       sprite,
       sources: {
         basemap: basemapSource,
         satellite: satelliteSource,
         terrain: terrainSource,
-        contours: contourSource,
       },
       terrain: { source: "terrain", exaggeration: 1.12 },
       layers: [
@@ -208,73 +201,11 @@ function style(
           paint: { "raster-saturation": -0.05, "raster-contrast": 0.08 },
         },
         hillshade,
-        {
-          id: "topographic-contours",
-          type: "raster",
-          source: "contours",
-          minzoom: 8,
-          paint: { "raster-opacity": 0.72 },
-        },
         ...satelliteLabelLayers,
       ],
     };
   }
   return null;
-}
-
-function tileLongitude(x: number, z: number): number {
-  return (x / 2 ** z) * 360 - 180;
-}
-
-function tileLatitude(y: number, z: number): number {
-  const radians = Math.atan(Math.sinh(Math.PI * (1 - (2 * y) / 2 ** z)));
-  return (radians * 180) / Math.PI;
-}
-
-async function contourResponse(request: Request, env: Env): Promise<Response> {
-  const url = new URL(request.url);
-  const match = url.pathname.match(/^\/contours\/(\d+)\/(\d+)\/(\d+)\.png$/);
-  if (!match) return new Response("Not found", { status: 404 });
-
-  const z = Number(match[1]);
-  const x = Number(match[2]);
-  const y = Number(match[3]);
-  if (z < 8 || z > 16 || x < 0 || y < 0 || x >= 2 ** z || y >= 2 ** z) {
-    return new Response(null, { status: 204, headers: corsHeaders(request, env) });
-  }
-
-  const west = tileLongitude(x, z);
-  const east = tileLongitude(x + 1, z);
-  const north = tileLatitude(y, z);
-  const south = tileLatitude(y + 1, z);
-  const upstream = new URL("https://maps.geogratis.gc.ca/wms/canvec_en");
-  upstream.search = new URLSearchParams({
-    service: "WMS",
-    version: "1.1.1",
-    request: "GetMap",
-    layers: "contour_elevation_50k,contour_approximative_50k,contour_depression_50k",
-    styles: "",
-    format: "image/png",
-    transparent: "true",
-    srs: "EPSG:4326",
-    bbox: `${west},${south},${east},${north}`,
-    width: "256",
-    height: "256",
-  }).toString();
-
-  const cached = await caches.default.match(request);
-  if (cached) return cached;
-  const response = await fetch(upstream, {
-    headers: { "User-Agent": "Climb On map service (contour tile proxy)" },
-  });
-  if (!response.ok) return new Response("Contour service unavailable", { status: 502 });
-
-  const headers = corsHeaders(request, env);
-  headers.set("Content-Type", response.headers.get("Content-Type") ?? "image/png");
-  headers.set("Cache-Control", "public, max-age=604800");
-  const result = new Response(response.body, { headers });
-  await caches.default.put(request, result.clone());
-  return result;
 }
 
 async function tileResponse(
@@ -356,7 +287,9 @@ export default {
     if (url.pathname === "/health") {
       return Response.json({ ok: true, service: "climb-on-open-maps" });
     }
-    const styleMatch = url.pathname.match(/^\/styles\/(clean|satellite|3d)\.json$/);
+    const styleMatch = url.pathname.match(
+      /^\/styles\/(clean|satellite|3d)(?:-v2)?\.json$/,
+    );
     if (styleMatch) {
       const value = style(
         url.origin,
@@ -367,9 +300,6 @@ export default {
       headers.set("Content-Type", "application/json");
       headers.set("Cache-Control", "public, max-age=3600");
       return new Response(JSON.stringify(value), { headers });
-    }
-    if (url.pathname.startsWith("/contours/")) {
-      return contourResponse(request, env);
     }
     return tileResponse(request, env, ctx);
   },

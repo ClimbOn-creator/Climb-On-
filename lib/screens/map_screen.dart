@@ -301,11 +301,8 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       focusedSkiRoute: focusedSkiRoute,
       catalogCrags: catalogCrags,
     );
-    final mapLibreStyle = _mapLibreStyleFor(tileStyle);
     final useMapLibre =
-        _supportsMapLibre &&
-        (tileStyle == _MapTileStyle.terrain3d ||
-            (!pathEditMode && mapLibreStyle != null));
+        _supportsMapLibre && tileStyle == _MapTileStyle.terrain3d;
     final initialCenter =
         userLocation ??
         (mode == ActivityMode.ski
@@ -323,9 +320,33 @@ class _MapScreenState extends ConsumerState<MapScreen> {
           Expanded(
             child: Stack(
               children: [
-                if (useMapLibre)
+                if (useMapLibre &&
+                    !kIsWeb &&
+                    defaultTargetPlatform == TargetPlatform.iOS)
+                  _IosTerrainMap(
+                    key: const ValueKey('ios-realistic-terrain'),
+                    center: currentMapCenter ?? initialCenter,
+                    zoom: currentZoom,
+                    mode: mode,
+                    crags: mapCrags,
+                    skiRoutes: skiCatalog,
+                    paths: mapPaths,
+                    savedTrails: savedTrails,
+                    recordedPath: recordedPath,
+                    recordedColorValue: recordedColorValue,
+                    selectedCrag: selectedCrag,
+                    selectedSkiRoute: activeSkiRoute,
+                    allowRotation: settings.twoFingerRotation,
+                    onCragTap: (crag) => _selectCrag(context, wide, crag),
+                    onSkiRouteTap: (route) => _selectSkiRoute(context, route),
+                  )
+                else if (useMapLibre)
                   _Terrain3DMap(
-                    styleOverride: mapLibreStyle,
+                    key: ValueKey(tileStyle),
+                    // Keep native startup on the bundled, validated style.
+                    // A malformed cached remote style can abort MapLibre
+                    // before Flutter has a chance to recover.
+                    styleOverride: null,
                     enableTerrain: tileStyle == _MapTileStyle.terrain3d,
                     center: currentMapCenter ?? initialCenter,
                     zoom: currentZoom,
@@ -1694,19 +1715,8 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     setState(() => currentMapRotation = heading);
   }
 
-  String? _mapLibreStyleFor(_MapTileStyle style) {
-    final value = switch (style) {
-      _MapTileStyle.clean => OfflineMapConfig.cleanStyleUrl,
-      _MapTileStyle.satellite => OfflineMapConfig.satelliteStyleUrl,
-      _MapTileStyle.terrain3d => OfflineMapConfig.terrain3dStyleUrl,
-    };
-    return value.isEmpty ? null : value;
-  }
-
   bool _usesMapLibre(_MapTileStyle style) {
-    return _supportsMapLibre &&
-        (style == _MapTileStyle.terrain3d ||
-            (!kIsWeb && _mapLibreStyleFor(style) != null));
+    return _supportsMapLibre && style == _MapTileStyle.terrain3d;
   }
 
   bool get _supportsMapLibre {
@@ -1878,6 +1888,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
 
 class _Terrain3DMap extends StatefulWidget {
   const _Terrain3DMap({
+    super.key,
     required this.styleOverride,
     required this.enableTerrain,
     required this.center,
@@ -1923,6 +1934,219 @@ class _Terrain3DMap extends StatefulWidget {
   State<_Terrain3DMap> createState() => _Terrain3DMapState();
 }
 
+class _IosTerrainMap extends StatefulWidget {
+  const _IosTerrainMap({
+    super.key,
+    required this.center,
+    required this.zoom,
+    required this.mode,
+    required this.crags,
+    required this.skiRoutes,
+    required this.paths,
+    required this.savedTrails,
+    required this.recordedPath,
+    required this.recordedColorValue,
+    required this.selectedCrag,
+    required this.selectedSkiRoute,
+    required this.allowRotation,
+    required this.onCragTap,
+    required this.onSkiRouteTap,
+  });
+
+  final LatLng center;
+  final double zoom;
+  final ActivityMode mode;
+  final List<Crag> crags;
+  final List<SkiRoute> skiRoutes;
+  final MapPathCatalog paths;
+  final List<SavedTrail> savedTrails;
+  final List<LatLng> recordedPath;
+  final int recordedColorValue;
+  final Crag? selectedCrag;
+  final SkiRoute? selectedSkiRoute;
+  final bool allowRotation;
+  final ValueChanged<Crag> onCragTap;
+  final ValueChanged<SkiRoute> onSkiRouteTap;
+
+  @override
+  State<_IosTerrainMap> createState() => _IosTerrainMapState();
+}
+
+class _IosTerrainMapState extends State<_IosTerrainMap> {
+  MethodChannel? channel;
+
+  List<Map<String, Object>> get encodedCrags => [
+    for (final crag in widget.crags)
+      if (_inActiveRegion(crag.location))
+        {
+          'id': crag.id,
+          'name': crag.name,
+          'latitude': crag.location.latitude,
+          'longitude': crag.location.longitude,
+        },
+  ];
+
+  List<Map<String, Object>> get encodedSkiRoutes => [
+    for (final route in widget.skiRoutes)
+      if (_inActiveRegion(route.location))
+        {
+          'id': route.id,
+          'name': route.name,
+          'latitude': route.location.latitude,
+          'longitude': route.location.longitude,
+          'selected': route == widget.selectedSkiRoute,
+        },
+  ];
+
+  List<Map<String, Object>> get encodedPolylines {
+    final values = <Map<String, Object>>[];
+    void add(
+      List<LatLng> points,
+      String color,
+      double width, {
+      String? entityId,
+      bool selected = false,
+    }) {
+      if (points.length < 2) return;
+      values.add({
+        'color': color,
+        'width': width,
+        if (entityId != null) 'entityId': entityId,
+        'selected': selected,
+        'points': [
+          for (final point in points)
+            {'latitude': point.latitude, 'longitude': point.longitude},
+        ],
+      });
+    }
+
+    for (final trail in widget.savedTrails) {
+      if (trail.points.any(_inActiveRegion)) {
+        add(trail.points, _hexColor(trail.colorValue), 2.25);
+      }
+    }
+    if (widget.recordedPath.length >= 2) {
+      add(widget.recordedPath, _hexColor(widget.recordedColorValue), 2.75);
+    }
+    if (widget.mode == ActivityMode.ski) {
+      for (final route in widget.skiRoutes) {
+        if (!_inActiveRegion(route.location)) continue;
+        final ascent = widget.paths.skiAscent(route.name);
+        add(
+          ascent.length >= 2 ? ascent : [route.trailhead, route.location],
+          '#D33B2F',
+          2.75,
+          entityId: route.id,
+          selected: route == widget.selectedSkiRoute,
+        );
+        final descent = widget.paths.skiDescent(route.name);
+        add(
+          descent.length >= 2 ? descent : [route.location, route.trailhead],
+          '#F28C28',
+          2.25,
+          entityId: route.id,
+          selected: route == widget.selectedSkiRoute,
+        );
+      }
+    } else if (widget.selectedCrag != null) {
+      final selected = widget.selectedCrag!;
+      final saved = widget.paths.cragPath(selected.id);
+      add(
+        saved.length >= 2 ? saved : [selected.parking, selected.location],
+        '#FFD166',
+        2.5,
+      );
+    }
+    return values;
+  }
+
+  Map<String, Object>? get encodedParking {
+    final selected = widget.selectedCrag;
+    if (selected == null) return null;
+    return {
+      'name': '${selected.name} parking',
+      'latitude': selected.parking.latitude,
+      'longitude': selected.parking.longitude,
+    };
+  }
+
+  @override
+  void didUpdateWidget(covariant _IosTerrainMap oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!listEquals(oldWidget.crags, widget.crags) ||
+        oldWidget.paths != widget.paths ||
+        oldWidget.mode != widget.mode ||
+        oldWidget.selectedCrag != widget.selectedCrag ||
+        oldWidget.selectedSkiRoute != widget.selectedSkiRoute ||
+        oldWidget.savedTrails != widget.savedTrails ||
+        !listEquals(oldWidget.recordedPath, widget.recordedPath)) {
+      unawaited(_syncMapData());
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return UiKitView(
+      viewType: 'climb_on/terrain_map',
+      creationParamsCodec: const StandardMessageCodec(),
+      creationParams: {
+        'latitude': widget.center.latitude,
+        'longitude': widget.center.longitude,
+        'zoom': widget.zoom,
+        'allowRotation': widget.allowRotation,
+        'crags': encodedCrags,
+        'skiRoutes': encodedSkiRoutes,
+        'polylines': encodedPolylines,
+        'parking': encodedParking,
+      },
+      onPlatformViewCreated: (viewId) {
+        final value = MethodChannel('climb_on/terrain_map/$viewId');
+        channel = value;
+        value.setMethodCallHandler((call) async {
+          if (call.method != 'markerTapped') return;
+          final arguments = call.arguments as Map<Object?, Object?>?;
+          final kind = arguments?['kind'];
+          final id = arguments?['id'];
+          if (kind == 'ski') {
+            for (final route in widget.skiRoutes) {
+              if (route.id == id) {
+                widget.onSkiRouteTap(route);
+                return;
+              }
+            }
+          } else {
+            for (final crag in widget.crags) {
+              if (crag.id == id) {
+                widget.onCragTap(crag);
+                return;
+              }
+            }
+          }
+        });
+        unawaited(_syncMapData());
+      },
+    );
+  }
+
+  bool _inActiveRegion(LatLng point) {
+    return (point.latitude - widget.center.latitude).abs() <= 1.75 &&
+        (point.longitude - widget.center.longitude).abs() <= 2.5;
+  }
+
+  String _hexColor(int value) {
+    return '#${(value & 0xFFFFFF).toRadixString(16).padLeft(6, '0')}';
+  }
+
+  Future<void> _syncMapData() async {
+    await channel?.invokeMethod<void>('updateMapData', {
+      'crags': encodedCrags,
+      'skiRoutes': encodedSkiRoutes,
+      'polylines': encodedPolylines,
+      'parking': encodedParking,
+    });
+  }
+}
+
 class _Terrain3DMapState extends State<_Terrain3DMap> {
   ml.MapLibreMapController? controller;
   bool styleLoaded = false;
@@ -1955,8 +2179,8 @@ class _Terrain3DMapState extends State<_Terrain3DMap> {
       'terrain': {
         'type': 'raster-dem',
         'url': 'https://tiles.mapterhorn.com/tilejson.json',
-        'tileSize': 256,
-        'attribution': 'Terrain © MapTiler and OpenStreetMap contributors',
+        'tileSize': 512,
+        'attribution': 'Terrain © Mapterhorn',
       },
     },
     'terrain': {'source': 'terrain', 'exaggeration': 1.12},
@@ -2008,6 +2232,8 @@ class _Terrain3DMapState extends State<_Terrain3DMap> {
     }
     if (styleLoaded &&
         (oldWidget.mode != widget.mode ||
+            !listEquals(oldWidget.crags, widget.crags) ||
+            !listEquals(oldWidget.skiRoutes, widget.skiRoutes) ||
             oldWidget.paths != widget.paths ||
             oldWidget.savedTrails != widget.savedTrails ||
             oldWidget.recordedPath != widget.recordedPath ||
@@ -2380,12 +2606,12 @@ enum _MapTileStyle {
         'Tiles © Esri and data providers · Labels © OpenStreetMap contributors © CARTO',
   ),
   terrain3d(
-    label: 'Satellite 3D + Topo',
+    label: 'Satellite 3D',
     icon: Icons.view_in_ar,
     urlTemplate: '',
     subdomains: [],
     attribution:
-        'Satellite: Copernicus Sentinel-2 · Terrain and contours: Natural Resources Canada',
+        'Imagery © Esri and data providers · Terrain © Natural Resources Canada',
   );
 
   const _MapTileStyle({
@@ -2552,7 +2778,7 @@ class _MapInfoButton extends StatelessWidget {
       _MapTileStyle.satellite =>
         'Satellite imagery with labels for terrain context and visual navigation.',
       _MapTileStyle.terrain3d =>
-        'Pitchable satellite terrain with crags, map labels, hillshade, and topographic contour lines.',
+        'The same satellite imagery draped over pitchable 3D mountains and hills, with crags and map labels.',
     };
   }
 

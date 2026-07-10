@@ -25,13 +25,13 @@ class OfflineMapConfig {
 
   static String get cleanStyleUrl => _style(_cleanStyleUrl, 'clean');
   static String get satelliteStyleUrl =>
-      _style(_satelliteStyleUrl, 'satellite');
-  static String get terrain3dStyleUrl => _style(_terrain3dStyleUrl, '3d');
+      _style(_satelliteStyleUrl, 'satellite-v2');
+  static String get terrain3dStyleUrl => _style(_terrain3dStyleUrl, '3d-v2');
 
   static const openMapAttribution =
       '© OpenStreetMap contributors · Protomaps · '
-      'Satellite: Copernicus Sentinel-2 · '
-      'Terrain and contours: Natural Resources Canada';
+      'Imagery: Esri and data providers · '
+      'Terrain: Natural Resources Canada';
 
   static Map<String, String> downloadableStyles({
     required bool includeTerrain3d,
