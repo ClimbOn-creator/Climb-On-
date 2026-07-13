@@ -1,6 +1,10 @@
 class OfflineMapConfig {
   const OfflineMapConfig._();
 
+  static const mapboxAccessToken = String.fromEnvironment(
+    'MAPBOX_ACCESS_TOKEN',
+  );
+
   static const _mapServiceBaseUrl = String.fromEnvironment(
     'OFFLINE_MAP_BASE_URL',
   );
@@ -42,8 +46,8 @@ class OfflineMapConfig {
       'Terrain 3D': terrain3dStyleUrl,
   };
 
-  static bool get mapsConfigured => cleanStyleUrl.isNotEmpty;
-  static bool get satelliteConfigured => satelliteStyleUrl.isNotEmpty;
-  static bool get terrainConfigured => terrain3dStyleUrl.isNotEmpty;
+  static bool get mapsConfigured => mapboxAccessToken.isNotEmpty;
+  static bool get satelliteConfigured => mapboxAccessToken.isNotEmpty;
+  static bool get terrainConfigured => mapboxAccessToken.isNotEmpty;
   static bool get allCoreMapsConfigured => mapsConfigured && terrainConfigured;
 }

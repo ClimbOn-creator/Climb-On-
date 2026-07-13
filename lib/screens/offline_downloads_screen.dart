@@ -46,7 +46,7 @@ class OfflineDownloadsScreen extends ConsumerWidget {
                   ),
                   SizedBox(height: 6),
                   Text(
-                    'Each section saves climbing and ski information, pictures, and the clean 2D map. Compact 3D terrain is optional. GPS and recordings work without service.',
+                    'Each section saves climbing and ski information, pictures, clean 2D, satellite imagery, labels, and optional 3D terrain. GPS recordings work without service.',
                   ),
                 ],
               ),
@@ -59,7 +59,7 @@ class OfflineDownloadsScreen extends ConsumerWidget {
                 leading: Icon(Icons.map_outlined),
                 title: Text('Offline map provider setup required'),
                 subtitle: Text(
-                  'Data and pictures can download now. The self-hosted open map service must be connected to activate clean 2D and optional 3D terrain.',
+                  'Data and pictures can download now. Add the Mapbox public token to activate offline clean, satellite, and 3D maps.',
                 ),
               ),
             ),
@@ -68,9 +68,9 @@ class OfflineDownloadsScreen extends ConsumerWidget {
               color: Theme.of(context).colorScheme.secondaryContainer,
               child: const ListTile(
                 leading: Icon(Icons.verified_outlined),
-                title: Text('Open-data maps connected'),
+                title: Text('Mapbox offline maps connected'),
                 subtitle: Text(
-                  'Clean 2D uses OpenStreetMap/Protomaps and optional 3D uses Natural Resources Canada elevation data.',
+                  'Clean 2D, satellite imagery, labels, and 3D elevation can be downloaded for each selected section.',
                 ),
               ),
             ),
@@ -94,7 +94,7 @@ class OfflineDownloadsScreen extends ConsumerWidget {
                     ? '3D terrain packs download in the iPhone and Android apps.'
                     : OfflineMapConfig.terrainConfigured
                     ? 'Optional larger download with shaded, pitchable mountain terrain.'
-                    : 'Connect the self-hosted terrain archive and rebuild the app to enable this download.',
+                    : 'Add the Mapbox public token and rebuild the app to enable this download.',
               ),
             ),
           ),

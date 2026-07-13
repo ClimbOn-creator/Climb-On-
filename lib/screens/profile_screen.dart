@@ -33,6 +33,8 @@ class ProfileScreen extends ConsumerStatefulWidget {
 class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   final authService = const AuthService();
   bool publicProfile = false;
+  bool completedRoutesExpanded = false;
+  bool recentCommentsExpanded = false;
 
   @override
   void initState() {
@@ -56,6 +58,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     final skiRoutes =
         ref.watch(skiRouteCatalogProvider).valueOrNull ?? const <SkiRoute>[];
     final social = ref.watch(socialProvider);
+    final recentComments = [...social.recentComments]
+      ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
     final profile = ref.watch(currentProfileProvider).valueOrNull;
     final user = authService.currentUser;
     final signedIn = user != null;
@@ -227,17 +231,33 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                               ? const _EmptyProfileState(
                                   text: 'Mark routes as sent from the feed.',
                                 )
-                              : _RouteList(routes: completedRoutes),
+                              : Column(
+                                  children: [
+                                    _RouteList(
+                                      routes: completedRoutesExpanded
+                                          ? completedRoutes
+                                          : completedRoutes.take(3).toList(),
+                                    ),
+                                    if (completedRoutes.length > 3)
+                                      _ProfileExpandButton(
+                                        expanded: completedRoutesExpanded,
+                                        hiddenCount: completedRoutes.length - 3,
+                                        onPressed: () => setState(() {
+                                          completedRoutesExpanded =
+                                              !completedRoutesExpanded;
+                                        }),
+                                      ),
+                                  ],
+                                ),
                         ),
                         if (signedIn)
                           _SectionCard(
                             title: 'Recent comments',
-                            child:
-                                social.loading && social.recentComments.isEmpty
+                            child: social.loading && recentComments.isEmpty
                                 ? const Center(
                                     child: CircularProgressIndicator(),
                                   )
-                                : social.recentComments.isEmpty
+                                : recentComments.isEmpty
                                 ? const _EmptyProfileState(
                                     text:
                                         'Comments you make on routes will appear here.',
@@ -245,13 +265,25 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                                 : Column(
                                     children: [
                                       for (final comment
-                                          in social.recentComments.take(6))
+                                          in (recentCommentsExpanded
+                                              ? recentComments
+                                              : recentComments.take(3)))
                                         _RecentCommentTile(
                                           comment: comment,
                                           onTap: () => _openCommentRoute(
                                             comment.routeId,
                                             allRoutes,
                                           ),
+                                        ),
+                                      if (recentComments.length > 3)
+                                        _ProfileExpandButton(
+                                          expanded: recentCommentsExpanded,
+                                          hiddenCount:
+                                              recentComments.length - 3,
+                                          onPressed: () => setState(() {
+                                            recentCommentsExpanded =
+                                                !recentCommentsExpanded;
+                                          }),
                                         ),
                                     ],
                                   ),
@@ -288,8 +320,13 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     ClimbLogState climbLog,
     List<ClimbRoute> allRoutes,
   ) {
-    final routeIds = climbLog.sends.map((send) => send.routeId).toSet();
-    return allRoutes.where((route) => routeIds.contains(route.id)).toList();
+    final sentAtByRoute = {
+      for (final send in climbLog.sends) send.routeId: send.sentAt,
+    };
+    return allRoutes
+        .where((route) => sentAtByRoute.containsKey(route.id))
+        .toList()
+      ..sort((a, b) => sentAtByRoute[b.id]!.compareTo(sentAtByRoute[a.id]!));
   }
 
   List<ClimbRoute> _projectRoutes(
@@ -1546,6 +1583,34 @@ class _RouteList extends StatelessWidget {
             subtitle: Text('${route.grade} - ${route.typeLabel}'),
           ),
       ],
+    );
+  }
+}
+
+class _ProfileExpandButton extends StatelessWidget {
+  const _ProfileExpandButton({
+    required this.expanded,
+    required this.hiddenCount,
+    required this.onPressed,
+  });
+
+  final bool expanded;
+  final int hiddenCount;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: TextButton.icon(
+        onPressed: onPressed,
+        icon: AnimatedRotation(
+          turns: expanded ? 0.5 : 0,
+          duration: const Duration(milliseconds: 180),
+          child: const Icon(Icons.keyboard_arrow_down),
+        ),
+        label: Text(expanded ? 'Show latest 3' : 'Show $hiddenCount more'),
+      ),
     );
   }
 }

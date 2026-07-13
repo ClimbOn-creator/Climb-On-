@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
+import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -11,6 +12,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:go_router/go_router.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:maplibre_gl/maplibre_gl.dart' as ml;
+import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart' as mb;
 import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -70,8 +72,10 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   final Set<_MapRouteFilter> activeFilters = {};
   final MapController mapController = MapController();
   ml.MapLibreMapController? mapLibreController;
+  mb.MapboxMap? mapboxController;
   StreamSubscription<Position>? positionSubscription;
   Timer? recordingTimer;
+  Timer? recordingSampleTimer;
   bool gpsRecording = false;
   bool appliedInitialSettings = false;
   String? appliedFocusedClimbRouteId;
@@ -113,6 +117,10 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   @override
   void initState() {
     super.initState();
+    if (const bool.fromEnvironment('FORCE_3D_MAP')) {
+      tileStyle = _MapTileStyle.terrain3d;
+      appliedInitialSettings = true;
+    }
     unawaited(_restoreRecordedDraft());
     loadUserLocation();
   }
@@ -121,6 +129,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   void dispose() {
     positionSubscription?.cancel();
     recordingTimer?.cancel();
+    recordingSampleTimer?.cancel();
     super.dispose();
   }
 
@@ -151,37 +160,13 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   void _setUserPosition(Position position) {
     if (!mounted) return;
     final point = LatLng(position.latitude, position.longitude);
-    var addedRecordingPoint = false;
     setState(() {
       userLocation = point;
       userLocationAccuracyMeters = position.accuracy;
       userAltitudeMeters = position.altitude.isFinite
           ? position.altitude
           : null;
-      if (gpsRecording && position.accuracy <= 50) {
-        final shouldAdd =
-            recordedTrack.isEmpty ||
-            const Distance().as(
-                  LengthUnit.Meter,
-                  recordedTrack.last.location,
-                  point,
-                ) >=
-                3;
-        if (shouldAdd) {
-          addedRecordingPoint = true;
-          recordedTrack.add(
-            _RecordedTrackPoint(
-              location: point,
-              altitudeMeters: position.altitude.isFinite
-                  ? position.altitude
-                  : null,
-              recordedAt: DateTime.now(),
-            ),
-          );
-        }
-      }
     });
-    if (addedRecordingPoint) unawaited(_persistRecordedDraft());
   }
 
   List<_CragCluster> clusterCrags(List<Crag> cragsToCluster) {
@@ -301,8 +286,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       focusedSkiRoute: focusedSkiRoute,
       catalogCrags: catalogCrags,
     );
-    final useMapLibre =
-        _supportsMapLibre && tileStyle == _MapTileStyle.terrain3d;
+    final useMapLibre = _supportsMapLibre;
     final initialCenter =
         userLocation ??
         (mode == ActivityMode.ski
@@ -320,36 +304,15 @@ class _MapScreenState extends ConsumerState<MapScreen> {
           Expanded(
             child: Stack(
               children: [
-                if (useMapLibre &&
-                    !kIsWeb &&
-                    defaultTargetPlatform == TargetPlatform.iOS)
-                  _IosTerrainMap(
-                    key: const ValueKey('ios-realistic-terrain'),
-                    center: currentMapCenter ?? initialCenter,
-                    zoom: currentZoom,
-                    mode: mode,
-                    crags: mapCrags,
-                    skiRoutes: skiCatalog,
-                    paths: mapPaths,
-                    savedTrails: savedTrails,
-                    recordedPath: recordedPath,
-                    recordedColorValue: recordedColorValue,
-                    selectedCrag: selectedCrag,
-                    selectedSkiRoute: activeSkiRoute,
-                    allowRotation: settings.twoFingerRotation,
-                    onCragTap: (crag) => _selectCrag(context, wide, crag),
-                    onSkiRouteTap: (route) => _selectSkiRoute(context, route),
-                  )
-                else if (useMapLibre)
-                  _Terrain3DMap(
+                if (useMapLibre)
+                  _MapboxTerrainMap(
                     key: ValueKey(tileStyle),
-                    // Keep native startup on the bundled, validated style.
-                    // A malformed cached remote style can abort MapLibre
-                    // before Flutter has a chance to recover.
-                    styleOverride: null,
-                    enableTerrain: tileStyle == _MapTileStyle.terrain3d,
                     center: currentMapCenter ?? initialCenter,
                     zoom: currentZoom,
+                    enableTerrain: tileStyle == _MapTileStyle.terrain3d,
+                    styleUri: tileStyle == _MapTileStyle.clean
+                        ? mb.MapboxStyles.STANDARD
+                        : mb.MapboxStyles.STANDARD_SATELLITE,
                     mode: mode,
                     crags: mapCrags,
                     skiRoutes: skiCatalog,
@@ -357,14 +320,16 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                     savedTrails: savedTrails,
                     recordedPath: recordedPath,
                     recordedColorValue: recordedColorValue,
-                    regions: mapRegions,
                     selectedCrag: selectedCrag,
+                    selectedWall: selectedWall,
                     selectedSkiRoute: activeSkiRoute,
                     userLocation: userLocation,
-                    onCragTap: (crag) => _selectCrag(context, wide, crag),
+                    onCragTap: (crag) =>
+                        _selectCrag(context, wide, crag, openDetails: false),
+                    onWallTap: (wall) => setState(() => selectedWall = wall),
                     onSkiRouteTap: (route) => _selectSkiRoute(context, route),
                     onControllerReady: (controller) {
-                      mapLibreController = controller;
+                      mapboxController = controller;
                     },
                     allowRotation: settings.twoFingerRotation,
                   )
@@ -522,7 +487,10 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                     }
                     setState(() {
                       tileStyle = style;
-                      if (!_usesMapLibre(style)) mapLibreController = null;
+                      if (!_usesMapLibre(style)) {
+                        mapLibreController = null;
+                        mapboxController = null;
+                      }
                     });
                   },
                   onTerrainChanged: (enabled) {
@@ -1030,7 +998,12 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     ];
   }
 
-  void _selectCrag(BuildContext context, bool wide, Crag crag) {
+  void _selectCrag(
+    BuildContext context,
+    bool wide,
+    Crag crag, {
+    bool openDetails = true,
+  }) {
     setState(() {
       selectedCrag = crag;
       selectedWall = crag.walls.isEmpty ? null : crag.walls.first;
@@ -1040,7 +1013,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     ref.read(focusedRouteProvider.notifier).state = null;
     ref.read(focusedSkiRouteProvider.notifier).state = null;
 
-    if (wide) return;
+    if (wide || !openDetails) return;
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -1178,6 +1151,21 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   void _moveMap(LatLng target, double zoom) {
     currentMapCenter = target;
     currentZoom = zoom;
+    final mapbox = mapboxController;
+    if (mapbox != null) {
+      unawaited(
+        mapbox.easeTo(
+          mb.CameraOptions(
+            center: mb.Point(
+              coordinates: mb.Position(target.longitude, target.latitude),
+            ),
+            zoom: zoom,
+          ),
+          mb.MapAnimationOptions(duration: 700),
+        ),
+      );
+      return;
+    }
     final controller = mapLibreController;
     if (controller != null) {
       controller.moveCamera(
@@ -1537,11 +1525,18 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         recordingElapsed = DateTime.now().difference(recordingStartedAt!);
       });
     });
+    recordingSampleTimer?.cancel();
+    recordingSampleTimer = Timer.periodic(
+      const Duration(seconds: 2),
+      (_) => _appendRecordingSample(),
+    );
     _showMapMessage('Recording started.');
   }
 
   void _stopGpsRecording() {
     recordingTimer?.cancel();
+    recordingSampleTimer?.cancel();
+    _appendRecordingSample();
     setState(() => gpsRecording = false);
     unawaited(_persistRecordedDraft());
     _showMapMessage('Recording stopped. Review the line, then save it.');
@@ -1549,6 +1544,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
 
   void _discardGpsRecording() {
     recordingTimer?.cancel();
+    recordingSampleTimer?.cancel();
     setState(() {
       gpsRecording = false;
       recordedPathKind = null;
@@ -1557,6 +1553,19 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       recordedTrack = [];
     });
     unawaited(_clearRecordedDraft());
+  }
+
+  void _appendRecordingSample() {
+    if (!mounted || !gpsRecording || userLocation == null) return;
+    final accuracy = userLocationAccuracyMeters;
+    if (accuracy == null || accuracy > 50) return;
+    final sample = _RecordedTrackPoint(
+      location: userLocation!,
+      altitudeMeters: userAltitudeMeters,
+      recordedAt: DateTime.now(),
+    );
+    setState(() => recordedTrack.add(sample));
+    unawaited(_persistRecordedDraft());
   }
 
   Future<void> _saveGpsRecording() async {
@@ -1693,6 +1702,15 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     final normalized = degrees % 360;
     final heading = normalized < 0 ? normalized + 360 : normalized;
     if (_usesMapLibre(tileStyle)) {
+      final mapbox = mapboxController;
+      if (mapbox != null) {
+        unawaited(
+          mapbox.easeTo(
+            mb.CameraOptions(bearing: heading),
+            mb.MapAnimationOptions(duration: 250),
+          ),
+        );
+      }
       final controller = mapLibreController;
       final position = controller?.cameraPosition;
       if (controller != null && position != null) {
@@ -1716,11 +1734,11 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   }
 
   bool _usesMapLibre(_MapTileStyle style) {
-    return _supportsMapLibre && style == _MapTileStyle.terrain3d;
+    return _supportsMapLibre;
   }
 
   bool get _supportsMapLibre {
-    if (kIsWeb) return true;
+    if (kIsWeb) return false;
     return defaultTargetPlatform == TargetPlatform.android ||
         defaultTargetPlatform == TargetPlatform.iOS;
   }
@@ -1939,6 +1957,7 @@ class _IosTerrainMap extends StatefulWidget {
     super.key,
     required this.center,
     required this.zoom,
+    required this.enableTerrain,
     required this.mode,
     required this.crags,
     required this.skiRoutes,
@@ -1947,14 +1966,17 @@ class _IosTerrainMap extends StatefulWidget {
     required this.recordedPath,
     required this.recordedColorValue,
     required this.selectedCrag,
+    required this.selectedWall,
     required this.selectedSkiRoute,
     required this.allowRotation,
     required this.onCragTap,
+    required this.onWallTap,
     required this.onSkiRouteTap,
   });
 
   final LatLng center;
   final double zoom;
+  final bool enableTerrain;
   final ActivityMode mode;
   final List<Crag> crags;
   final List<SkiRoute> skiRoutes;
@@ -1963,9 +1985,11 @@ class _IosTerrainMap extends StatefulWidget {
   final List<LatLng> recordedPath;
   final int recordedColorValue;
   final Crag? selectedCrag;
+  final Wall? selectedWall;
   final SkiRoute? selectedSkiRoute;
   final bool allowRotation;
   final ValueChanged<Crag> onCragTap;
+  final ValueChanged<Wall> onWallTap;
   final ValueChanged<SkiRoute> onSkiRouteTap;
 
   @override
@@ -1998,6 +2022,18 @@ class _IosTerrainMapState extends State<_IosTerrainMap> {
         },
   ];
 
+  List<Map<String, Object>> get encodedWalls => [
+    if (widget.selectedCrag != null)
+      for (final wall in widget.selectedCrag!.walls)
+        {
+          'id': wall.id,
+          'name': wall.name,
+          'latitude': wall.location.latitude,
+          'longitude': wall.location.longitude,
+          'selected': wall == widget.selectedWall,
+        },
+  ];
+
   List<Map<String, Object>> get encodedPolylines {
     final values = <Map<String, Object>>[];
     void add(
@@ -2005,19 +2041,22 @@ class _IosTerrainMapState extends State<_IosTerrainMap> {
       String color,
       double width, {
       String? entityId,
+      String entityKind = 'path',
       bool selected = false,
     }) {
       if (points.length < 2) return;
-      values.add({
+      final value = <String, Object>{
         'color': color,
         'width': width,
-        if (entityId != null) 'entityId': entityId,
         'selected': selected,
         'points': [
           for (final point in points)
             {'latitude': point.latitude, 'longitude': point.longitude},
         ],
-      });
+      };
+      if (entityId != null) value['entityId'] = entityId;
+      value['kind'] = entityKind;
+      values.add(value);
     }
 
     for (final trail in widget.savedTrails) {
@@ -2037,6 +2076,7 @@ class _IosTerrainMapState extends State<_IosTerrainMap> {
           '#D33B2F',
           2.75,
           entityId: route.id,
+          entityKind: 'ski',
           selected: route == widget.selectedSkiRoute,
         );
         final descent = widget.paths.skiDescent(route.name);
@@ -2045,6 +2085,7 @@ class _IosTerrainMapState extends State<_IosTerrainMap> {
           '#F28C28',
           2.25,
           entityId: route.id,
+          entityKind: 'ski',
           selected: route == widget.selectedSkiRoute,
         );
       }
@@ -2056,6 +2097,16 @@ class _IosTerrainMapState extends State<_IosTerrainMap> {
         '#FFD166',
         2.5,
       );
+      for (final wall in selected.walls) {
+        add(
+          [selected.location, wall.location],
+          wall == widget.selectedWall ? '#FFFFFF' : '#42D4F4',
+          wall == widget.selectedWall ? 4 : 2.25,
+          entityId: wall.id,
+          entityKind: 'wall',
+          selected: wall == widget.selectedWall,
+        );
+      }
     }
     return values;
   }
@@ -2077,6 +2128,7 @@ class _IosTerrainMapState extends State<_IosTerrainMap> {
         oldWidget.paths != widget.paths ||
         oldWidget.mode != widget.mode ||
         oldWidget.selectedCrag != widget.selectedCrag ||
+        oldWidget.selectedWall != widget.selectedWall ||
         oldWidget.selectedSkiRoute != widget.selectedSkiRoute ||
         oldWidget.savedTrails != widget.savedTrails ||
         !listEquals(oldWidget.recordedPath, widget.recordedPath)) {
@@ -2096,6 +2148,7 @@ class _IosTerrainMapState extends State<_IosTerrainMap> {
         'allowRotation': widget.allowRotation,
         'crags': encodedCrags,
         'skiRoutes': encodedSkiRoutes,
+        'walls': encodedWalls,
         'polylines': encodedPolylines,
         'parking': encodedParking,
       },
@@ -2111,6 +2164,13 @@ class _IosTerrainMapState extends State<_IosTerrainMap> {
             for (final route in widget.skiRoutes) {
               if (route.id == id) {
                 widget.onSkiRouteTap(route);
+                return;
+              }
+            }
+          } else if (kind == 'wall') {
+            for (final wall in widget.selectedCrag?.walls ?? const <Wall>[]) {
+              if (wall.id == id) {
+                widget.onWallTap(wall);
                 return;
               }
             }
@@ -2141,6 +2201,7 @@ class _IosTerrainMapState extends State<_IosTerrainMap> {
     await channel?.invokeMethod<void>('updateMapData', {
       'crags': encodedCrags,
       'skiRoutes': encodedSkiRoutes,
+      'walls': encodedWalls,
       'polylines': encodedPolylines,
       'parking': encodedParking,
     });
@@ -2585,6 +2646,488 @@ class _SkiRouteCluster {
   final String label;
   final LatLng point;
   final List<SkiRoute> routes;
+}
+
+class _MapboxTerrainMap extends StatefulWidget {
+  const _MapboxTerrainMap({
+    super.key,
+    required this.center,
+    required this.zoom,
+    required this.enableTerrain,
+    required this.styleUri,
+    required this.mode,
+    required this.crags,
+    required this.skiRoutes,
+    required this.paths,
+    required this.savedTrails,
+    required this.recordedPath,
+    required this.recordedColorValue,
+    required this.selectedCrag,
+    required this.selectedWall,
+    required this.selectedSkiRoute,
+    required this.userLocation,
+    required this.onCragTap,
+    required this.onWallTap,
+    required this.onSkiRouteTap,
+    required this.onControllerReady,
+    required this.allowRotation,
+  });
+
+  final LatLng center;
+  final double zoom;
+  final bool enableTerrain;
+  final String styleUri;
+  final ActivityMode mode;
+  final List<Crag> crags;
+  final List<SkiRoute> skiRoutes;
+  final MapPathCatalog paths;
+  final List<SavedTrail> savedTrails;
+  final List<LatLng> recordedPath;
+  final int recordedColorValue;
+  final Crag? selectedCrag;
+  final Wall? selectedWall;
+  final SkiRoute? selectedSkiRoute;
+  final LatLng? userLocation;
+  final ValueChanged<Crag> onCragTap;
+  final ValueChanged<Wall> onWallTap;
+  final ValueChanged<SkiRoute> onSkiRouteTap;
+  final ValueChanged<mb.MapboxMap> onControllerReady;
+  final bool allowRotation;
+
+  @override
+  State<_MapboxTerrainMap> createState() => _MapboxTerrainMapState();
+}
+
+class _MapboxTerrainMapState extends State<_MapboxTerrainMap> {
+  static const _token = String.fromEnvironment('MAPBOX_ACCESS_TOKEN');
+  mb.MapboxMap? map;
+  mb.CircleAnnotationManager? pins;
+  mb.PointAnnotationManager? labels;
+  mb.PolylineAnnotationManager? lines;
+  double cameraZoom = 14;
+  Uint8List? cragPinImage;
+  Uint8List? parkingPinImage;
+
+  mb.Point _point(LatLng value) =>
+      mb.Point(coordinates: mb.Position(value.longitude, value.latitude));
+
+  @override
+  void didUpdateWidget(covariant _MapboxTerrainMap oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (map != null) unawaited(_draw());
+  }
+
+  Future<void> _onMapCreated(mb.MapboxMap value) async {
+    map = value;
+    cameraZoom = widget.zoom;
+    widget.onControllerReady(value);
+    await value.gestures.updateSettings(
+      mb.GesturesSettings(
+        rotateEnabled: widget.allowRotation,
+        pitchEnabled: true,
+        pinchToZoomEnabled: true,
+        scrollEnabled: true,
+        doubleTapToZoomInEnabled: true,
+        doubleTouchToZoomOutEnabled: true,
+        quickZoomEnabled: true,
+        zoomAnimationAmount: 0.85,
+        pinchToZoomDecelerationEnabled: false,
+        rotateDecelerationEnabled: false,
+        scrollDecelerationEnabled: false,
+      ),
+    );
+    await value.location.updateSettings(
+      mb.LocationComponentSettings(
+        enabled: true,
+        pulsingEnabled: true,
+        showAccuracyRing: true,
+        puckBearingEnabled: true,
+      ),
+    );
+    await value.setBounds(
+      mb.CameraBoundsOptions(
+        bounds: mb.CoordinateBounds(
+          southwest: mb.Point(
+            coordinates: mb.Position(bcMapBounds.west, bcMapBounds.south),
+          ),
+          northeast: mb.Point(
+            coordinates: mb.Position(bcMapBounds.east, bcMapBounds.north),
+          ),
+          infiniteBounds: false,
+        ),
+        minZoom: 5,
+        maxZoom: 19,
+        minPitch: 0,
+        maxPitch: 85,
+      ),
+    );
+  }
+
+  Future<void> _onStyleLoaded(mb.StyleLoadedEventData _) async {
+    final value = map;
+    if (value == null) return;
+    if (widget.enableTerrain) {
+      const demSourceId = 'climb-on-mapbox-dem';
+      if (!await value.style.styleSourceExists(demSourceId)) {
+        await value.style.addSource(
+          mb.RasterDemSource(
+            id: demSourceId,
+            url: 'mapbox://mapbox.mapbox-terrain-dem-v1',
+            tileSize: 512,
+            maxzoom: 14,
+          ),
+        );
+      }
+      await value.style.setStyleTerrain(
+        jsonEncode({'source': demSourceId, 'exaggeration': 1.15}),
+      );
+    }
+    cragPinImage ??= await _mapPinImage(Icons.terrain, const Color(0xFF14618C));
+    parkingPinImage ??= await _mapPinImage(
+      Icons.local_parking,
+      const Color(0xFFF28C28),
+    );
+    // Standard Satellite supplies the imagery, labels and Mapbox elevation.
+    // The steep initial pitch makes terrain immediately visible while still
+    // allowing two-finger tilt all the way to an 85-degree ground view.
+    pins = await value.annotations.createCircleAnnotationManager();
+    labels = await value.annotations.createPointAnnotationManager();
+    lines = await value.annotations.createPolylineAnnotationManager();
+    pins?.tapEvents(onTap: _onPinTap);
+    labels?.tapEvents(onTap: _onLabelTap);
+    await _draw();
+  }
+
+  Future<Uint8List> _mapPinImage(IconData icon, Color fill) async {
+    const size = 72.0;
+    final recorder = ui.PictureRecorder();
+    final canvas = Canvas(recorder);
+    final center = const Offset(size / 2, size / 2);
+    canvas.drawCircle(center, 30, Paint()..color = Colors.white);
+    canvas.drawCircle(center, 26, Paint()..color = fill);
+    final painter = TextPainter(
+      text: TextSpan(
+        text: String.fromCharCode(icon.codePoint),
+        style: TextStyle(
+          color: Colors.white,
+          fontSize: 34,
+          fontFamily: icon.fontFamily,
+          package: icon.fontPackage,
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    painter.paint(
+      canvas,
+      center - Offset(painter.width / 2, painter.height / 2),
+    );
+    final image = await recorder.endRecording().toImage(
+      size.toInt(),
+      size.toInt(),
+    );
+    final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
+    image.dispose();
+    return bytes!.buffer.asUint8List();
+  }
+
+  void _onPinTap(mb.CircleAnnotation pin) => _handleTap(pin.customData);
+  void _onLabelTap(mb.PointAnnotation pin) => _handleTap(pin.customData);
+
+  void _handleTap(Map<String, Object>? data) {
+    final kind = data?['kind'];
+    final id = data?['id'];
+    if (kind == 'crag') {
+      for (final crag in widget.crags) {
+        if (crag.id == id) return widget.onCragTap(crag);
+      }
+    } else if (kind == 'wall') {
+      for (final wall in widget.selectedCrag?.walls ?? const <Wall>[]) {
+        if (wall.id == id) return widget.onWallTap(wall);
+      }
+    } else if (kind == 'ski') {
+      for (final route in widget.skiRoutes) {
+        if (route.id == id) return widget.onSkiRouteTap(route);
+      }
+    } else if (kind == 'cluster') {
+      final latitude = data?['latitude'];
+      final longitude = data?['longitude'];
+      if (latitude is num && longitude is num) {
+        unawaited(
+          map?.easeTo(
+            mb.CameraOptions(
+              center: mb.Point(
+                coordinates: mb.Position(
+                  longitude.toDouble(),
+                  latitude.toDouble(),
+                ),
+              ),
+              zoom: (cameraZoom + 2.5).clamp(5, 16),
+            ),
+            mb.MapAnimationOptions(duration: 450),
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _onMapIdle(mb.MapIdleEventData _) async {
+    final value = map;
+    if (value == null) return;
+    final nextZoom = (await value.getCameraState()).zoom;
+    final previousBucket = cameraZoom < 8
+        ? 0
+        : cameraZoom < 10
+        ? 1
+        : cameraZoom < 12.5
+        ? 2
+        : 3;
+    final nextBucket = nextZoom < 8
+        ? 0
+        : nextZoom < 10
+        ? 1
+        : nextZoom < 12.5
+        ? 2
+        : 3;
+    cameraZoom = nextZoom;
+    if (previousBucket != nextBucket) await _draw();
+  }
+
+  Future<void> _draw() async {
+    final pinManager = pins;
+    final labelManager = labels;
+    final lineManager = lines;
+    if (pinManager == null || labelManager == null || lineManager == null) {
+      return;
+    }
+    await Future.wait([
+      pinManager.deleteAll(),
+      labelManager.deleteAll(),
+      lineManager.deleteAll(),
+    ]);
+
+    final pinOptions = <mb.CircleAnnotationOptions>[];
+    final labelOptions = <mb.PointAnnotationOptions>[];
+    final lineOptions = <mb.PolylineAnnotationOptions>[];
+
+    void addLine(
+      List<LatLng> points,
+      int color, {
+      double width = 3,
+      Map<String, Object>? data,
+    }) {
+      if (points.length < 2) return;
+      lineOptions.add(
+        mb.PolylineAnnotationOptions(
+          geometry: mb.LineString(
+            coordinates: [
+              for (final point in points)
+                mb.Position(point.longitude, point.latitude),
+            ],
+          ),
+          lineColor: color,
+          lineWidth: width,
+          lineOpacity: 0.96,
+          customData: data,
+        ),
+      );
+    }
+
+    for (final trail in widget.savedTrails) {
+      addLine(trail.points, trail.colorValue, width: 3.5);
+    }
+    addLine(widget.recordedPath, widget.recordedColorValue, width: 4);
+
+    if (widget.mode == ActivityMode.ski) {
+      for (final route in widget.skiRoutes) {
+        final selected = route.id == widget.selectedSkiRoute?.id;
+        pinOptions.add(
+          mb.CircleAnnotationOptions(
+            geometry: _point(route.location),
+            circleColor: selected ? 0xFFFFD166 : 0xFFD33B2F,
+            circleRadius: selected ? 10 : 7,
+            circleStrokeColor: 0xFFFFFFFF,
+            circleStrokeWidth: 2,
+            customData: {'kind': 'ski', 'id': route.id},
+          ),
+        );
+        final ascent = widget.paths.skiAscent(route.name);
+        final descent = widget.paths.skiDescent(route.name);
+        addLine(
+          ascent.length >= 2 ? ascent : [route.trailhead, route.location],
+          0xFFD33B2F,
+          width: selected ? 6 : 3,
+          data: {'kind': 'ski', 'id': route.id},
+        );
+        addLine(
+          descent.length >= 2 ? descent : [route.location, route.trailhead],
+          0xFFF28C28,
+          width: selected ? 6 : 3,
+          data: {'kind': 'ski', 'id': route.id},
+        );
+      }
+    } else {
+      final clusterScale = cameraZoom < 8
+          ? 1.5
+          : cameraZoom < 10
+          ? 4.0
+          : cameraZoom < 12.5
+          ? 10.0
+          : 0.0;
+      final displayedCrags = <List<Crag>>[];
+      if (clusterScale == 0) {
+        displayedCrags.addAll(widget.crags.map((crag) => [crag]));
+      } else {
+        final buckets = <String, List<Crag>>{};
+        for (final crag in widget.crags) {
+          final key =
+              '${(crag.location.latitude * clusterScale).round()}_'
+              '${(crag.location.longitude * clusterScale).round()}';
+          buckets.putIfAbsent(key, () => []).add(crag);
+        }
+        displayedCrags.addAll(buckets.values);
+      }
+      for (final group in displayedCrags) {
+        if (group.length > 1) {
+          final latitude =
+              group.fold<double>(
+                0,
+                (sum, crag) => sum + crag.location.latitude,
+              ) /
+              group.length;
+          final longitude =
+              group.fold<double>(
+                0,
+                (sum, crag) => sum + crag.location.longitude,
+              ) /
+              group.length;
+          final opacity = cameraZoom < 7 ? 0.28 : 0.82;
+          pinOptions.add(
+            mb.CircleAnnotationOptions(
+              geometry: _point(LatLng(latitude, longitude)),
+              circleColor: 0xFF14618C,
+              circleOpacity: opacity,
+              circleRadius: (9 + math.log(group.length + 1) * 2).clamp(10, 20),
+              circleStrokeColor: 0xFFFFFFFF,
+              circleStrokeOpacity: opacity,
+              circleStrokeWidth: 2,
+              customData: {
+                'kind': 'cluster',
+                'latitude': latitude,
+                'longitude': longitude,
+              },
+            ),
+          );
+          labelOptions.add(
+            mb.PointAnnotationOptions(
+              geometry: _point(LatLng(latitude, longitude)),
+              textField: '${group.length}',
+              textSize: 13,
+              textColor: 0xFFFFFFFF,
+              customData: {
+                'kind': 'cluster',
+                'latitude': latitude,
+                'longitude': longitude,
+              },
+            ),
+          );
+          continue;
+        }
+        final crag = group.single;
+        final selected = crag.id == widget.selectedCrag?.id;
+        final opacity = cameraZoom < 7 ? 0.28 : 1.0;
+        labelOptions.add(
+          mb.PointAnnotationOptions(
+            geometry: _point(crag.location),
+            image: cragPinImage,
+            iconSize: selected ? 0.72 : 0.58,
+            iconOpacity: opacity,
+            textField: crag.name,
+            textSize: selected ? 14 : 12,
+            textOpacity: opacity,
+            textOffset: const [0, 2.1],
+            textColor: 0xFFFFFFFF,
+            textHaloColor: selected ? 0xFF8A5A00 : 0xFF123A4A,
+            textHaloWidth: selected ? 3 : 2,
+            customData: {'kind': 'crag', 'id': crag.id},
+          ),
+        );
+      }
+      final selectedCrag = widget.selectedCrag;
+      if (selectedCrag != null) {
+        final approach = widget.paths.cragPath(selectedCrag.id);
+        addLine(
+          approach.length >= 2
+              ? approach
+              : [selectedCrag.parking, selectedCrag.location],
+          0xFFF28C28,
+          width: 4,
+          data: {'kind': 'crag', 'id': selectedCrag.id},
+        );
+        labelOptions.add(
+          mb.PointAnnotationOptions(
+            geometry: _point(selectedCrag.parking),
+            image: parkingPinImage,
+            iconSize: 0.62,
+            textField: 'Parking',
+            textSize: 11,
+            textOffset: const [0, 2.1],
+            textColor: 0xFFFFFFFF,
+            textHaloColor: 0xFF6B3A00,
+            textHaloWidth: 2,
+          ),
+        );
+        for (final wall in selectedCrag.walls) {
+          final selected = wall.id == widget.selectedWall?.id;
+          pinOptions.add(
+            mb.CircleAnnotationOptions(
+              geometry: _point(wall.location),
+              circleColor: selected ? 0xFFFFFFFF : 0xFF42D4F4,
+              circleRadius: selected ? 9 : 6,
+              circleStrokeColor: 0xFF123A4A,
+              circleStrokeWidth: 2,
+              customData: {'kind': 'wall', 'id': wall.id},
+            ),
+          );
+        }
+      }
+    }
+    await lineManager.createMulti(lineOptions);
+    await pinManager.createMulti(pinOptions);
+    await labelManager.createMulti(labelOptions);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_token.isEmpty) {
+      return const ColoredBox(
+        color: Color(0xFF101820),
+        child: Center(
+          child: Padding(
+            padding: EdgeInsets.all(24),
+            child: Text(
+              'Mapbox needs its public access token. Build with '
+              '--dart-define=MAPBOX_ACCESS_TOKEN=your_public_token',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Colors.white),
+            ),
+          ),
+        ),
+      );
+    }
+    return mb.MapWidget(
+      key: const ValueKey('mapbox-satellite-terrain'),
+      styleUri: widget.styleUri,
+      cameraOptions: mb.CameraOptions(
+        center: _point(widget.center),
+        zoom: widget.zoom.clamp(5, 19),
+        pitch: widget.enableTerrain ? 72 : 0,
+        bearing: widget.enableTerrain ? 18 : 0,
+      ),
+      onMapCreated: _onMapCreated,
+      onStyleLoadedListener: _onStyleLoaded,
+      onMapIdleListener: _onMapIdle,
+    );
+  }
 }
 
 enum _MapTileStyle {

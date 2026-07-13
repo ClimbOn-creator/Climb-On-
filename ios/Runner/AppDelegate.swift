@@ -14,12 +14,6 @@ import WebKit
 
   func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {
     GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
-    if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "ClimbOnTerrainMap") {
-      registrar.register(
-        ClimbOnTerrainMapFactory(messenger: registrar.messenger()),
-        withId: "climb_on/terrain_map"
-      )
-    }
   }
 }
 
@@ -50,7 +44,7 @@ private final class ClimbOnTerrainMapFactory: NSObject, FlutterPlatformViewFacto
 }
 
 private final class ClimbOnWebTerrainMapView: NSObject, FlutterPlatformView,
-  WKScriptMessageHandler
+  WKScriptMessageHandler, WKNavigationDelegate
 {
   private let webView: WKWebView
   private let channel: FlutterMethodChannel
@@ -62,7 +56,6 @@ private final class ClimbOnWebTerrainMapView: NSObject, FlutterPlatformView,
     messenger: FlutterBinaryMessenger
   ) {
     let configuration = WKWebViewConfiguration()
-    configuration.defaultWebpagePreferences.allowsContentJavaScript = true
     webView = WKWebView(frame: frame, configuration: configuration)
     channel = FlutterMethodChannel(
       name: "climb_on/terrain_map/\(viewId)",
@@ -71,6 +64,7 @@ private final class ClimbOnWebTerrainMapView: NSObject, FlutterPlatformView,
     super.init()
 
     configuration.userContentController.add(self, name: "climbOn")
+    webView.navigationDelegate = self
     webView.isOpaque = true
     webView.scrollView.isScrollEnabled = false
     webView.scrollView.bounces = false
@@ -89,13 +83,42 @@ private final class ClimbOnWebTerrainMapView: NSObject, FlutterPlatformView,
 
   func view() -> UIView { webView }
 
+  func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+    webView.evaluateJavaScript("typeof maplibregl") { value, error in
+      if let error {
+        print("Climb On 3D terrain: JavaScript check failed: \(error)")
+      } else {
+        print("Climb On 3D terrain: MapLibre type is \(value ?? "missing")")
+      }
+    }
+    DispatchQueue.main.asyncAfter(deadline: .now() + 5) { [weak webView] in
+      webView?.evaluateJavaScript(
+        "JSON.stringify({webgl2:!!document.createElement('canvas').getContext('webgl2'),map:typeof window.climbMap,loaded:window.climbMap?window.climbMap.loaded():false,style:window.climbMap?window.climbMap.isStyleLoaded():false})"
+      ) { value, error in
+        print("Climb On 3D terrain diagnostic: \(value ?? error?.localizedDescription ?? "missing")")
+      }
+    }
+  }
+
+  func webView(
+    _ webView: WKWebView,
+    didFail navigation: WKNavigation!,
+    withError error: Error
+  ) {
+    print("Climb On 3D terrain: navigation failed: \(error)")
+  }
+
   func userContentController(
     _ userContentController: WKUserContentController,
     didReceive message: WKScriptMessage
   ) {
+    guard message.name == "climbOn", let value = message.body as? [String: Any]
+    else { return }
+    if let status = value["status"] as? String {
+      print("Climb On 3D terrain: \(status)")
+      return
+    }
     guard
-      message.name == "climbOn",
-      let value = message.body as? [String: Any],
       let kind = value["kind"] as? String,
       let id = value["id"] as? String
     else { return }
@@ -116,23 +139,28 @@ private final class ClimbOnWebTerrainMapView: NSObject, FlutterPlatformView,
 
   private func html(_ arguments: [String: Any]) -> String {
     let encoded = base64(arguments)
+    let css = bundledAsset("maplibre-gl", extension: "css")
+    let javascript = bundledAsset("maplibre-gl", extension: "js")
+      .replacingOccurrences(of: "</script", with: "<\\/script")
     return """
       <!doctype html>
       <html><head>
       <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-      <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.css">
-      <script src="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.js"></script>
+      <style>\(css)</style>
+      <script>\(javascript)</script>
       <style>
         html,body,#map{width:100%;height:100%;margin:0;overflow:hidden;background:#101820}
         .maplibregl-ctrl-attrib{font-size:9px}
       </style></head><body><div id="map"></div><script>
       const initial = JSON.parse(atob('\(encoded)'));
+      window.onerror=(message)=>window.webkit.messageHandlers.climbOn.postMessage({status:'error: '+message});
       const bounds = [
         [initial.longitude - 2.5, initial.latitude - 1.75],
         [initial.longitude + 2.5, initial.latitude + 1.75]
       ];
       let currentData = initial;
-      const map = new maplibregl.Map({
+      let map;
+      try { map = new maplibregl.Map({
         container:'map',
         center:[initial.longitude, initial.latitude],
         zoom:Math.max(8, Math.min(17, initial.zoom || 14)),
@@ -146,29 +174,37 @@ private final class ClimbOnWebTerrainMapView: NSObject, FlutterPlatformView,
           version:8,
           sources:{
             satellite:{type:'raster',tiles:['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'],tileSize:256,maxzoom:19,attribution:'Imagery © Esri and data providers'},
+            labels:{type:'raster',tiles:['https://a.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}@2x.png','https://b.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}@2x.png','https://c.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}@2x.png','https://d.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}@2x.png'],tileSize:512,maxzoom:20,attribution:'© OpenStreetMap contributors © CARTO'},
             terrainSource:{type:'raster-dem',url:'https://tiles.mapterhorn.com/tilejson.json'},
             hillshadeSource:{type:'raster-dem',url:'https://tiles.mapterhorn.com/tilejson.json'}
           },
           layers:[
-            {id:'satellite',type:'raster',source:'satellite'},
-            {id:'hillshade',type:'hillshade',source:'hillshadeSource',paint:{'hillshade-exaggeration':0.22}}
+            {id:'satellite',type:'raster',source:'satellite',paint:{'raster-contrast':0.12,'raster-saturation':0.06,'raster-resampling':'linear'}},
+            {id:'hillshade',type:'hillshade',source:'hillshadeSource',paint:{'hillshade-exaggeration':0.22}},
+            {id:'labels',type:'raster',source:'labels',paint:{'raster-opacity':0.92}}
           ],
           terrain:{source:'terrainSource',exaggeration:1},
           sky:{}
         }
-      });
-      map.touchPitch.enable();
-      map.touchZoomRotate.enable();
+      }); } catch(e) {
+        window.webkit.messageHandlers.climbOn.postMessage({status:'constructor error: '+(e.stack||e.message||e)});
+        document.body.innerHTML='<div style="color:white;padding:24px;font:16px -apple-system">3D renderer error: '+String(e.message||e)+'</div>';
+        throw e;
+      }
+      window.climbMap=map;
+      if(map.touchPitch) map.touchPitch.enable();
+      if(map.touchZoomRotate) map.touchZoomRotate.enable();
 
       function pointFeatures(data){
         const result=[];
         (data.crags||[]).forEach(p=>result.push({type:'Feature',properties:{id:p.id,name:p.name,kind:'crag',selected:false},geometry:{type:'Point',coordinates:[p.longitude,p.latitude]}}));
         (data.skiRoutes||[]).forEach(p=>result.push({type:'Feature',properties:{id:p.id,name:p.name,kind:'ski',selected:!!p.selected},geometry:{type:'Point',coordinates:[p.longitude,p.latitude]}}));
+        (data.walls||[]).forEach(p=>result.push({type:'Feature',properties:{id:p.id,name:p.name,kind:'wall',selected:!!p.selected},geometry:{type:'Point',coordinates:[p.longitude,p.latitude]}}));
         if(data.parking) result.push({type:'Feature',properties:{id:'parking',name:data.parking.name,kind:'parking',selected:false},geometry:{type:'Point',coordinates:[data.parking.longitude,data.parking.latitude]}});
         return {type:'FeatureCollection',features:result};
       }
       function lineFeatures(data){
-        return {type:'FeatureCollection',features:(data.polylines||[]).map((p,i)=>({type:'Feature',properties:{id:p.entityId||String(i),kind:p.entityId?'ski':'path',color:p.color||'#FFD166',width:Number(p.width||2.25),selected:!!p.selected},geometry:{type:'LineString',coordinates:(p.points||[]).map(v=>[v.longitude,v.latitude])}}))};
+        return {type:'FeatureCollection',features:(data.polylines||[]).map((p,i)=>({type:'Feature',properties:{id:p.entityId||String(i),kind:p.kind||'path',color:p.color||'#FFD166',width:Number(p.width||2.25),selected:!!p.selected},geometry:{type:'LineString',coordinates:(p.points||[]).map(v=>[v.longitude,v.latitude])}}))};
       }
       function update(data){
         currentData=data;
@@ -177,18 +213,36 @@ private final class ClimbOnWebTerrainMapView: NSObject, FlutterPlatformView,
       }
       window.updateMapDataB64 = value => update(JSON.parse(atob(value)));
       map.on('load',()=>{
+        window.webkit.messageHandlers.climbOn.postMessage({status:'ready'});
         map.addSource('app-lines',{type:'geojson',data:lineFeatures(currentData)});
         map.addLayer({id:'app-lines',type:'line',source:'app-lines',paint:{'line-color':['get','color'],'line-width':['case',['boolean',['get','selected'],false],6,['get','width']],'line-opacity':['case',['boolean',['get','selected'],false],1,0.86]}});
         map.addSource('app-points',{type:'geojson',data:pointFeatures(currentData)});
         map.addLayer({id:'crag-pins',type:'circle',source:'app-points',filter:['==',['get','kind'],'crag'],paint:{'circle-radius':7,'circle-color':'#14618c','circle-stroke-color':'#fff','circle-stroke-width':2}});
         map.addLayer({id:'ski-pins',type:'circle',source:'app-points',filter:['==',['get','kind'],'ski'],paint:{'circle-radius':['case',['boolean',['get','selected'],false],10,7],'circle-color':['case',['boolean',['get','selected'],false],'#FFD166','#D33B2F'],'circle-stroke-color':'#fff','circle-stroke-width':2}});
+        map.addLayer({id:'wall-pins',type:'circle',source:'app-points',filter:['==',['get','kind'],'wall'],paint:{'circle-radius':['case',['boolean',['get','selected'],false],9,6],'circle-color':['case',['boolean',['get','selected'],false],'#FFFFFF','#42D4F4'],'circle-stroke-color':'#123A4A','circle-stroke-width':2}});
         map.addLayer({id:'parking-pin',type:'circle',source:'app-points',filter:['==',['get','kind'],'parking'],paint:{'circle-radius':8,'circle-color':'#F28C28','circle-stroke-color':'#fff','circle-stroke-width':2.5}});
-        ['crag-pins','ski-pins'].forEach(layer=>map.on('click',layer,e=>{const p=e.features[0].properties;window.webkit.messageHandlers.climbOn.postMessage({kind:p.kind,id:p.id});}));
-        map.on('click','app-lines',e=>{const p=e.features[0].properties;if(p.kind==='ski')window.webkit.messageHandlers.climbOn.postMessage({kind:'ski',id:p.id});});
-        ['crag-pins','ski-pins','app-lines'].forEach(layer=>{map.on('mouseenter',layer,()=>map.getCanvas().style.cursor='pointer');map.on('mouseleave',layer,()=>map.getCanvas().style.cursor='');});
+        ['crag-pins','ski-pins','wall-pins'].forEach(layer=>map.on('click',layer,e=>{const p=e.features[0].properties;window.webkit.messageHandlers.climbOn.postMessage({kind:p.kind,id:p.id});}));
+        map.on('click','app-lines',e=>{const p=e.features[0].properties;if(p.kind==='ski'||p.kind==='wall')window.webkit.messageHandlers.climbOn.postMessage({kind:p.kind,id:p.id});});
+        ['crag-pins','ski-pins','wall-pins','app-lines'].forEach(layer=>{map.on('mouseenter',layer,()=>map.getCanvas().style.cursor='pointer');map.on('mouseleave',layer,()=>map.getCanvas().style.cursor='');});
       });
+      map.on('error',e=>window.webkit.messageHandlers.climbOn.postMessage({status:'map error: '+(e.error?.message||'unknown')}));
       </script></body></html>
       """
+  }
+
+  private func bundledAsset(_ name: String, extension ext: String) -> String {
+    let candidates = [
+      "\(Bundle.main.bundlePath)/Frameworks/App.framework/flutter_assets/assets/maplibre/\(name).\(ext)",
+      "\(Bundle.main.bundlePath)/flutter_assets/assets/maplibre/\(name).\(ext)",
+    ]
+    for path in candidates {
+      if let value = try? String(contentsOfFile: path, encoding: .utf8) {
+        print("Climb On 3D terrain: loaded bundled \(name).\(ext)")
+        return value
+      }
+    }
+    print("Climb On 3D terrain: missing bundled \(name).\(ext)")
+    return ""
   }
 }
 

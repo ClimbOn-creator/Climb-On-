@@ -5,7 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:latlong2/latlong.dart' as geo;
-import 'package:maplibre_gl/maplibre_gl.dart' as ml;
+import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart' as mb;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../config/offline_map_config.dart';
@@ -70,7 +70,9 @@ class OfflineRegionStatus {
 class OfflineDownloadState extends ChangeNotifier {
   OfflineDownloadState(this.ref);
 
-  static const _storageKey = 'climb_on_offline_regions_v1';
+  // v2 invalidates legacy MapLibre markers that could say "ready" even though
+  // no Mapbox style/tile packs existed on the phone.
+  static const _storageKey = 'climb_on_offline_regions_v2';
   final Ref ref;
   final Map<String, OfflineRegionStatus> _statuses = {};
   bool _disposed = false;
@@ -209,13 +211,13 @@ class OfflineDownloadState extends ChangeNotifier {
           downloadedAt: now,
           message: mapsReady
               ? terrainReady
-                    ? 'Clean 2D and 3D terrain are ready offline.'
+                    ? 'Satellite imagery, labels, and 3D terrain are ready offline.'
                     : includeTerrain3d
-                    ? 'Clean 2D is ready. 3D terrain did not finish; check the terrain service and update this section.'
-                    : 'Clean 2D is ready offline.'
+                    ? 'Satellite is ready. 3D terrain did not finish; update this section when connected.'
+                    : 'Satellite imagery and labels are ready offline.'
               : kIsWeb
               ? 'Route data and pictures are ready. Native map packs are available in the iPhone/Android app.'
-              : 'Route data and pictures are ready. Add licensed offline map style URLs to enable map packs.',
+              : 'Route data and pictures are ready. Add the Mapbox public token to enable offline map packs.',
         ),
       );
       await _persist();
@@ -242,106 +244,117 @@ class OfflineDownloadState extends ChangeNotifier {
     if (kIsWeb ||
         (defaultTargetPlatform != TargetPlatform.iOS &&
             defaultTargetPlatform != TargetPlatform.android) ||
-        !OfflineMapConfig.mapsConfigured) {
+        OfflineMapConfig.mapboxAccessToken.isEmpty) {
       return (mapsReady: false, terrainReady: false);
     }
 
-    await ml.setOfflineTileCountLimit(2000000);
-    await ml.setOfflineMaxConcurrentRequests(
-      maxRequests: 4,
-      maxRequestsPerHost: 2,
-    );
-    final styles = OfflineMapConfig.downloadableStyles(
-      includeTerrain3d: includeTerrain3d,
-    ).entries.toList();
+    final offlineManager = await mb.OfflineManager.create();
+    final tileStore = await mb.TileStore.createDefault();
+    // Keep offline maps bounded on the phone. This is independent of R2 and
+    // prevents an accidentally huge BC download from filling the device.
+    tileStore.setDiskQuota(3 * 1024 * 1024 * 1024);
+    for (final style in [
+      mb.MapboxStyles.STANDARD,
+      mb.MapboxStyles.STANDARD_SATELLITE,
+    ]) {
+      await offlineManager.loadStylePack(
+        style,
+        mb.StylePackLoadOptions(
+          glyphsRasterizationMode:
+              mb.GlyphsRasterizationMode.IDEOGRAPHS_RASTERIZED_LOCALLY,
+          metadata: {'climbOn': true},
+          acceptExpired: true,
+        ),
+        null,
+      );
+    }
     final sectionBounds = region.downloadBounds();
     var finished = 0;
-    final total = styles.length * (sectionBounds.length + points.length);
+    final total = sectionBounds.length + points.length;
 
-    for (final style in styles) {
-      for (var part = 0; part < sectionBounds.length; part++) {
-        final bounds = sectionBounds[part];
-        await _downloadPack(
-          region: region,
-          layer: style.key,
-          styleUrl: style.value,
-          bounds: ml.LatLngBounds(
-            southwest: ml.LatLng(bounds.south, bounds.west),
-            northeast: ml.LatLng(bounds.north, bounds.east),
-          ),
-          minZoom: 5,
-          maxZoom: 13,
-          detail: false,
-          sectionPart: part,
-        );
-        finished++;
-        _mapProgress(region.id, finished, total, style.key);
-      }
-
-      for (final point in points) {
-        const radius = 0.045;
-        await _downloadPack(
-          region: region,
-          layer: style.key,
-          styleUrl: style.value,
-          bounds: ml.LatLngBounds(
-            southwest: ml.LatLng(
-              point.latitude - radius,
-              point.longitude - radius,
-            ),
-            northeast: ml.LatLng(
-              point.latitude + radius,
-              point.longitude + radius,
-            ),
-          ),
-          minZoom: 13,
-          maxZoom: 16,
-          detail: true,
-        );
-        finished++;
-        _mapProgress(region.id, finished, total, style.key);
-      }
+    for (var part = 0; part < sectionBounds.length; part++) {
+      final bounds = sectionBounds[part];
+      await _downloadPack(
+        tileStore: tileStore,
+        id: 'climb-on-${region.id}-area-$part',
+        geometry: _boundsPolygon(
+          south: bounds.south,
+          west: bounds.west,
+          north: bounds.north,
+          east: bounds.east,
+        ),
+        minZoom: 5,
+        maxZoom: 13,
+      );
+      finished++;
+      _mapProgress(region.id, finished, total, 'satellite terrain');
     }
-    final installed = await ml.getListOfRegions();
-    final installedLayers = installed
-        .where(
-          (pack) => pack.metadata['climbOnRegionId']?.toString() == region.id,
-        )
-        .map((pack) => pack.metadata['layer']?.toString())
-        .whereType<String>()
-        .toSet();
-    final mapsReady =
-        installedLayers.contains('Clean 2D') &&
-        (!OfflineMapConfig.satelliteConfigured ||
-            installedLayers.contains('Satellite'));
-    final terrainReady =
-        includeTerrain3d && installedLayers.contains('Terrain 3D');
-    return (mapsReady: mapsReady, terrainReady: terrainReady);
+
+    for (var index = 0; index < points.length; index++) {
+      final point = points[index];
+      const radius = 0.035;
+      await _downloadPack(
+        tileStore: tileStore,
+        id: 'climb-on-${region.id}-detail-$index',
+        geometry: _boundsPolygon(
+          south: point.latitude - radius,
+          west: point.longitude - radius,
+          north: point.latitude + radius,
+          east: point.longitude + radius,
+        ),
+        minZoom: 13,
+        maxZoom: 16,
+      );
+      finished++;
+      _mapProgress(region.id, finished, total, 'local detail');
+    }
+    return (mapsReady: true, terrainReady: includeTerrain3d);
   }
 
+  mb.Polygon _boundsPolygon({
+    required double south,
+    required double west,
+    required double north,
+    required double east,
+  }) => mb.Polygon(
+    coordinates: [
+      [
+        mb.Position(west, south),
+        mb.Position(east, south),
+        mb.Position(east, north),
+        mb.Position(west, north),
+        mb.Position(west, south),
+      ],
+    ],
+  );
+
   Future<void> _downloadPack({
-    required OfflineBcRegion region,
-    required String layer,
-    required String styleUrl,
-    required ml.LatLngBounds bounds,
-    required double minZoom,
-    required double maxZoom,
-    required bool detail,
-    int? sectionPart,
+    required mb.TileStore tileStore,
+    required String id,
+    required mb.Polygon geometry,
+    required int minZoom,
+    required int maxZoom,
   }) async {
-    await ml.downloadOfflineRegion(
-      ml.OfflineRegionDefinition(
-        bounds: bounds,
-        mapStyleUrl: styleUrl,
-        minZoom: minZoom,
-        maxZoom: maxZoom,
+    await tileStore.loadTileRegion(
+      id,
+      mb.TileRegionLoadOptions(
+        geometry: geometry.toJson(),
+        descriptorsOptions: [
+          for (final style in [
+            mb.MapboxStyles.STANDARD,
+            mb.MapboxStyles.STANDARD_SATELLITE,
+          ])
+            mb.TilesetDescriptorOptions(
+              styleURI: style,
+              minZoom: minZoom,
+              maxZoom: maxZoom,
+            ),
+        ],
+        metadata: {'climbOnRegionId': id},
+        acceptExpired: true,
+        networkRestriction: mb.NetworkRestriction.NONE,
       ),
-      metadata: {
-        'climbOnRegionId': region.id,
-        'layer': layer,
-        'detail': detail,
-        'sectionPart': ?sectionPart,
-      },
+      null,
     );
   }
 
@@ -362,13 +375,12 @@ class OfflineDownloadState extends ChangeNotifier {
         (defaultTargetPlatform == TargetPlatform.iOS ||
             defaultTargetPlatform == TargetPlatform.android)) {
       try {
-        final packs = await ml.getListOfRegions();
-        for (final pack in packs.where(
-          (pack) => pack.metadata['climbOnRegionId'] == region.id,
-        )) {
-          await ml.deleteOfflineRegion(pack.id);
+        final tileStore = await mb.TileStore.createDefault();
+        final packs = await tileStore.allTileRegions();
+        final prefix = 'climb-on-${region.id}-';
+        for (final pack in packs.where((pack) => pack.id.startsWith(prefix))) {
+          await tileStore.removeRegion(pack.id);
         }
-        await ml.clearAmbientCache();
       } catch (_) {
         // Still clear the app-level pack marker if native storage is absent.
       }
